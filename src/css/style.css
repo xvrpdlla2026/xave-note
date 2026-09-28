@@ -1212,6 +1212,27 @@ svg.tree__glyph--note { font-size: 14.5px; }
   color: var(--text-muted);
   word-break: break-word;
 }
+.pane-head__path {
+  margin-top: 5px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  word-break: break-word;
+}
+
+/* A path whose steps are places to go. The folder buttons stay inline and unadorned so the path
+   still reads as one line of text; colour is what says it can be pressed, and the final step is
+   the item already open, so it keeps the colour of the sentence around it. */
+.crumb {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+}
+.crumb:hover { text-decoration: underline; }
+.crumb--current { color: inherit; cursor: default; }
+.crumb__sep { color: var(--text-faint); }
 
 /* Action row: exactly one filled button carries the primary action; every
    other action is quiet until hover, so hierarchy is legible at a glance. */

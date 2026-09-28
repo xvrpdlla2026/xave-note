@@ -593,6 +593,44 @@ window.NoteApp = window.NoteApp || {};
    */
   var BROWSER_COPY_CLAUSE = 'The browser keeps its own copies of this database as it rewrites it, and reclaims them on its own schedule, so an earlier unencrypted copy may remain on this device until it does.';
 
+  // --------------------------------------------------------------- breadcrumbs
+  /**
+   * A path whose every step is a place to go.
+   *
+   * The panes said "in A / B / C" as prose, which tells the reader where a thing is and leaves
+   * them to walk back to it by hand — and from an answer that came from three folders down, that
+   * walk is the whole journey the search just saved them. Each folder is a button that selects it
+   * in the tree; the item itself is the trailing step and is a label, not a target, because it is
+   * the thing already open in the pane this is drawn in. Steps are separated rather than each
+   * followed by a slash, so a chain with no item after it does not end in a dangling separator.
+   */
+  function breadcrumbs(chain, item) {
+    var frag = document.createDocumentFragment();
+    var steps = chain || [];
+    // Spaces in the text rather than margins around it: the slash is part of the path, so a
+    // reader — a screen reader included — gets "Learn / Deep", not "LearnDeep".
+    function separator() {
+      return el('span', { class: 'crumb__sep', text: ' / ' });
+    }
+    steps.forEach(function (step, index) {
+      if (index) frag.appendChild(separator());
+      frag.appendChild(el('button', {
+        type: 'button',
+        class: 'crumb',
+        // `ctx`/`ctxLabel` for the same reason every row carries them: the element describes
+        // itself, so nothing has to look the folder up again to name it.
+        dataset: { action: 'goto-folder', id: step.id, ctx: 'folder', ctxLabel: step.name },
+        text: step.name,
+        title: 'Show ' + step.name + ' in the tree',
+      }));
+    });
+    if (item) {
+      if (steps.length) frag.appendChild(separator());
+      frag.appendChild(el('span', { class: 'crumb crumb--current', text: item }));
+    }
+    return frag;
+  }
+
   // ------------------------------------------------------------------- note editor
   function renderEditor(host, ctx) {
     // A locked notebook still knows the note EXISTS: the tree, the title, the folder and the
@@ -653,7 +691,11 @@ window.NoteApp = window.NoteApp || {};
 
     var meta = el('div', { class: 'editor__meta' }, [
       el('span', { id: 'note-status', class: 'editor__status', text: 'Saved' }),
-      el('span', { text: ctx.path ? 'in ' + ctx.path : 'at workspace root' }),
+      // The note's title is the input directly above this line, so the breadcrumb stops at the
+      // folder: it answers "where is this", which is the one question the title cannot.
+      el('span', {}, ctx.chain && ctx.chain.length
+        ? ['in ', breadcrumbs(ctx.chain, null)]
+        : ['at workspace root']),
       el('span', { class: 'editor__meta-when', text: 'created ' + util.formatWhen(ctx.note.created_at) }),
     ]);
 
@@ -713,6 +755,8 @@ window.NoteApp = window.NoteApp || {};
         el('span', { class: 'pane-head__glyph', text: util.fileGlyph(file.filename, file.mime_type) }),
         el('div', {}, [
           el('h2', { class: 'pane-head__title', text: file.filename }),
+          // Where the file lives, as navigation rather than as a caption: see breadcrumbs().
+          el('p', { class: 'pane-head__path' }, [breadcrumbs(ctx.chain, file.filename)]),
           el('p', { class: 'pane-head__sub', text: util.formatBytes(file.size) + ' \u00b7 ' + (file.mime_type || 'unknown type') + ' \u00b7 added ' + util.formatWhen(file.created_at) }),
         ]),
       ]),

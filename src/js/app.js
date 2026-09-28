@@ -446,7 +446,8 @@ window.NoteApp = window.NoteApp || {};
         state.editorDirty = false;
         App.ui.renderEditor(dom.main, {
           note: note,
-          path: note.folder_id ? App.db.folderPaths(state.workspaceId)[note.folder_id] : '',
+          // The folder chain the editor prints as a path — and, crumb by crumb, as somewhere to go.
+          chain: note.folder_id ? App.db.folderChains(state.workspaceId)[note.folder_id] : [],
         });
         return;
       }
@@ -474,7 +475,14 @@ window.NoteApp = window.NoteApp || {};
             util.toast('Preview failed: ' + err.message, 'error');
           }
         }
-        App.ui.renderFilePreview(dom.main, { file: meta, previewUrl: previewUrl, locked: fileLocked });
+        App.ui.renderFilePreview(dom.main, {
+          file: meta,
+          previewUrl: previewUrl,
+          locked: fileLocked,
+          // Where the file lives, for the breadcrumb above its name. A file opened from a search
+          // hit is exactly the case where the reader cannot say which folder it came from.
+          chain: meta.folder_id ? App.db.folderChains(state.workspaceId)[meta.folder_id] : [],
+        });
         return;
       }
       state.activeFileId = null;
@@ -980,6 +988,34 @@ window.NoteApp = window.NoteApp || {};
     state.selection = { type: 'all', id: null };
     state.expanded = {};
     App.prefs.set('lastWorkspaceId', workspaceId);
+  }
+
+  /**
+   * Put the reader on a folder in the tree — where a breadcrumb goes.
+   *
+   * A path printed on a note or a file says where the thing lives, and the point of saying it is
+   * being able to get there: from an answer that came from three folders down, walking back to the
+   * folder by hand is the whole journey the search just saved. The search is cleared on the way,
+   * because a breadcrumb is the way out of the answer that produced it — the tree is what can show
+   * the place, and the query replaced the tree. What happens next is what pressing the folder's
+   * row does, so the selection and the pane cannot come to mean two different places.
+   */
+  function goToFolder(id) {
+    if (!id || !App.db.folderPaths(state.workspaceId)[id]) return;
+    flushPendingSave();
+    if (state.searchTerm) {
+      state.searchTerm = '';
+      if (dom.searchInput) dom.searchInput.value = '';
+    }
+    expandAncestors(id);
+    // And the folder opens: a destination the reader cannot see the contents of is not one.
+    state.expanded[id] = true;
+    state.view = 'notes';
+    state.selection = { type: 'folder', id: id };
+    state.activeNoteId = null;
+    state.activeFileId = null;
+    render();
+    focusMovedRow('folder', id);
   }
 
   function openNote(id) {
@@ -2436,6 +2472,9 @@ window.NoteApp = window.NoteApp || {};
       state.activeFileId = null;
       render();
     },
+    // A breadcrumb's destination: the selection a press on the folder row makes, with the search
+    // cleared, because the tree is where a place can be shown and the query replaced the tree.
+    'goto-folder': function (id) { goToFolder(id); },
     'select-folder': function (id) {
       flushPendingSave();
       // Asked before anything moves: "the reader is inside this folder" is a question about the

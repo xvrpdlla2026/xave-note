@@ -1852,26 +1852,42 @@ window.NoteApp = window.NoteApp || {};
       return { notes: notes ? notes.n : 0, files: files ? files.n : 0, folders: folders ? folders.n : 0 };
     },
 
-    /** Folder list rendered for a right-click-free rename flow: id -> full path. */
-    folderPaths: function (workspaceId) {
+    /**
+     * Every folder's chain of ancestors, root first: id -> [{ id, name }, ...].
+     *
+     * The same walk folderPaths() below has always done, left as segments rather than joined into
+     * a string. A path printed as text is a fact; a path whose every step is a place to go is
+     * navigation, and a breadcrumb needs the folder ids that "A / B / C" has already thrown away.
+     */
+    folderChains: function (workspaceId) {
       var folders = API.listFolders(workspaceId);
       var byId = {};
       folders.forEach(function (f) { byId[f.id] = f; });
       var cache = {};
-      function pathOf(id) {
+      function chainOf(id) {
         if (cache[id]) return cache[id];
         var parts = [];
         var cursor = byId[id];
         var guard = 0;
         while (cursor && guard++ < 100) {
-          parts.unshift(cursor.name);
+          parts.unshift({ id: cursor.id, name: cursor.name });
           cursor = cursor.parent_folder_id ? byId[cursor.parent_folder_id] : null;
         }
-        cache[id] = parts.join(' / ');
-        return cache[id];
+        cache[id] = parts;
+        return parts;
       }
       var out = {};
-      folders.forEach(function (f) { out[f.id] = pathOf(f.id); });
+      folders.forEach(function (f) { out[f.id] = chainOf(f.id); });
+      return out;
+    },
+
+    /** The same chains joined into the "A / B / C" strings the panes print in prose. */
+    folderPaths: function (workspaceId) {
+      var chains = API.folderChains(workspaceId);
+      var out = {};
+      Object.keys(chains).forEach(function (id) {
+        out[id] = chains[id].map(function (step) { return step.name; }).join(' / ');
+      });
       return out;
     },
 
