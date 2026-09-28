@@ -1,0 +1,14 @@
+{
+  "name": "notebook-local-first",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local-first note taking app: vanilla HTML/CSS/JS, SQLite compiled to WebAssembly, persisted to IndexedDB, offline-capable from a single index.html.",
+  "license": "MIT",
+  "scripts": {
+    "build": "node tools/build.js",
+    "refresh-engine": "node tools/build.js --refresh",
+    "test": "node tools/run-flow.js"
+  },
+  "comment": "There are no runtime dependencies. sql.js is fetched once by tools/build.js and vendored under vendor/; nothing here is needed to run index.html.",
+  "devDependencies": {}
+}

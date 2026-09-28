@@ -1,0 +1,14 @@
+# Design-review screenshots (regenerate with `node tools/shots.js`) — these are
+# review artifacts, not source, so they are not committed.
+tools/shots/
+
+# Generated single-file app. Rebuild with `node tools/build.js`.
+# Kept out of version control because it embeds a 640 KB base64 WASM binary,
+# which would make every source diff unreviewable.
+index.html
+
+# Timestamped local snapshot of the app: kept on disk, not in history.
+_backup_*/
+
+# Editor/dependency noise.
+node_modules/
