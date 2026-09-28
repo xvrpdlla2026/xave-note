@@ -740,6 +740,29 @@ window.NoteApp = window.NoteApp || {};
   function renderSearchResults(host, ctx) {
     var frag = document.createDocumentFragment();
     var total = ctx.results.notes.length + ctx.results.files.length;
+    /**
+     * The workspace a hit came from, when that is not the one on screen; null otherwise. The name
+     * rides on the row itself — db.search asks each query to carry it — so a hit is labelled from
+     * the same row it is drawn from rather than from a list that could have moved on.
+     */
+    function homeOf(row) {
+      if (!row.workspace_id || row.workspace_id === ctx.currentWorkspaceId) return null;
+      return row.workspace_name || 'Another workspace';
+    }
+
+    /**
+     * Name that workspace on the row, in the trailing track the age stamp also uses. The home of
+     * a hit outranks the age of one — and the two must not be drawn into the same grid column,
+     * where they would overlap rather than sit side by side — so the stamp gives way.
+     */
+    function labelHome(row, label) {
+      if (!label) return row;
+      var when = row.querySelector('.tree__when');
+      if (when && when.parentNode) when.parentNode.removeChild(when);
+      row.appendChild(el('span', { class: 'tree__ws', text: label }));
+      row.title = (row.title ? row.title + ' \u00b7 ' : '') + label;
+      return row;
+    }
 
     frag.appendChild(el('div', { class: 'search-head' }, [
       total
@@ -760,7 +783,7 @@ window.NoteApp = window.NoteApp || {};
         class: 'tree__hint',
         text: ctx.results.locked
           ? 'Nothing matches a title or file name. Note text is not searched while the notebook is locked.'
-          : 'Nothing in this workspace matches. Search covers note titles, note text and file names.',
+          : 'Nothing in any workspace matches. Search covers note titles, note text and file names.',
       }));
     } else if (ctx.results.locked) {
       frag.appendChild(el('p', {
@@ -776,10 +799,10 @@ window.NoteApp = window.NoteApp || {};
     }
 
     ctx.results.notes.forEach(function (note) {
-      frag.appendChild(noteRow(host, note, ctx.activeNoteId, 0));
+      frag.appendChild(labelHome(noteRow(host, note, ctx.activeNoteId, 0), homeOf(note)));
     });
     ctx.results.files.forEach(function (file) {
-      frag.appendChild(fileRow(host, file, ctx.activeFileId, 0));
+      frag.appendChild(labelHome(fileRow(host, file, ctx.activeFileId, 0), homeOf(file)));
     });
 
     host.textContent = '';

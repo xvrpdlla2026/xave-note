@@ -918,6 +918,24 @@ svg.tree__glyph--note { font-size: 14.5px; }
   justify-self: end;
 }
 
+/* A search hit names the workspace it lives in when that is not the open one. It shares the
+   trailing track with the age stamp above, and ui.js drops the stamp whenever this chip is
+   drawn, so only one of them is ever in that column. */
+.tree__ws {
+  grid-column: 4;
+  justify-self: end;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--bg-sunken);
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+.tree__row:hover .tree__ws { background: var(--bg-active); color: var(--accent); }
+
 .tree__empty,
 .tree__hint {
   padding: 8px 10px;

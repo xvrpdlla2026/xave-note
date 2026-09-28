@@ -297,6 +297,10 @@ window.NoteApp = window.NoteApp || {};
       id: row.id,
       folder_id: row.folder_id,
       workspace_id: row.workspace_id,
+      // Filled only by search(), which asks each query to carry the name of the workspace the
+      // row lives in. A hit labelled from a list held elsewhere could name a workspace it is
+      // not in; this cannot.
+      workspace_name: row.workspace_name || null,
       title: row.title || '',
       // Always empty, and deliberately so. Every list query above omits the content column, so
       // this was already '' in practice — but with a vault in play the raw column is a
@@ -315,6 +319,8 @@ window.NoteApp = window.NoteApp || {};
       id: row.id,
       folder_id: row.folder_id,
       workspace_id: row.workspace_id,
+      // See mapNote: search() is the one caller that fills this in.
+      workspace_name: row.workspace_name || null,
       filename: row.filename,
       mime_type: row.mime_type,
       size: row.size,
@@ -1762,30 +1768,38 @@ window.NoteApp = window.NoteApp || {};
     },
     // ---------------------------------------------------------------------- search
     /**
-     * Search note titles/bodies and file names inside one workspace. Results are capped
-     * so a pathological query cannot try to render the entire database.
+     * Search note titles/bodies and file names. Pass a workspace id to search inside that one
+     * workspace, or null to search the whole notebook. Results are capped so a pathological
+     * query cannot try to render the entire database.
      */
     search: function (workspaceId, term, limit) {
       var trimmed = String(term || '').trim();
       if (!trimmed) return { notes: [], files: [] };
       var pattern = likeParam(trimmed);
       var cap = limit || 100;
+      // The one thing a scoped search and a notebook-wide one disagree about, written once:
+      // every query below is otherwise identical text, so the two scopes cannot drift into
+      // different answers to the same question.
+      var scoped = workspaceId !== null && workspaceId !== undefined;
+      var scope = scoped ? ' AND workspace_id = ?' : '';
+      var scopeArgs = scoped ? [workspaceId] : [];
 
       var files = query(
-        'SELECT id, folder_id, workspace_id, filename, mime_type, size, created_at FROM files ' +
-        "WHERE workspace_id = ? AND deleted_at IS NULL AND filename LIKE ? ESCAPE '\\' ORDER BY created_at DESC LIMIT ?",
-        [workspaceId, pattern, cap]
+        'SELECT id, folder_id, workspace_id, filename, mime_type, size, created_at, ' +
+        '(SELECT name FROM workspaces WHERE id = files.workspace_id) AS workspace_name FROM files ' +
+        "WHERE deleted_at IS NULL" + scope + " AND filename LIKE ? ESCAPE '\\' ORDER BY created_at DESC LIMIT ?",
+        scopeArgs.concat([pattern, cap])
       ).map(mapFileMeta);
 
-      // With no vault this is exactly the query search has always run — same SQL, same
-      // parameters, same object shape — and run-flow asserts it byte for byte. Titles and
-      // bodies are matched together by SQLite, because with no vault both are plaintext.
+      // With no vault, titles and bodies are both plaintext, so one SQL statement matches
+      // either of them and run-flow asserts the result byte for byte.
       if (!App.crypto.isActive()) {
         var plain = query(
-          'SELECT id, folder_id, workspace_id, title, created_at, updated_at FROM notes ' +
-          "WHERE workspace_id = ? AND deleted_at IS NULL AND (title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\') " +
+          'SELECT id, folder_id, workspace_id, title, created_at, updated_at, ' +
+        '(SELECT name FROM workspaces WHERE id = notes.workspace_id) AS workspace_name FROM notes ' +
+          "WHERE deleted_at IS NULL" + scope + " AND (title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\') " +
           'ORDER BY updated_at DESC LIMIT ?',
-          [workspaceId, pattern, pattern, cap]
+          scopeArgs.concat([pattern, pattern, cap])
         ).map(mapNote);
         return { notes: plain, files: files };
       }
@@ -1793,9 +1807,10 @@ window.NoteApp = window.NoteApp || {};
       // Vault on. Titles and file names are not encrypted, so SQL still answers that half in
       // either state — which is what keeps the notebook searchable while it is locked.
       var notes = query(
-        'SELECT id, folder_id, workspace_id, title, created_at, updated_at FROM notes ' +
-        "WHERE workspace_id = ? AND deleted_at IS NULL AND title LIKE ? ESCAPE '\\' ORDER BY updated_at DESC LIMIT ?",
-        [workspaceId, pattern, cap]
+        'SELECT id, folder_id, workspace_id, title, created_at, updated_at, ' +
+        '(SELECT name FROM workspaces WHERE id = notes.workspace_id) AS workspace_name FROM notes ' +
+        "WHERE deleted_at IS NULL" + scope + " AND title LIKE ? ESCAPE '\\' ORDER BY updated_at DESC LIMIT ?",
+        scopeArgs.concat([pattern, cap])
       ).map(mapNote);
 
       var result = { notes: notes, files: files, locked: !viewReady, contentScanned: 0, contentTruncated: false };
@@ -1809,11 +1824,12 @@ window.NoteApp = window.NoteApp || {};
       notes.forEach(function (note) { matched[note.id] = true; });
       var needle = trimmed.toLowerCase();
       var candidates = query(
-        'SELECT id, folder_id, workspace_id, title, created_at, updated_at FROM notes ' +
-        'WHERE workspace_id = ? AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT ?',
-        [workspaceId, CONTENT_SCAN_CAP]
+        'SELECT id, folder_id, workspace_id, title, created_at, updated_at, ' +
+        '(SELECT name FROM workspaces WHERE id = notes.workspace_id) AS workspace_name FROM notes ' +
+        'WHERE deleted_at IS NULL' + scope + ' ORDER BY updated_at DESC LIMIT ?',
+        scopeArgs.concat([CONTENT_SCAN_CAP])
       );
-      var all = queryOne('SELECT COUNT(*) AS n FROM notes WHERE workspace_id = ? AND deleted_at IS NULL', [workspaceId]);
+      var all = queryOne('SELECT COUNT(*) AS n FROM notes WHERE deleted_at IS NULL' + scope, scopeArgs);
       result.contentTruncated = candidates.length < (all ? all.n : 0);
 
       candidates.forEach(function (row) {

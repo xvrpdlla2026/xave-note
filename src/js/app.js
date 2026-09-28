@@ -353,12 +353,17 @@ window.NoteApp = window.NoteApp || {};
 
     App.ui.renderWorkspaceSelect(dom.workspaceSelect, state.workspaces, wsId);
 
-    // Sidebar: search results replace the tree while a query is active.
+    // Sidebar: search results replace the tree while a query is active. The query is asked of
+    // the whole notebook rather than of the open workspace: a note whose home you cannot
+    // remember is exactly the one worth searching for, and confining the answer to the
+    // workspace on screen is the failure this must not have. A hit from elsewhere names its
+    // workspace on the row.
     if (state.searchTerm) {
-      var results = App.db.search(wsId, state.searchTerm, 100);
+      var results = App.db.search(null, state.searchTerm, 100);
       App.ui.renderSearchResults(dom.tree, {
         results: results,
         term: state.searchTerm,
+        currentWorkspaceId: wsId,
         activeNoteId: state.activeNoteId,
         activeFileId: state.activeFileId,
       });
@@ -954,13 +959,38 @@ window.NoteApp = window.NoteApp || {};
     return false;
   }
 
+  /**
+   * Move to the workspace an item belongs to before opening it.
+   *
+   * Search answers for the whole notebook, so a hit can live somewhere the reader is not — and
+   * everything else on screen is workspace-scoped: the tree, the counts, the breadcrumb trail
+   * and the remembered place. Opening the note without moving would show a note that the tree
+   * beside it cannot point at, and would file its id under the wrong workspace's place. The
+   * running query is deliberately kept, because it is the list the reader is working through and
+   * it is still the answer after the move: that is the one thing this does differently from
+   * switchWorkspace().
+   */
+  function adoptWorkspaceOf(workspaceId) {
+    if (!workspaceId || workspaceId === state.workspaceId) return;
+    flushPendingSave();
+    // The workspace being left keeps the place the reader had in it; the one being entered gets
+    // the item about to be opened, which is a place of its own.
+    savePlace();
+    state.workspaceId = workspaceId;
+    state.selection = { type: 'all', id: null };
+    state.expanded = {};
+    App.prefs.set('lastWorkspaceId', workspaceId);
+  }
+
   function openNote(id) {
     flushPendingSave();
+    // A hit in another workspace takes the reader there before the note opens. See above.
+    var note = App.db.getNote(id);
+    if (note) adoptWorkspaceOf(note.workspace_id);
     state.view = 'notes';
     state.activeFileId = null;
     state.activeNoteId = id;
     // Reveal the note if it lives inside a collapsed folder, at any nesting depth.
-    var note = App.db.getNote(id);
     if (note && note.folder_id) expandAncestors(note.folder_id);
     render();
   }
@@ -1553,6 +1583,9 @@ window.NoteApp = window.NoteApp || {};
   // --------------------------------------------------------------- file actions
   function openFile(id) {
     flushPendingSave();
+    // A hit in another workspace takes the reader there before the file opens. See above.
+    var meta = App.db.getFileMeta(id);
+    if (meta) adoptWorkspaceOf(meta.workspace_id);
     state.view = 'notes';
     state.activeNoteId = null;
     state.activeFileId = id;
@@ -1726,7 +1759,7 @@ window.NoteApp = window.NoteApp || {};
       icon: 'layers',
       label: 'Workspace name',
       value: 'Workspace',
-      helper: 'A workspace has its own folders, notes and files. Search stays inside it.',
+      helper: 'A workspace has its own folders, notes and files. Search covers all of them.',
       confirmLabel: 'Create workspace',
     }).then(function (name) {
       if (name === null) return;
