@@ -837,6 +837,11 @@ window.NoteApp = window.NoteApp || {};
       ]));
     }
 
+    function isFocused(context, kind, id) {
+      return !!(context.focused && context.focused.kind === kind
+        && String(context.focused.id) === String(id));
+    }
+
     function cardGrid(section) {
       return el('div', { class: 'card-grid card-grid--' + section + (list ? ' card-grid--list' : '') });
     }
@@ -858,9 +863,9 @@ window.NoteApp = window.NoteApp || {};
       var grid = cardGrid('folders');
       ctx.subfolders.forEach(function (folder) {
         grid.appendChild(el('button', {
-          class: 'card card--folder',
+          class: 'card card--folder' + (isFocused(ctx, 'folder', folder.id) ? ' is-focused' : ''),
           type: 'button',
-          dataset: { action: 'select-folder', id: folder.id, ctx: 'folder', ctxLabel: folder.name },
+          dataset: { id: folder.id, ctx: 'folder', ctxLabel: folder.name },
         }, [
           el('span', { class: 'card__glyph' }, [App.ui.icon('folder')]),
           el('span', { class: 'card__title', text: folder.name }),
@@ -874,24 +879,17 @@ window.NoteApp = window.NoteApp || {};
       var bulk = ctx.bulkSelected || [];
       ctx.notes.forEach(function (note) {
         var isChecked = bulk.indexOf(note.id) !== -1;
-        var box = App.ui.checkbox({
-          hideLabel: true,
-          checked: isChecked,
-          className: 'card__check',
-          label: 'Select ' + (note.title && note.title.trim() ? note.title : 'Untitled note'),
-          onChange: function (checked) { if (ctx.onToggleBulk) ctx.onToggleBulk(note.id, checked); },
-        });
-        box.addEventListener('click', function (event) { event.stopPropagation(); });
         noteCards.appendChild(el('div', {
           class: 'card-wrap' + (isChecked ? ' is-selected' : ''),
           dataset: { noteId: note.id },
         }, [
-          box,
+          el('span', { class: 'card__pad', 'aria-hidden': 'true' }),
           el('button', {
-            class: 'card card--note' + (note.id === ctx.activeNoteId ? ' is-active' : ''),
+            class: 'card card--note' + (note.id === ctx.activeNoteId ? ' is-active' : '')
+              + (isFocused(ctx, 'note', note.id) ? ' is-focused' : ''),
             type: 'button',
             dataset: {
-              action: 'open-note', id: note.id, ctx: 'note',
+              id: note.id, ctx: 'note',
               ctxLabel: note.title && note.title.trim() ? note.title : 'Untitled note',
             },
           }, [
@@ -908,9 +906,10 @@ window.NoteApp = window.NoteApp || {};
       var fileCards = cardGrid('files');
       ctx.files.forEach(function (file) {
         fileCards.appendChild(el('button', {
-          class: 'card card--file' + (file.id === ctx.activeFileId ? ' is-active' : ''),
+          class: 'card card--file' + (file.id === ctx.activeFileId ? ' is-active' : '')
+            + (isFocused(ctx, 'file', file.id) ? ' is-focused' : ''),
           type: 'button',
-          dataset: { action: 'open-file', id: file.id, ctx: 'file', ctxLabel: file.filename },
+          dataset: { id: file.id, ctx: 'file', ctxLabel: file.filename },
         }, [
           el('span', { class: 'card__glyph', text: util.fileGlyph(file.filename, file.mime_type) }),
           el('span', { class: 'card__title', text: file.filename }),
@@ -940,7 +939,7 @@ window.NoteApp = window.NoteApp || {};
     }
 
     var bulkCount = (ctx.bulkSelected || []).length;
-    if (bulkCount) {
+    if (bulkCount > 1) {
       frag.appendChild(el('div', { class: 'bulk-bar', role: 'toolbar', 'aria-label': 'Bulk actions' }, [
         el('div', { class: 'bulk-bar__lead' }, [
           el('span', { class: 'bulk-bar__count', text: String(bulkCount) }),

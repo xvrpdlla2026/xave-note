@@ -33,6 +33,8 @@ window.NoteApp = window.NoteApp || {};
     trashOpen: false,
     trashSelected: [],
     bulkSelected: [],
+    focused: null,
+    bulkAnchor: null,
     bulkScope: null,
     bulkFocusId: null,                     
     trashView: 'all',                      
@@ -1212,14 +1214,6 @@ window.NoteApp = window.NoteApp || {};
       focusActiveTab();
     }
 
-    if (state.bulkFocusId) {
-      var wantedBulk = state.bulkFocusId;
-      state.bulkFocusId = null;
-      var bulkWrap = document.querySelector('.card-wrap[data-note-id="' + wantedBulk + '"]');
-      var bulkInput = bulkWrap ? bulkWrap.querySelector('.checkbox__input') : null;
-      if (bulkInput) bulkInput.focus();
-    }
-
     savePlaceSoon();
   }
 
@@ -1291,7 +1285,7 @@ window.NoteApp = window.NoteApp || {};
           activeNoteId: state.activeNoteId,
           activeFileId: state.activeFileId,
           bulkSelected: state.bulkSelected,
-          onToggleBulk: toggleBulkSelect,
+          focused: state.focused,
           paneView: state.paneView,
           onSetPaneView: setPaneView,
         });
@@ -1310,7 +1304,7 @@ window.NoteApp = window.NoteApp || {};
       activeNoteId: state.activeNoteId,
       activeFileId: state.activeFileId,
       bulkSelected: state.bulkSelected,
-      onToggleBulk: toggleBulkSelect,
+      focused: state.focused,
       paneView: state.paneView,
       onSetPaneView: setPaneView,
     });
@@ -2242,15 +2236,6 @@ window.NoteApp = window.NoteApp || {};
   function bulkScopeKey() {
     return state.workspaceId + '|' + state.selection.type + '|' + (state.selection.id || '')
       + '|' + state.view + '|' + (state.searchTerm || '');
-  }
-
-  function toggleBulkSelect(id, checked) {
-    var next = state.bulkSelected.filter(function (x) { return String(x) !== String(id); });
-    if (checked !== false) next.push(id);
-    state.bulkSelected = next;
-    state.bulkScope = bulkScopeKey();
-    state.bulkFocusId = id;
-    render();
   }
 
   function clearBulkSelection() {
@@ -3471,6 +3456,8 @@ window.NoteApp = window.NoteApp || {};
       state.selection = { type: 'all', id: null };
       state.activeNoteId = null;
       state.activeFileId = null;
+      state.focused = null;
+      state.bulkAnchor = null;
       if (narrow) { mobilePanePinned = false; applyMobilePane(); }
       render();
     },
@@ -3483,6 +3470,8 @@ window.NoteApp = window.NoteApp || {};
       state.selection = { type: 'folder', id: id };
       state.activeNoteId = null;
       state.activeFileId = null;
+      state.focused = null;
+      state.bulkAnchor = null;
       if (already) state.expanded[id] = !state.expanded[id];
       else state.expanded[id] = true;
       if (narrow) { mobilePanePinned = false; applyMobilePane(); }
@@ -3603,6 +3592,98 @@ window.NoteApp = window.NoteApp || {};
     event.preventDefault();
     event.stopPropagation();
     ACTIONS['toggle-folder'](twisty.getAttribute('data-id'));
+  }
+
+  function paneCardFrom(event) {
+    if (!event.target || !event.target.closest) return null;
+    var card = event.target.closest('.card--folder, .card--note, .card--file');
+    return card && dom.main.contains(card) ? card : null;
+  }
+
+  function paneCardKind(card) {
+    if (card.classList.contains('card--folder')) return 'folder';
+    if (card.classList.contains('card--file')) return 'file';
+    return 'note';
+  }
+
+  function paneNoteOrder() {
+    var nodes = dom.main.querySelectorAll('.card--note[data-id]');
+    return Array.prototype.map.call(nodes, function (node) {
+      return String(node.getAttribute('data-id'));
+    });
+  }
+
+  function openPaneItem(kind, id) {
+    if (!id) return;
+    if (kind === 'folder') { ACTIONS['select-folder'](id); return; }
+    if (kind === 'file') { openFile(id); return; }
+    openNote(id);
+  }
+
+  function focusPaneItem(kind, id) {
+    state.focused = { kind: kind, id: id };
+    state.bulkScope = bulkScopeKey();
+    render();
+  }
+
+  function onPaneItemClick(card, event) {
+    var kind = paneCardKind(card);
+    var id = card.getAttribute('data-id');
+    if (!id) return;
+    if (event.detail === 0) { openPaneItem(kind, id); return; }
+
+    var add = event.ctrlKey || event.metaKey;
+    var range = event.shiftKey;
+
+    if (kind !== 'note') {
+      if (!add && !range) clearBulkSelection();
+      state.bulkAnchor = null;
+      focusPaneItem(kind, id);
+      return;
+    }
+
+    if (range && state.bulkAnchor) {
+      var order = paneNoteOrder();
+      var from = order.indexOf(String(state.bulkAnchor));
+      var to = order.indexOf(String(id));
+      if (from !== -1 && to !== -1) {
+        state.bulkSelected = from <= to ? order.slice(from, to + 1) : order.slice(to, from + 1);
+        focusPaneItem('note', id);
+        return;
+      }
+    }
+
+    var next = state.bulkSelected.filter(function (x) { return String(x) !== String(id); });
+    if (add) {
+      if (next.length === state.bulkSelected.length) next.push(id);
+      state.bulkSelected = next;
+    } else {
+      state.bulkSelected = [id];
+    }
+    state.bulkAnchor = id;
+    focusPaneItem('note', id);
+  }
+
+  function onPaneItemClickEvent(event) {
+    var card = paneCardFrom(event);
+    if (!card) return;
+    onPaneItemClick(card, event);
+  }
+
+  function onPaneItemDblClick(event) {
+    var card = paneCardFrom(event);
+    if (!card) return;
+    event.preventDefault();
+    openPaneItem(paneCardKind(card), card.getAttribute('data-id'));
+  }
+
+  function onPaneItemContextMenu(event) {
+    if (!(event.ctrlKey || event.metaKey || event.shiftKey)) return;
+    var card = paneCardFrom(event);
+    if (!card) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onPaneItemClick(card, event);
   }
 
   function invokeAction(action, id) {
@@ -4040,6 +4121,9 @@ window.NoteApp = window.NoteApp || {};
     document.addEventListener('click', onActionClick);
     document.addEventListener('click', onTreePointerDown, true);
     document.addEventListener('contextmenu', onContextMenu);
+    document.addEventListener('contextmenu', onPaneItemContextMenu, true);
+    dom.main.addEventListener('click', onPaneItemClickEvent);
+    dom.main.addEventListener('dblclick', onPaneItemDblClick);
 
     document.addEventListener('keydown', function (event) {
       if ((event.key === 'Enter' || event.key === ' ') && !(event.ctrlKey || event.metaKey || event.altKey)) {

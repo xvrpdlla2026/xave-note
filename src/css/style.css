@@ -1189,16 +1189,6 @@ svg.tree__glyph--note { font-size: 14.5px; }
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-ring);
 }
-.card__check {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  z-index: 2;
-  padding: 2px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-raised);
-  box-shadow: var(--shadow-sm);
-}
 .bulk-bar {
   position: sticky;
   bottom: 12px;
@@ -1357,15 +1347,6 @@ svg.tree__glyph--note { font-size: 14.5px; }
   align-items: center;
   gap: 14px;
 }
-.card-grid--list .card__check {
-  position: static;
-  flex: 0 0 var(--check-col);
-  width: var(--check-col);
-  justify-content: center;
-  padding: 0;
-  background: none;
-  box-shadow: none;
-}
 .card-grid--list .card {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1388,13 +1369,16 @@ svg.tree__glyph--note { font-size: 14.5px; }
   background: var(--accent-soft);
   box-shadow: none;
 }
+.card.is-focused { box-shadow: inset 0 0 0 1px var(--accent); }
 .card-grid--list > .card { width: 100%; }
 .card-grid--list .card-wrap .card { flex: 1 1 auto; min-width: 0; }
 .card-grid--list .card__glyph { flex: 0 0 auto; }
 .card-grid--list .card__title { min-width: 0; }
 .card-grid--list .card__meta { margin-top: 0; padding-top: 0; }
-.card__gap { display: none; }
+.card__gap,
+.card__pad { display: none; }
 .card-grid--list .card__gap { display: block; }
+.card-grid--list .card__pad { display: block; flex: 0 0 var(--check-col); }
 .card-grid--list .card-list__cell--num { text-align: right; }
 .card-grid--list .card--head {
   grid-template-columns: 22px minmax(0, 1fr) var(--col-size) var(--col-when);
