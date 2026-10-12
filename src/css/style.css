@@ -586,16 +586,17 @@ input, textarea, select { font: inherit; }
   align-items: center;
   justify-content: center;
   width: 30px;
-  height: 30px;
-  margin: 1px 0 1px 2px;
+  height: 32px;
+  margin-left: 2px;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   background: var(--bg-canvas);
   color: var(--text-faint);
   cursor: pointer;
   transition: background var(--fast), color var(--fast);
 }
+.tabs:not(:has(.tab)) .tab-add { border-radius: var(--radius-sm); }
 .tab-add:hover { background: var(--bg-hover); color: var(--text); }
 .tab-add:active { background: var(--bg-active); color: var(--text); }
 .tab-add:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 1px; }
