@@ -790,6 +790,9 @@ input, textarea, select { font: inherit; }
   );
   pointer-events: none;
 }
+.tree__row--nested.tree__row--group-start::after {
+  top: calc(-1 * var(--tree-group) - 1px);
+}
 .tree__row--nested:hover::after { opacity: 0.5; }
 
 .tree__row--folder .tree__label { font-weight: 520; }
@@ -913,6 +916,7 @@ svg.tree__glyph--note { font-size: 14.5px; }
   padding-left: calc(var(--tree-inset) + var(--indent, 0px) + var(--twisty-w) + 20px + 12px);
 }
 .tree__empty { font-style: italic; opacity: 0.85; }
+.tree__empty.tree__row--nested { position: relative; }
 .tree__empty.tree__row--group-start { margin-top: var(--tree-group); }
 
 .trash-fab {

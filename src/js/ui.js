@@ -706,7 +706,7 @@ window.NoteApp = window.NoteApp || {};
 
           if (!childFolders.length && !childNotes.length && !childFiles.length) {
             frag.appendChild(el('div', {
-              class: 'tree__empty tree__row--group-start',
+              class: 'tree__empty tree__row--nested tree__row--group-start',
               style: indentStyle(host, depth + 1),
               text: 'empty',
             }));
