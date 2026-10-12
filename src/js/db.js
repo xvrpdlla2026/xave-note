@@ -1,23 +1,3 @@
-/**
- * db.js — the SQLite layer.  *** This is the part worth reading carefully. ***
- *
- * Engine: sql.js (SQLite compiled to WebAssembly). The database lives in WASM memory,
- * which is volatile — closing the tab would lose everything. So every mutation goes
- * through one funnel, write(), which does three things atomically from the app's point
- * of view:
- *
- *     1. run the SQL (parameterised, inside a transaction)
- *     2. db.export()  -> the entire database as a Uint8Array
- *     3. hand those bytes to storage.save()  -> IndexedDB
- *
- * Nothing else in the app is allowed to touch SQL, so there is exactly one place where
- * "data changed but was not persisted" could happen. There is no save button because
- * there is no unsaved state.
- *
- * Cost note: db.export() serialises the whole database, and sql.js has no incremental
- * write-back. That is fine at the scale this app targets (thousands of notes, tens of
- * MB of attachments); see README "Limitations" for where it stops being fine.
- */
 window.NoteApp = window.NoteApp || {};
 
 (function (App) {
@@ -25,9 +5,6 @@ window.NoteApp = window.NoteApp || {};
 
   var util = App.util;
 
-  // ------------------------------------------------------------------- schema
-  // Applied in order; PRAGMA user_version records how far we have got, so future
-  // versions of the app can append migrations without touching existing databases.
   var MIGRATIONS = [
     [
       'CREATE TABLE IF NOT EXISTS workspaces (' +
@@ -39,13 +16,11 @@ window.NoteApp = window.NoteApp || {};
         '  id TEXT PRIMARY KEY,' +
         '  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,' +
         '  name TEXT NOT NULL,' +
-        // NULL means "at the workspace root"; otherwise points at another folder.
         '  parent_folder_id TEXT REFERENCES folders(id),' +
         '  created_at TEXT NOT NULL' +
         ')',
       'CREATE TABLE IF NOT EXISTS notes (' +
         '  id TEXT PRIMARY KEY,' +
-        // NULL folder_id = loose note at the workspace root.
         '  folder_id TEXT REFERENCES folders(id) ON DELETE CASCADE,' +
         '  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,' +
         '  title TEXT NOT NULL DEFAULT "",' +
@@ -59,13 +34,10 @@ window.NoteApp = window.NoteApp || {};
         '  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,' +
         '  filename TEXT NOT NULL,' +
         '  mime_type TEXT NOT NULL DEFAULT "application/octet-stream",' +
-        // The attachment itself, raw bytes, exactly as uploaded.
         '  blob_data BLOB,' +
         '  size INTEGER NOT NULL DEFAULT 0,' +
         '  created_at TEXT NOT NULL' +
         ')',
-      // Indexes for the reads the UI actually does: tree per workspace, contents per
-      // folder, and search.
       'CREATE INDEX IF NOT EXISTS idx_folders_workspace ON folders (workspace_id)',
       'CREATE INDEX IF NOT EXISTS idx_folders_parent ON folders (parent_folder_id)',
       'CREATE INDEX IF NOT EXISTS idx_notes_workspace ON notes (workspace_id)',
@@ -75,7 +47,6 @@ window.NoteApp = window.NoteApp || {};
       'CREATE INDEX IF NOT EXISTS idx_files_folder ON files (folder_id)',
     ],
     [
-      // Migration for trash / soft-delete support (v2).
       'ALTER TABLE folders ADD COLUMN deleted_at TEXT',
       'ALTER TABLE notes ADD COLUMN deleted_at TEXT',
       'ALTER TABLE files ADD COLUMN deleted_at TEXT',
@@ -84,23 +55,6 @@ window.NoteApp = window.NoteApp || {};
       'CREATE INDEX IF NOT EXISTS idx_files_deleted ON files (deleted_at)',
     ],
     [
-      // Migration for manual ordering (v3).
-      //
-      // Until now every list was drawn in the order its rows happened to fall out of the
-      // database: created_at for the workspace rail, name for folders, updated_at
-      // descending for notes, created_at descending for files. Adding a position column
-      // therefore has to answer a second question besides where the column lives: where
-      // does EVERY EXISTING ROW start? Leaving them all at 0 would collapse the manual
-      // order into whatever order SQLite felt like returning for equal keys, which reads
-      // as the app having shuffled the notebook on the upgrade that claimed to add a
-      // feature. So each table is backfilled with its row index in its own historical
-      // order first, and only then does position mean anything.
-      //
-      // The backfill is a correlated count rather than a window function. ROW_NUMBER()
-      // would express this more directly, but a plain count is what every SQLite the app
-      // can find itself compiled against supports, and it is the same shape for all four
-      // tables. It is also stable under ties: the id is the tiebreak, so two rows sharing
-      // a millisecond cannot both claim one slot and swap places on every boot.
       'ALTER TABLE workspaces ADD COLUMN position INTEGER NOT NULL DEFAULT 0',
       'ALTER TABLE folders ADD COLUMN position INTEGER NOT NULL DEFAULT 0',
       'ALTER TABLE notes ADD COLUMN position INTEGER NOT NULL DEFAULT 0',
@@ -110,21 +64,6 @@ window.NoteApp = window.NoteApp || {};
         '  WHERE w2.created_at < workspaces.created_at' +
         '     OR (w2.created_at = workspaces.created_at AND w2.id < workspaces.id)' +
         ')',
-      // Each backfill reproduces the list it is replacing — folders were alphabetical,
-      // notes newest-edited-first, files newest-first, workspaces oldest-first — rather than
-      // imposing one order on all four. A shared "by created_at" would have been simpler to
-      // write and would have greeted the reader with their notebook reversed on both of the
-      // lists where the old order ran backwards.
-      //
-      // Notes and files are grouped by their folder, not by their workspace: a note
-      // reordered inside one folder must not disturb its sibling, which is the whole
-      // reason the scope carries the folder. COALESCE is what makes the root work — a
-      // plain comparison against NULL is never true, so every loose row would have been
-      // backfilled to 0 and piled up at the top of the tree.
-      //
-      // "How many rows sort before me" is the same count in both directions: for a list
-      // that ran newest-first it counts the rows that are newer, with the id breaking the
-      // tie exactly as the ORDER BY at read time does.
       'UPDATE notes SET position = (' +
         '  SELECT COUNT(*) FROM notes n2' +
         '  WHERE n2.workspace_id = notes.workspace_id' +
@@ -146,10 +85,6 @@ window.NoteApp = window.NoteApp || {};
         '    AND (f2.name COLLATE NOCASE < folders.name COLLATE NOCASE' +
         '      OR (f2.name COLLATE NOCASE = folders.name COLLATE NOCASE AND f2.id < folders.id))' +
         ')',
-      // One index per list that actually sorts on position, and none for the rest. The
-      // scope columns are already indexed by v1 (idx_notes_folder, idx_files_folder,
-      // idx_folders_parent); what a manual ORDER BY adds is the second half of the key,
-      // so that is what these carry.
       'CREATE INDEX IF NOT EXISTS idx_workspaces_position ON workspaces (position)',
       'CREATE INDEX IF NOT EXISTS idx_folders_manual ON folders (workspace_id, parent_folder_id, position)',
       'CREATE INDEX IF NOT EXISTS idx_notes_manual ON notes (folder_id, position)',
@@ -158,32 +93,9 @@ window.NoteApp = window.NoteApp || {};
       'CREATE INDEX IF NOT EXISTS idx_files_manual_root ON files (workspace_id, position)',
     ],
     [
-      // Migration for the task list (v4).
-      //
-      // A task reuses the folder tree as its project rather than introducing a second
-      // taxonomy: a folder already means "a group of things in this workspace", and a
-      // reader who has arranged a notebook has already said where their work belongs. So
-      // folder_id is nullable for exactly the reason a note's is — a task with no project
-      // is the common case, and the workspace root is a real place here rather than a
-      // missing value.
-      //
-      // due_has_time is a separate column because an all-day to-do and a timed event are
-      // different things, and one nullable timestamp cannot tell them apart. Both store an
-      // ISO instant, and "sometime on Tuesday" has to be stored as *some* midnight — so on
-      // its own the column would render every all-day task as "09:00" in one timezone and
-      // "23:00" in another, and a task due Tuesday would read as overdue for most of the
-      // day it is due. The flag says which of the two the timestamp means; it is what lets
-      // the pane print a date without inventing a time, and it is deliberately a flag
-      // rather than a second timestamp, because there is only ever one due moment.
-      //
-      // done_at is the counterpart in the other direction: done says whether the row is
-      // finished, and the stamp says when, which is what the Done view is sorted by.
-      // Clearing it on undo is what keeps "when was this finished" honest instead of
-      // leaving a completion date on a task that is open again.
       'CREATE TABLE IF NOT EXISTS tasks (' +
         '  id TEXT PRIMARY KEY,' +
         '  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,' +
-        // NULL means "no project"; otherwise the folder the task is filed under.
         '  folder_id TEXT REFERENCES folders(id) ON DELETE CASCADE,' +
         '  title TEXT NOT NULL,' +
         '  notes TEXT,' +
@@ -196,36 +108,11 @@ window.NoteApp = window.NoteApp || {};
         '  created_at TEXT,' +
         '  updated_at TEXT' +
         ')',
-      // One index per query the pane actually runs, and nothing speculative: the rail
-      // counts a workspace's open work, the four view filters narrow on the due date,
-      // and a manual reorder counts siblings inside one folder scope.
       'CREATE INDEX IF NOT EXISTS idx_tasks_workspace_done ON tasks (workspace_id, done)',
       'CREATE INDEX IF NOT EXISTS idx_tasks_workspace_due ON tasks (workspace_id, due_at)',
       'CREATE INDEX IF NOT EXISTS idx_tasks_scope ON tasks (workspace_id, folder_id, position)',
     ],
     [
-      // Migration for the vault (v5).
-      //
-      // Exactly one row, ever, and the CHECK is what says so: this table describes the
-      // notebook rather than something inside it, so a second row would be two answers to
-      // "which key opens this database" with no way to choose between them.
-      //
-      // The row carries what is needed to derive the key again — the per-vault salt and the
-      // iteration count it was derived with — plus one encrypted known string. The iteration
-      // count lives here rather than in a constant so it can be raised later without
-      // invalidating an existing notebook: an old vault is always unlocked with the count it
-      // was written with.
-      //
-      // check_ct is the KNOWN STRING sealed with the derived key, not a hash of the password.
-      // That choice is the whole verification design: the only way to "pass" this check is to
-      // derive the key that decrypts the data, because AES-GCM's authentication tag fails
-      // under any other key. A stored hash would be a second, independent artefact that could
-      // be verified without ever producing a usable key — two facts that can drift apart, and
-      // a password-equivalent value sitting in the database next to the ciphertext it guards.
-      //
-      // check_iv and check_ct are separate columns rather than one "enc:..." envelope because
-      // this row is not a payload: it is read before any key exists, and a nonce and a
-      // ciphertext are the native shape the AES-GCM API consumes.
       'CREATE TABLE IF NOT EXISTS vault (' +
         '  id INTEGER PRIMARY KEY CHECK (id = 1),' +
         '  salt TEXT NOT NULL,' +
@@ -236,17 +123,6 @@ window.NoteApp = window.NoteApp || {};
         ')',
     ],
     [
-      // Migration for wiki links / backlinks (v6).
-      //
-      // Links are keyed by TARGET TITLE, not by target id: a rename then keeps every
-      // link pointing at the note rather than orphaning them all, and an unresolved
-      // [[title]] is simply a row with no note behind it yet — the "click to create"
-      // the interface offers. The source side is an id with ON DELETE CASCADE, so a
-      // permanently deleted note takes its outgoing links with it; a soft-deleted
-      // (trashed) source keeps its rows, and the backlink read filters those out.
-      //
-      // Only titles are stored — never body text — so this table leaks nothing the
-      // notes table does not already hold in the clear when the vault is on.
       'CREATE TABLE IF NOT EXISTS note_links (' +
         '  source_note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,' +
         '  target_norm TEXT NOT NULL,' +
@@ -257,34 +133,14 @@ window.NoteApp = window.NoteApp || {};
       'CREATE INDEX IF NOT EXISTS idx_links_target ON note_links (workspace_id, target_norm)',
       'CREATE INDEX IF NOT EXISTS idx_links_source ON note_links (source_note_id)',
     ],
-  // v7 templates
   ['CREATE TABLE IF NOT EXISTS templates (id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id INTEGER REFERENCES workspaces(id) ON DELETE CASCADE, name TEXT NOT NULL DEFAULT \'\', content TEXT NOT NULL DEFAULT \'\', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);', 'CREATE INDEX IF NOT EXISTS idx_templates_ws ON templates(workspace_id);'],
-  // v8 retired: revisions removed; stub drops the table so old installs clean up
-  // while the array keeps its length (existing DBs sit at user_version 8).
   ['DROP TABLE IF EXISTS revisions;', 'DROP INDEX IF EXISTS idx_revisions_note;'],
-  // v9 retired: saved filters (lenses) removed; stub drops the table so old installs
-  // clean up while the array keeps its length (existing DBs sit at user_version 9).
   ['DROP TABLE IF EXISTS lenses;', 'DROP INDEX IF EXISTS idx_lenses_ws;'],
   [
-    // Manual Private flag (v10) — replaces the removed Safe-Share auto-block.
-    //
-    // One column, not a scan: a note is private because the reader said so, not
-    // because its text matched a pattern. Bulk export skips private notes;
-    // per-note copy/download stay allowed. Additive only — existing rows default
-    // to 0 (not private) via the column default.
     'ALTER TABLE notes ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0',
     'CREATE INDEX IF NOT EXISTS idx_notes_private ON notes (is_private)',
   ],
   [
-    // Reminders and recurrence (v11).
-    //
-    // remind_at is an absolute instant rather than an offset from the due date. The form
-    // offers the offset (at the due time, an hour before) and resolves it, but what is
-    // stored is the moment to announce, which is the only thing a timer can compare
-    // against. reminded_at is the stamp that stops a timer from
-    // announcing the same reminder every thirty seconds. recurrence is JSON for one of a
-    // handful of code literals (see RECURRENCE_FREQS), the same rule every other stored
-    // enum here follows: the interface picks one, it can never write SQL.
     'ALTER TABLE tasks ADD COLUMN remind_at TEXT',
     'ALTER TABLE tasks ADD COLUMN reminded_at TEXT',
     'ALTER TABLE tasks ADD COLUMN recurrence TEXT',
@@ -292,13 +148,9 @@ window.NoteApp = window.NoteApp || {};
   ],
 ];
 
-  var db = null;        // the sql.js Database
-  var writeQueue = null; // serialises writes so two rapid saves cannot interleave
+  var db = null;        
+  var writeQueue = null; 
 
-  // The orderable entities, under the names the interface uses for them. This is the one
-  // mapping from a string that arrived from outside to a table name, which is exactly why
-  // it exists: a reorder has to interpolate a table name into SQL, and this map is what
-  // keeps that name from ever being the caller's.
   var TABLES = {
     workspace: 'workspaces',
     folder: 'folders',
@@ -307,14 +159,7 @@ window.NoteApp = window.NoteApp || {};
     task: 'tasks',
   };
 
-  // ------------------------------------------------------------------ SQL helpers
 
-  /**
-   * Run a read statement and return an array of objects.
-   * sql.js caches every prepared statement internally until Database.close(), so each
-   * statement is explicitly freed — otherwise a long session leaks WASM memory one
-   * query at a time.
-   */
   function query(sql, params) {
     var stmt = db.prepare(sql);
     try {
@@ -332,39 +177,18 @@ window.NoteApp = window.NoteApp || {};
     return rows.length ? rows[0] : null;
   }
 
-  /** Execute one or more statements with optional parameters. No persistence. */
   function rawRun(sql, params) {
     db.run(sql, params || undefined);
   }
 
-  /**
-   * Derive the non-blob columns of a row. SELECT * would drag whole attachments into
-   * memory just to draw a list, so every list query names its columns and this helper
-   * decides which of them are safe to hand to the renderer.
-   *
-   * position is one of them even though a sorted list never draws it. Manual order counts
-   * from the top of each folder, so the workspace-wide list the tree is assembled from
-   * cannot be put in manual order by SQL at all — the renderer re-orders each folder's
-   * slice itself, and it can only do that if the row still carries the number.
-   */
   function mapNote(row) {
     return {
       id: row.id,
       folder_id: row.folder_id,
       workspace_id: row.workspace_id,
-      // Filled only by search(), which asks each query to carry the name of the workspace the
-      // row lives in. A hit labelled from a list held elsewhere could name a workspace it is
-      // not in; this cannot.
       workspace_name: row.workspace_name || null,
       title: row.title || '',
-      // Manual Private flag (v10): 1 means "skip me in bulk export". Coerced to 0/1
-      // here so callers never see undefined (old SELECTs) or SQLite's loose typing.
       is_private: Number(row.is_private) ? 1 : 0,
-      // Always empty, and deliberately so. Every list query above omits the content column, so
-      // this was already '' in practice — but with a vault in play the raw column is a
-      // possibility that must not exist: an envelope is base64, and a prose field that carried
-      // one would be printed by a renderer as if the user had typed it. getNote() is the one
-      // reader that resolves the body, and it sets this itself.
       content: '',
       created_at: row.created_at,
       updated_at: row.updated_at,
@@ -377,7 +201,6 @@ window.NoteApp = window.NoteApp || {};
       id: row.id,
       folder_id: row.folder_id,
       workspace_id: row.workspace_id,
-      // See mapNote: search() is the one caller that fills this in.
       workspace_name: row.workspace_name || null,
       filename: row.filename,
       mime_type: row.mime_type,
@@ -386,18 +209,6 @@ window.NoteApp = window.NoteApp || {};
     };
   }
 
-  /**
-   * Derive a task row for the renderer and for the edit dialog.
-   *
-   * notes is carried on every row even though the list only draws the title: a task's
-   * notes are a line or two of text, so re-reading the row when the edit dialog opens
-   * would be a second query for something already in hand.
-   *
-   * done, done_at and due_has_time are normalised to numbers here rather than left as
-   * whatever sql.js hands back. A checkbox's checked state and a count's arithmetic both
-   * depend on them, and SQLite has no boolean type, so "0 or 1" is a decision this layer
-   * makes once instead of one every caller makes for itself.
-   */
   function mapTask(row) {
     return {
       id: row.id,
@@ -419,15 +230,6 @@ window.NoteApp = window.NoteApp || {};
     };
   }
 
-  /**
-   * The columns updateTask() will write, keyed by the names the interface uses for them.
-   *
-   * One mapping from a caller's string to a column name, for the same reason TABLES
-   * exists: a SET clause has to interpolate a column name, and iterating this object is
-   * what keeps that name from ever being the caller's. Each entry also carries its own
-   * coercion, because the three kinds of value on this table — text, an ISO instant and a
-   * 0/1 flag — are each stored differently from the way a form control reports them.
-   */
   var TASK_EDITABLE = {
     title: function (value) {
       return String(value === undefined || value === null ? '' : value).trim() || 'Untitled task';
@@ -443,22 +245,13 @@ window.NoteApp = window.NoteApp || {};
     recurrence: function (value) { return normalizeRecurrence(value); },
   };
 
-  /** Priority is 0 (normal), 1 (low) or 2 (high); anything else is stored as normal. */
   function clampPriority(value) {
     var n = Number(value);
     return n === 1 || n === 2 ? n : 0;
   }
 
-  /** The repeat rules that exist. Anything else is stored as no repeat at all. */
   var RECURRENCE_FREQS = ['daily', 'weekdays', 'weekly', 'monthly', 'yearly'];
 
-  /**
-   * A repeat rule as the JSON this app stores, or null.
-   *
-   * Only the literals above survive and the interval is clamped to a sane range, so a
-   * stored rule can never carry arbitrary text into the date arithmetic and a damaged
-   * value degrades to a plain task rather than throwing on every render.
-   */
   function normalizeRecurrence(value) {
     if (!value || typeof value !== 'object') return null;
     var freq = String(value.freq || '');
@@ -467,7 +260,6 @@ window.NoteApp = window.NoteApp || {};
     return JSON.stringify({ freq: freq, interval: interval });
   }
 
-  /** Read a stored rule back. Never throws: a damaged value means no repeat. */
   function parseRecurrence(encoded) {
     if (!encoded) return null;
     try {
@@ -479,13 +271,6 @@ window.NoteApp = window.NoteApp || {};
     }
   }
 
-  /**
-   * The next instant a repeat rule lands on, measured on the local calendar.
-   *
-   * Calendar arithmetic, not milliseconds: a week later is the same wall clock time seven
-   * days on, across a daylight-saving change, and the 31st of a month with no 31st clamps
-   * to that month's last day instead of spilling into the next one.
-   */
   function nextOccurrence(iso, hasTime, rule) {
     var base = new Date(iso);
     if (!iso || isNaN(base.getTime()) || !rule) return null;
@@ -511,13 +296,10 @@ window.NoteApp = window.NoteApp || {};
       return null;
     }
     if (!hasTime) next.setHours(0, 0, 0, 0);
-    // A rule whose next date is still behind the one it came from would leave the task
-    // overdue forever, so it moves one more day.
     if (next.getTime() <= base.getTime()) next.setDate(next.getDate() + 1);
     return next.toISOString();
   }
 
-  /** Move a reminder with its task, keeping the distance from the due date it had. */
   function advanceReminder(remindAt, oldDue, newDue) {
     if (!remindAt || !oldDue || !newDue) return remindAt || null;
     var offset = new Date(oldDue).getTime() - new Date(remindAt).getTime();
@@ -525,25 +307,10 @@ window.NoteApp = window.NoteApp || {};
     return new Date(new Date(newDue).getTime() - offset).toISOString();
   }
 
-  // ----------------------------------------------------------------- task queries
-  /**
-   * The day boundaries every task query and the pane's grouping are measured from.
-   *
-   * Local midnight, not UTC midnight: "today" is a fact about the calendar on the wall
-   * the reader is looking at, and a task due at 09:00 their time is not due on the
-   * previous day merely because instants are stored in UTC. This lives in the database
-   * layer even though it touches no SQL, because the SQL views and the bucket headings
-   * in the pane must both be measured from the same boundaries — two definitions of where
-   * today ends would drift the moment either was edited, and the pane would then label a
-   * row "Today" under a "Tomorrow" heading.
-   */
   function taskDayBounds(now) {
     var base = new Date(now === undefined || now === null ? Date.now() : now);
     base.setHours(0, 0, 0, 0);
     function shift(days) {
-      // setDate rather than millisecond arithmetic: a day that crosses a daylight-saving
-      // boundary is not 86,400,000 ms long, and adding a fixed block of them would move
-      // this boundary by an hour twice a year.
       var d = new Date(base.getTime());
       d.setDate(d.getDate() + days);
       return d.toISOString();
@@ -558,24 +325,10 @@ window.NoteApp = window.NoteApp || {};
 
   var TASK_VIEWS = ['all', 'today', 'upcoming', 'done'];
 
-  /** Anything unrecognised is the open list, which is the view with no question in it. */
   function normaliseTaskView(view) {
     return TASK_VIEWS.indexOf(view) === -1 ? 'all' : view;
   }
 
-  /**
-   * The WHERE fragment for one view, built once so the list and the badge above it cannot
-   * disagree. This codebase has already shipped a count that described a different list
-   * than the one it headed, and the fix then was the same as the fix here: one place that
-   * decides what a view means, used by both the query and the number.
-   *
-   * Each view is phrased as the question the reader is asking rather than as a window on
-   * the data. Today therefore includes what is overdue — a task due yesterday is still
-   * today's problem, and hiding it behind a second filter is how a task list loses work —
-   * and Upcoming starts at tomorrow's midnight for the same reason: today is answered by
-   * the view before it. Undated work belongs to no view but All, because "coming up" is a
-   * claim about a date it does not have.
-   */
   function taskViewClause(view, bounds) {
     if (view === 'today') {
       return { sql: ' AND done = 0 AND due_at IS NOT NULL AND due_at < ?', params: [bounds.tomorrowStart] };
@@ -587,17 +340,8 @@ window.NoteApp = window.NoteApp || {};
     return { sql: ' AND done = 0', params: [] };
   }
 
-  // ------------------------------------------------------------- sort vocabulary
-  /**
-   * The one sort vocabulary the whole app speaks. Every sort the interface can express
-   * is a member of SORT_KEYS and nothing else reaches SQL: these are keys, never
-   * fragments, and orderBy() is the only function that turns one into a fragment.
-   */
   var SORT_KEYS = ['manual', 'name', 'created', 'updated', 'size'];
   var SORT_DIRECTIONS = ['asc', 'desc'];
-  // The interface's words for those keys, in the order the one sort menu offers them.
-  // Manual first, because it is the only key that describes the reader's own arrangement
-  // rather than the data, and the only one that unlocks the move commands.
   var SORT_LABELS = {
     manual: 'Manual order',
     name: 'Name',
@@ -606,36 +350,14 @@ window.NoteApp = window.NoteApp || {};
     size: 'Size',
   };
 
-  /**
-   * Which column each key means, per list. Deliberately not one shared table: notes have
-   * no size column and files have no updated_at, so the key is resolved against the table
-   * that is being read. When the column is genuinely absent the key still has to mean
-   * something, because the one sort menu offers every key for every list — orderBy()
-   * therefore falls back (SORT_FALLBACK, otherwise the name) instead of failing, and
-   * interpolating the missing column is never an option.
-   */
   var SORT_COLUMNS = {
     workspaces: { name: 'name', created: 'created_at' },
     folders: { name: 'name', created: 'created_at' },
     notes: { name: 'title', created: 'created_at', updated: 'updated_at' },
     files: { name: 'filename', created: 'created_at', size: 'size' },
   };
-  // What a key becomes when the list has no such column. updated on a file is closest to
-  // when it arrived, so it lands on created_at; everything else lands on the name, which
-  // every table has — and that is also the documented fallback for size on notes.
   var SORT_FALLBACK = { updated: 'created_at' };
 
-  /**
-   * ORDER BY for one table, or null when no sort was asked for at all.
-   *
-   * Two things hold for every fragment this returns. It is assembled from the
-   * SORT_COLUMNS whitelist, so no value a caller supplied is ever interpolated; and it
-   * ends with a tiebreak, because every one of these keys can tie — two notes sharing a
-   * title, two files uploaded in the same millisecond — and a sort with equal keys and no
-   * tiebreak is a list that reshuffles itself between two otherwise identical renders.
-   * Manual order falls back to the row id rather than to a timestamp, so the one edit
-   * manual order exists for, a swap between two adjacent rows, survives its own re-read.
-   */
   function orderBy(table, sort) {
     if (!sort || !sort.key) return null;
     var columns = SORT_COLUMNS[table];
@@ -650,19 +372,10 @@ window.NoteApp = window.NoteApp || {};
 
     var column = columns[sort.key];
     if (!column) column = SORT_FALLBACK[sort.key] || columns.name;
-    // Name is the one key that carries a collation, for the same reason the folder list
-    // has always carried one: NOCASE is what stops a lowercase title from sorting after
-    // a capitalised one. The other keys are dates, ids and integers, which have none.
     var collate = column === columns.name ? ' COLLATE NOCASE' : '';
     return 'ORDER BY ' + column + collate + ' ' + upper + ', ' + tiebreak;
   }
 
-  /**
-   * Normalise anything that might be a sort into { key, dir } with both members known
-   * good, or null when it is not a sort at all. This is the boundary that lets the
-   * preference store (localStorage, hand-editable) and a caller argument be treated
-   * identically: both come out of here as one of a handful of literals.
-   */
   function normaliseSort(sort) {
     if (!sort || typeof sort !== 'object') return null;
     if (SORT_KEYS.indexOf(sort.key) === -1) return null;
@@ -671,32 +384,11 @@ window.NoteApp = window.NoteApp || {};
     return { key: sort.key, dir: dir };
   }
 
-  /**
-   * ORDER BY for a table from whatever sort the caller passed, or null when the caller
-   * passed nothing recognisable.
-   *
-   * A caller that asks for no sort has not asked for one, so it gets the same ORDER BY the
-   * list has always had (see the list functions below). That is not politeness to old
-   * code: the renderer is not the only caller, and folderPaths(), the scope lookups and
-   * every check tool read these lists without a sort argument. Quietly substituting the
-   * stored preference here would hand them an order they never asked for and cannot see,
-   * while the interface — which does pass the sort explicitly — would be unaffected.
-   */
   function orderOf(table, sort) {
     var explicit = normaliseSort(sort);
     return explicit ? orderBy(table, explicit) : null;
   }
 
-  /**
-   * A manual reorder is a swap between siblings, so every query in reorderWithin() is
-   * narrowed to one scope: the same parent folder for folders, the same folder for notes
-   * and files, and everything at once for workspaces, which have no parent.
-   *
-   * COALESCE appears wherever a scope column can be NULL, and it is not decoration. The
-   * workspace root IS parent_folder_id NULL (or folder_id NULL), and equality against
-   * NULL is never true, so without it a root-level row would have no neighbours and could
-   * not be moved at all — the one case a first-time user is most likely to try.
-   */
   function reorderScope(kind, scopeId, scopeFolderId) {
     if (kind === 'workspace') return { where: '', params: [] };
     if (kind === 'folder') {
@@ -705,25 +397,12 @@ window.NoteApp = window.NoteApp || {};
         params: [scopeId || '', scopeFolderId || null],
       };
     }
-    // note, file and task share a shape: they live in a workspace and optionally in a
-    // folder. A task's project IS that folder, so a move inside one project leaves the
-    // neighbours in every other project exactly where they were.
     return {
       where: "workspace_id = ? AND COALESCE(folder_id, '') = COALESCE(?, '')",
       params: [scopeId || '', scopeFolderId || null],
     };
   }
 
-  /**
-   * Swap a row position with its neighbour, one step per call, inside its own scope.
-   *
-   * One step rather than move-to-the-end because the interface offers up and down; a row
-   * that jumped a whole list on one press would be impossible to place by eye. Both ends
-   * are clamped by the absence of a neighbour, so pressing up at the top of a list is a
-   * no-op rather than an error, and the caller is told so by the resolved boolean.
-   *
-   * @returns {Promise<boolean>} whether anything actually moved.
-   */
   function reorderWithin(kind, id, delta, scopeId, scopeFolderId) {
     var table = TABLES[kind];
     if (!table) return Promise.resolve(false);
@@ -737,9 +416,6 @@ window.NoteApp = window.NoteApp || {};
     );
     if (!current) return Promise.resolve(false);
 
-    // The neighbour is the nearest row on the requested side, with the id as the
-    // tiebreak. Two rows that share a position would otherwise make which one is above
-    // me arbitrary, and the swap could pick the same row twice and appear to do nothing.
     var comparison = step < 0 ? '<' : '>';
     var tail = ' ORDER BY position ' + (step < 0 ? 'DESC' : 'ASC')
       + ', id ' + (step < 0 ? 'DESC' : 'ASC') + ' LIMIT 1';
@@ -751,43 +427,21 @@ window.NoteApp = window.NoteApp || {};
     );
     if (!neighbour) return Promise.resolve(false);
 
-    // One transaction, so a swap is never half applied: two rows holding the same
-    // position is the one state manual order cannot represent.
     return write(function (run) {
       run('UPDATE ' + table + ' SET position = ? WHERE id = ?', [neighbour.position, current.id]);
       run('UPDATE ' + table + ' SET position = ? WHERE id = ?', [current.position, neighbour.id]);
     }).then(function () { return true; });
   }
 
-  /** Escape the LIKE wildcards so a search for 50% means literally 50%. */
   function likeParam(term) {
     return '%' + String(term).replace(/[\\%_]/g, function (ch) { return '\\' + ch; }) + '%';
   }
 
-  // ------------------------------------------------------------- THE WRITE FUNNEL
 
-  /**
-   * THE single write entry point. Everything that mutates the database comes through
-   * here, which is what makes "auto-save on every write" a structural guarantee rather
-   * than a habit.
-   *
-   * @param {string|function} sqlOrFn SQL string, or a function receiving a `run(sql, params)`
-   *                                  helper so several statements can share one transaction
-   *                                  and one persistence round-trip.
-   * @param {Array} [params] bound parameters for the string form.
-   * @returns {Promise<{changes:number}>} resolves once the snapshot is safely in IndexedDB.
-   *
-   * Writes are queued: sql.js is synchronous, but persistence is async, so two writes
-   * landing together (e.g. debounced autosave plus a rename) are executed and stored in
-   * order instead of racing to overwrite each other's snapshot.
-   */
   function write(sqlOrFn, params) {
     var task = function () {
       var changes = 0;
 
-      // Step 1 — execute the SQL. Each write is its own transaction: if a multi-statement
-      // unit fails halfway, ROLLBACK leaves the database exactly as it was, so the
-      // snapshot we persist can never contain a half-applied change.
       rawRun('BEGIN');
       try {
         if (typeof sqlOrFn === 'function') {
@@ -801,32 +455,20 @@ window.NoteApp = window.NoteApp || {};
         }
         rawRun('COMMIT');
       } catch (err) {
-        try { rawRun('ROLLBACK'); } catch (rollbackErr) { /* transaction already gone */ }
+        try { rawRun('ROLLBACK'); } catch (rollbackErr) {  }
         throw err;
       }
 
-      // Step 2 + 3 — serialise the whole database and push it into storage.
-      // db.export() returns a Uint8Array; storage.save() copies it before handing it to
-      // IndexedDB, because the WASM heap this view points at is reused on the next export.
       return App.storage.save(db.export()).then(function () {
         return { changes: changes };
       });
     };
 
-    // Chain onto the queue, and keep the chain alive even if one write rejects.
     var result = (writeQueue || Promise.resolve()).then(task, task);
-    writeQueue = result.catch(function () { /* swallow so the chain continues */ });
+    writeQueue = result.catch(function () {  });
     return result;
   }
 
-  /**
-   * Follow a rename: sources naming the old title (exact raw spelling) are
-   * rewritten to the new one. Without this, title-keyed links would orphan on
-   * every rename; the exact-spelling scope is what keeps it from rewriting text
-   * the reader never meant as a link. One chained transaction after the rename
-   * itself — renames are rare, snapshots are not free, and recursion is avoided
-   * by writing directly instead of going back through updateNote.
-   */
   function propagateRenameWrites(renamedId, oldTitle, newTitle) {
     var oldNorm = util.normTitle(oldTitle);
     if (!oldNorm || util.normTitle(newTitle) === oldNorm) return Promise.resolve(false);
@@ -841,8 +483,6 @@ window.NoteApp = window.NoteApp || {};
         var note = API.getNote(source.sid);
         body = note ? note.content : null;
       } catch (e) { body = null; }
-      // Locked or damaged bodies cannot be rewritten; their rows keep naming the
-      // old title, which then reads as an unresolved link rather than a lie.
       if (typeof body !== 'string') return Promise.resolve(null);
       var raws = query('SELECT target_raw FROM note_links WHERE source_note_id = ? AND target_norm = ?',
         [source.sid, oldNorm]);
@@ -869,10 +509,6 @@ window.NoteApp = window.NoteApp || {};
     });
   }
 
-  /**
-   * Queue one note's link rewrite into an open write(). Module-level (not on the
-   * API) so the note mutations above share it without exposing it.
-   */
   function refreshLinksInto(run, noteId, plaintext) {
     if (typeof plaintext !== 'string') return;
     var owner = queryOne('SELECT workspace_id FROM notes WHERE id = ?', [noteId]);
@@ -884,44 +520,13 @@ window.NoteApp = window.NoteApp || {};
     });
   }
 
-  // ---------------------------------------------------------------- vault state
-  /**
-   * The unlocked view.  *** This is the other part worth reading carefully. ***
-   *
-   * WebCrypto is asynchronous, and this layer is not. getNote() and getFileBlob() are
-   * synchronous calls made from inside a plain render function; making them return promises
-   * would push the encryption invariant out into every caller, which is the one thing this
-   * design refuses to do — a caller that forgot would either show a blank note or hand
-   * ciphertext to the editor and save it back as if it were prose.
-   *
-   * So decryption happens ONCE, eagerly, at the one moment it can be done in bulk: when the
-   * notebook is unlocked. The results live here, in memory, for the session. Every read after
-   * that is a synchronous lookup, and not one call site had to change shape.
-   *
-   * WHAT THAT COSTS, HONESTLY: while the vault is unlocked, every note body and every stored
-   * attachment is held decrypted in JS memory — the ciphertext is already in WASM memory
-   * beside it, so a notebook full of attachments roughly doubles. That is the price of
-   * keeping the data layer synchronous, and it buys the guarantee that no read path can
-   * forget the decryption step. Locking, and reloading, both empty these maps.
-   */
-  var noteText = {};   // noteId -> plaintext body
-  var fileBytes = {};  // fileId -> plaintext attachment bytes
+  var noteText = {};   
+  var fileBytes = {};  
 
-  // False until those maps hold EVERY encrypted row. While it is false a read reports the row
-  // as locked rather than as empty: a blank note that looks like the user's own is the one
-  // outcome that must never be produced by a failure to decrypt.
   var viewReady = false;
 
-  // The vault table's single row. The schema's CHECK (id = 1) is what makes this constant a
-  // fact rather than a convention.
   var VAULT_ID = 1;
 
-  /**
-   * How many note bodies search will scan in memory when the vault is on. SQL cannot do the
-   * matching: the column holds base64 ciphertext, so LIKE would be matching the ciphertext.
-   * The cap bounds the work one keystroke of search can cause, and search() reports when it
-   * bites so the interface can say that older notes were matched on their titles only.
-   */
   var CONTENT_SCAN_CAP = 2000;
 
   function vaultRow() {
@@ -935,7 +540,6 @@ window.NoteApp = window.NoteApp || {};
     return Object.prototype.hasOwnProperty.call(map, key);
   }
 
-  /** Whatever a BLOB column holds, as bytes. */
   function blobBytes(value) {
     if (!value) return new Uint8Array(0);
     if (value instanceof Uint8Array) return value;
@@ -943,44 +547,22 @@ window.NoteApp = window.NoteApp || {};
     return new Uint8Array(value);
   }
 
-  /**
-   * Run an async step over items one at a time.
-   *
-   * One at a time rather than Promise.all because these loops walk every row in the database:
-   * hundreds of parallel WebCrypto calls would hold every payload in flight at once, and the
-   * whole point of the progress callback is that the work is observable as it advances.
-   */
   function eachSeries(items, step) {
     var index = 0;
     function next() {
       if (index >= items.length) return Promise.resolve();
       var item = items[index++];
-      // Promise.resolve().then() rather than calling next() directly: a step that completes
-      // synchronously would otherwise recurse once per row and blow the stack on a notebook
-      // that runs to a few thousand notes.
       return Promise.resolve(step(item)).then(next);
     }
     return next();
   }
 
-  /** The row counts a conversion walks, for one progress denominator. */
   function vaultTotals() {
     var notes = queryOne('SELECT COUNT(*) AS n FROM notes');
     var files = queryOne('SELECT COUNT(*) AS n FROM files');
     return (notes ? notes.n : 0) + (files ? files.n : 0);
   }
 
-  /**
-   * Read every stored payload and seal it, without writing anything.
-   *
-   * Deleted rows are included, and that is not tidiness: a trashed note has been stamped,
-   * not erased, so its body is still sitting in the database in plaintext. Leaving the trash
-   * out would mean "encrypt my notebook" kept a readable copy of everything the user had
-   * thrown away.
-   *
-   * @returns {Promise<{notes:Array, files:Array, noteText:Object, fileBytes:Object,
-   *                    alreadyEncrypted:Array}>}
-   */
   function planEncryption(onProgress) {
     var plan = {
       notes: [], files: [], noteText: {}, fileBytes: {}, alreadyEncrypted: [],
@@ -993,10 +575,6 @@ window.NoteApp = window.NoteApp || {};
 
     return eachSeries(noteRows, function (row) {
       tick();
-      // A row that already carries an envelope must not be sealed again: the ciphertext would
-      // be encrypted a second time and the plaintext inside it would be unreachable. On this
-      // path there is no vault to open it with, so the conversion refuses as a whole and names
-      // the rows rather than half-doing the job.
       if (App.crypto.isEnvelope(row.content)) {
         plan.alreadyEncrypted.push({ kind: 'note', id: row.id });
         return;
@@ -1004,8 +582,6 @@ window.NoteApp = window.NoteApp || {};
       var plain = row.content === null || row.content === undefined ? '' : String(row.content);
       return App.crypto.encrypt(plain).then(function (stored) {
         plan.notes.push({ id: row.id, stored: stored });
-        // The plaintext we just sealed IS the unlocked view: keeping it means enabling
-        // encryption costs one pass, not one to seal and another to read back.
         plan.noteText[row.id] = plain;
       });
     }).then(function () {
@@ -1024,14 +600,6 @@ window.NoteApp = window.NoteApp || {};
     }).then(function () { return plan; });
   }
 
-  /**
-   * Read every stored payload and open it, without writing anything — the mirror of
-   * planEncryption(), used when encryption is being turned off.
-   *
-   * Rows that fail to decrypt are collected rather than skipped: the caller must refuse the
-   * whole operation, because deleting the key afterwards would turn "could not decrypt" into
-   * "gone for good".
-   */
   function planDecryption(onProgress) {
     var plan = { notes: [], files: [], failures: [] };
     var noteRows = query('SELECT id, content FROM notes');
@@ -1042,7 +610,7 @@ window.NoteApp = window.NoteApp || {};
 
     return eachSeries(noteRows, function (row) {
       tick();
-      if (!App.crypto.isEnvelope(row.content)) return; // already plaintext
+      if (!App.crypto.isEnvelope(row.content)) return; 
       return App.crypto.decrypt(row.content).then(function (plain) {
         plan.notes.push({ id: row.id, plain: plain });
       }, function (err) {
@@ -1061,23 +629,7 @@ window.NoteApp = window.NoteApp || {};
     }).then(function () { return plan; });
   }
 
-  /**
-   * Build the unlocked view: open every stored payload once, and report the rows that could
-   * not be read.
-   *
-   * A row that fails here is not fatal — the key is known good, because the check string
-   * proved it — so the failures are counted and reported, and the affected rows are marked
-   * damaged when they are read. Losing the whole notebook to one bad record would be worse.
-   *
-   * The two maps are built HERE and returned, never assigned to the module's own as the pass
-   * goes: an unlocked view that is half built is a state no reader may ever see, because a row
-   * the pass has not reached yet cannot be told apart from a row that could not be read at all.
-   * unlockVault() installs what this returns in one assignment, after the pass has ended.
-   */
   function decryptEverything(onProgress) {
-    // Local until the caller installs them. The module's own maps keep describing the previous
-    // (locked) state for the whole duration of the pass, which is exactly what viewReady false
-    // promises every reader.
     var text = {};
     var byteMap = {};
     var failures = [];
@@ -1089,8 +641,6 @@ window.NoteApp = window.NoteApp || {};
 
     return eachSeries(noteRows, function (row) {
       tick();
-      // Plaintext is already the answer for a row written before the vault existed. Handing
-      // it back through decrypt() would work, but storing it here makes the two cases one.
       if (!App.crypto.isEnvelope(row.content)) {
         text[row.id] = row.content === null || row.content === undefined ? '' : String(row.content);
         return;
@@ -1115,47 +665,11 @@ window.NoteApp = window.NoteApp || {};
     });
   }
 
-  /**
-   * Rewrite the database compactly, so the bytes it replaced are no longer in the file.
-   *
-   * SQLite does not erase the old image of a row it rewrites. The updated cell is written and
-   * the previous bytes are left in the page's free space, or in a page that has just been
-   * unlinked — and both of those are still inside the image db.export() serialises, which is
-   * what goes to IndexedDB and what the Export .db button hands out. For the rest of this app
-   * that is merely untidy. For this feature it is the whole ballgame: sealing a note body
-   * replaces plaintext with ciphertext, and without this the plaintext it replaced would still
-   * be readable in the exported database. VACUUM rebuilds the file from the live rows, so
-   * nothing that was overwritten is carried over.
-   *
-   * It CANNOT go through write(): SQLite refuses to VACUUM inside a transaction, and write() is
-   * a transaction by definition. So this runs raw and then persists — the one other place in
-   * this file that hands bytes to storage. It is safe because it only ever runs after a
-   * conversion has already committed: the database is correct before this starts, and a failure
-   * here costs file size and leftover bytes, not data.
-   *
-   * What it does NOT clean: the browser's own storage layer. The PREVIOUS snapshot handed to
-   * IndexedDB held the plaintext, and whether the backend has since compacted it away is the
-   * browser's business, not something this app can promise.
-   */
   function compact() {
     rawRun('VACUUM');
     return App.storage.save(db.export());
   }
 
-  /**
-   * Compact, and never let the outcome un-say the conversion that already committed.
-   *
-   * VACUUM can fail two ways: storage.save() rejects, and sql.js raises straight out of rawRun()
-   * so compact() itself THROWS. Past the commit both have to arrive in the same place, because
-   * the notebook is encrypted either way; the failure is reported as a warning and carried on
-   * the report rather than allowed to reject an enrollment that is already a fact.
-   *
-   * The warning says only what is true. The file still holds the bytes the previous plaintext
-   * image occupied, so an earlier unencrypted copy may be recoverable from it — and there is NO
-   * import path in this app, only export, so the retry named here is the one the interface
-   * actually offers: turning encryption off and on again runs this same VACUUM. Advice a user
-   * cannot act on is worse than no advice at all.
-   */
   function compactQuietly(report) {
     var attempt;
     try {
@@ -1173,37 +687,18 @@ window.NoteApp = window.NoteApp || {};
     });
   }
 
-  /**
-   * Tell the crypto module whether this database has a vault, and hand back the row.
-   * Called once after migrations, and again after every change to the vault table.
-   */
   function syncVault() {
     var row = vaultRow();
     App.crypto.setVaultExists(!!row);
     return row;
   }
 
-  /**
-   * Read every sealed payload once and install the result as the unlocked view.
-   *
-   * Shared by the two ways in: a password proved against the vault's check string, and the
-   * key this tab unlocked the notebook with earlier. The pass runs INSIDE the write queue for
-   * the reason unlockVault() states: a debounced autosave landing mid-decrypt would seal a row
-   * this pass had already read past, and that row would come back afterwards as a "damaged"
-   * note, indistinguishable from real corruption.
-   */
   function buildUnlockedView(onProgress) {
     var pass = (writeQueue || Promise.resolve()).then(function () {
       return decryptEverything(onProgress);
     });
-    // Left pointing at the pass so later writes chain behind it, and resolved either way:
-    // write() tolerates a rejecting queue, but a failed pass must not turn every write after it
-    // into a rejection of its own.
     writeQueue = pass.then(function () { return null; }, function () { return null; });
     return pass.then(function (view) {
-      // Installed in ONE assignment, only now that every encrypted row has been read: the maps
-      // and viewReady flip together, so no reader can observe a view holding some of the
-      // plaintext and not the rest.
       noteText = view.noteText;
       fileBytes = view.fileBytes;
       viewReady = true;
@@ -1211,30 +706,18 @@ window.NoteApp = window.NoteApp || {};
     });
   }
 
-  /**
-   * Keep this unlock for the tab that made it.
-   *
-   * The record holds the CryptoKey object itself — the one value in the app that can be used
-   * but never read out (see crypto.js) — tagged with this tab's own session id. When the
-   * browser can hold neither the object (no IndexedDB) nor the tag (no sessionStorage),
-   * nothing is remembered and the notebook simply asks again after a reload.
-   */
   function rememberSession() {
     var live = App.crypto.currentKey();
     if (!live || !App.session.available()) return Promise.resolve(false);
     return App.storage.saveVaultKey({ id: App.session.id(), key: live });
   }
 
-  /** Drop the remembered unlock. Called by every path that locks or un-keys the notebook. */
   function forgetSession() {
     App.session.clear();
     return App.storage.clearVaultKey();
   }
 
-  // ------------------------------------------------------------------ bootstrap
   function applyMigrations() {
-    // Foreign keys are off by default in SQLite and must be enabled per connection,
-    // otherwise ON DELETE CASCADE silently does nothing and deletes leave orphans.
     rawRun('PRAGMA foreign_keys = ON');
 
     var row = queryOne('PRAGMA user_version');
@@ -1247,13 +730,12 @@ window.NoteApp = window.NoteApp || {};
         rawRun('PRAGMA user_version = ' + (version + 1));
         rawRun('COMMIT');
       } catch (err) {
-        try { rawRun('ROLLBACK'); } catch (e) { /* ignore */ }
+        try { rawRun('ROLLBACK'); } catch (e) {  }
         throw new Error('schema migration ' + (version + 1) + ' failed: ' + err.message);
       }
     }
   }
 
-  /** A brand-new database gets one workspace and one note so the app is never a void. */
   function seed() {
     var stamp = util.nowIso();
     var workspaceId = util.uuid();
@@ -1279,14 +761,7 @@ window.NoteApp = window.NoteApp || {};
     }).then(function () { return workspaceId; });
   }
 
-  // ------------------------------------------------------------------- public API
   var API = {
-    /**
-     * Boot the engine: load sql.js, restore the snapshot from IndexedDB (or create a
-     * fresh database), run migrations, and seed on first run.
-     *
-     * @returns {Promise<{fresh:boolean, backend:string, lastWorkspaceId:string|null}>}
-     */
     init: function () {
       return App.storage.load()
         .then(function (loaded) {
@@ -1297,18 +772,12 @@ window.NoteApp = window.NoteApp || {};
           if (typeof initSqlJs !== 'function') {
             throw new Error('sql.js failed to load');
           }
-          // locateFile returns a data: URI with the WASM embedded. The engine recognises
-          // the "data:application/octet-stream;base64," prefix and decodes it directly,
-          // so no network request is made and file:// works.
           return initSqlJs({ locateFile: function () { return wasmUri; } }).then(function (SQL) {
             var fresh = false;
             if (loaded.bytes && loaded.bytes.length) {
               try {
                 db = new SQL.Database(loaded.bytes);
               } catch (err) {
-                // A snapshot we cannot parse is worse than starting over, but the user
-                // must be told, and the old blob is left untouched in storage until the
-                // next successful write replaces it.
                 App.util.toast('Saved database could not be opened (' + err.message + '). Starting a new one.', 'error', 10000);
                 db = new SQL.Database();
                 fresh = true;
@@ -1320,11 +789,6 @@ window.NoteApp = window.NoteApp || {};
 
             applyMigrations();
 
-            // Orphan repair, before any read or seed: a folder whose parent is
-            // missing, deleted, or in another workspace (possible after older
-            // cross-workspace moves) is counted but can never render — re-root
-            // it so it reappears instead of vanishing silently. One snapshot,
-            // and only when orphans actually exist.
             var orphanCount = 0;
             try {
               orphanCount = queryOne(
@@ -1339,17 +803,8 @@ window.NoteApp = window.NoteApp || {};
               ' WHERE p.deleted_at IS NULL AND p.workspace_id = folders.workspace_id)'
             ).catch(function () { return null; }) : Promise.resolve(null);
 
-            // The vault flag is read once, here, before anything reads a note: every read path
-            // below branches on it, and it must not be discovered halfway through a boot.
             var vault = syncVault();
 
-            // Seed only when the workspaces table is genuinely empty, so an install that
-            // has never stored a snapshot still gets a usable starting point.
-            //
-            // Never into an encrypted notebook. The seed writes its welcome text straight to
-            // SQL — it has to, it runs before any key exists — so seeding here would put a
-            // plaintext body inside a notebook whose bodies are all ciphertext, and would do
-            // it in the one state where it cannot be encrypted instead: a locked boot.
             var empty = queryOne('SELECT COUNT(*) AS n FROM workspaces').n === 0;
             var seedPromise = repairPromise.then(function () {
               return (!vault && (fresh || empty)) ? seed() : Promise.resolve(null);
@@ -1370,38 +825,17 @@ window.NoteApp = window.NoteApp || {};
         });
     },
 
-    /** Escape hatch for diagnostics/testing. */
     isReady: function () { return !!db; },
 
-    // ------------------------------------------------------------------- ordering
-    /**
-     * The sort vocabulary, exposed so the interface can build its menu from the same list
-     * the SQL is whitelisted against. A menu offering a key this array does not hold would
-     * be offering something the database would then ignore.
-     */
     sortKeys: SORT_KEYS.slice(),
     sortDirections: SORT_DIRECTIONS.slice(),
 
-    /**
-     * The keys the sort menu offers, in the order it offers them.
-     *
-     * The whole vocabulary, not the subset of it that one table happens to hold. There is
-     * a single control for the tree, the pane and the rail, and its options must not move
-     * under the pointer: a Size that vanished while a folder of notes was in front and
-     * reappeared two clicks later is the same choice wearing two faces. A key a list has
-     * no column for falls back in orderBy() instead of disappearing.
-     */
     sortKeysFor: function () {
       return SORT_KEYS.map(function (key) { return { key: key, label: SORT_LABELS[key] }; });
     },
 
     reorderWithin: reorderWithin,
 
-    /**
-     * Where a row sits now, and how many siblings share its scope. The two facts a move
-     * command needs in order to disable itself at the ends of a list rather than appear to
-     * do nothing.
-     */
     orderInfo: function (kind, id, scopeId, scopeFolderId) {
       var table = TABLES[kind];
       if (!table) return null;
@@ -1419,14 +853,6 @@ window.NoteApp = window.NoteApp || {};
       return { position: row.position, count: count ? count.n : 1 };
     },
 
-    // ------------------------------------------------------------------ workspaces
-    /**
-     * Every workspace, in the sort the rail is using.
-     *
-     * position is selected even though the rail never draws it: a reorder has to know
-     * where a workspace sits now, and reading it back from the list the interface just
-     * drew is cheaper than asking the database again for one integer.
-     */
     listWorkspaces: function (sort) {
       return query('SELECT id, name, created_at, position FROM workspaces '
         + (orderOf('workspaces', sort) || 'ORDER BY created_at'));
@@ -1435,17 +861,11 @@ window.NoteApp = window.NoteApp || {};
     createWorkspace: function (name) {
       var id = util.uuid();
       var stamp = util.nowIso();
-      // The new row goes to the end of the rail: max + 1 inside a scope that is the whole
-      // table, because a workspace has no parent. Leaving it at the column default of 0
-      // would put every new workspace at the TOP of a manual order, above everything the
-      // user had already arranged, which is the opposite of appending.
       return write(
         'INSERT INTO workspaces (id, name, created_at, position) ' +
           'VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), -1) + 1 FROM workspaces))',
         [id, (name || 'Untitled workspace').trim() || 'Untitled workspace', stamp])
         .then(function () {
-          // Read back rather than predicted: the subquery above is what knows where the
-          // end of the rail currently is.
           var row = queryOne('SELECT position FROM workspaces WHERE id = ?', [id]);
           return { id: id, name: name, created_at: stamp, position: row ? row.position : 0 };
         });
@@ -1455,18 +875,10 @@ window.NoteApp = window.NoteApp || {};
       return write('UPDATE workspaces SET name = ? WHERE id = ?', [String(name).trim() || 'Untitled workspace', id]);
     },
 
-    /** Deletes the workspace plus every folder, note and file inside it (cascade). */
     deleteWorkspace: function (id) {
       return write('DELETE FROM workspaces WHERE id = ?', [id]);
     },
 
-    // --------------------------------------------------------------------- folders
-    /** Every live folder in a workspace.
-     *
-     * The whole workspace rather than one level, because the tree groups folders by parent
-     * in ui.js while the sort is a single ORDER BY: grouping an already-sorted list keeps
-     * the sort inside each group, which is exactly the scope manual order is defined in.
-     */
     listFolders: function (workspaceId, sort) {
       return query(
         'SELECT id, workspace_id, name, parent_folder_id, created_at, position FROM folders ' +
@@ -1479,9 +891,6 @@ window.NoteApp = window.NoteApp || {};
     createFolder: function (workspaceId, name, parentFolderId) {
       var id = util.uuid();
       var stamp = util.nowIso();
-      // Appended inside its own parent scope. The empty-string sentinel is what lets one
-      // subquery cover both a nested folder and a root folder, where the parent is NULL and
-      // NULL = NULL matches nothing at all.
       return write(
         'INSERT INTO folders (id, workspace_id, name, parent_folder_id, created_at, position) ' +
           'VALUES (?, ?, ?, ?, ?, (' +
@@ -1504,7 +913,6 @@ window.NoteApp = window.NoteApp || {};
       return write('UPDATE folders SET name = ? WHERE id = ?', [String(name).trim() || 'New folder', id]);
     },
 
-    /** All folder ids in the subtree rooted at `rootId`, including the root. */
     descendantFolderIds: function (rootId) {
       var ids = [rootId];
       var frontier = [rootId];
@@ -1520,46 +928,31 @@ window.NoteApp = window.NoteApp || {};
       return ids;
     },
 
-    /** Move a folder (and all notes/files/subfolders inside it) to another workspace. */
     moveFolder: function (folderId, targetWorkspaceId) {
       var ids = API.descendantFolderIds(folderId);
       return write(function (run) {
         var placeholders = ids.map(function () { return '?'; }).join(',');
-        // Update folder workspace IDs: bind targetWorkspaceId as first param, then ids for IN clause.
-        // Note: SQL params are ordered. First param = targetWorkspaceId for SET, rest = ids for IN.
         var params = [targetWorkspaceId].concat(ids);
         run('UPDATE folders SET workspace_id = ? WHERE id IN (' + placeholders + ')', params);
         params = [targetWorkspaceId].concat(ids);
         run('UPDATE notes SET workspace_id = ? WHERE folder_id IN (' + placeholders + ')', params);
         params = [targetWorkspaceId].concat(ids);
         run('UPDATE files SET workspace_id = ? WHERE folder_id IN (' + placeholders + ')', params);
-        // The moved root becomes a root in the new workspace: its old parent
-        // stayed behind, and keeping the pointer would orphan the whole subtree
-        // (counted in the workspace, unrenderable in the tree). Descendants keep
-        // their parents — those moved along with them.
         run('UPDATE folders SET parent_folder_id = NULL WHERE id = ?', [folderId]);
       });
     },
 
-    /**
-     * Delete a folder AND everything nested under it. SQLite would handle the direct
-     * children via cascade, but notes/files in deeper folders are only reachable through
-     * the intermediate folders, so the whole subtree is resolved first and removed in one
-     * transaction.
-     */
     deleteFolder: function (id) {
       var ids = API.descendantFolderIds(id);
       var stamp = util.nowIso();
       return write(function (run) {
         var placeholders = ids.map(function () { return '?'; }).join(',');
-        // Soft delete: set deleted_at for folder subtree.
         run('UPDATE folders SET deleted_at = ? WHERE id IN (' + placeholders + ')', [stamp].concat(ids));
         run('UPDATE notes SET deleted_at = ? WHERE folder_id IN (' + placeholders + ')', [stamp].concat(ids));
         run('UPDATE files SET deleted_at = ? WHERE folder_id IN (' + placeholders + ')', [stamp].concat(ids));
       });
     },
 
-    /** How many notes/files a folder subtree holds, for the delete confirmation. */
     countFolderContents: function (id) {
       var ids = API.descendantFolderIds(id);
       var placeholders = ids.map(function () { return '?'; }).join(',');
@@ -1572,14 +965,6 @@ window.NoteApp = window.NoteApp || {};
       };
     },
 
-    // ----------------------------------------------------------------------- notes
-    /** Notes directly inside a folder (or at the workspace root when folderId is null). */
-    /** Notes directly inside a folder (or at the workspace root when folderId is null).
-     *
-     * The two branches keep their own WHERE clause — the root is folder_id IS NULL, never
-     * = NULL — and share one ORDER BY, because the sort applies to a scope and these two
-     * scopes are the folder and the root under the same rule.
-     */
     listNotesIn: function (workspaceId, folderId, sort) {
       var order = orderOf('notes', sort) || 'ORDER BY updated_at DESC';
       var rows = folderId
@@ -1588,14 +973,6 @@ window.NoteApp = window.NoteApp || {};
       return rows.map(mapNote);
     },
 
-    /** Every note in a workspace (used for the "All notes" view and search fallback). */
-    /**
-     * Title prefilter for the Deja-vu check: workspace-scoped LIKEs over the caller's
-     * words. Parameterized only — the words arrive as bound parameters, never as SQL —
-     * and capped at three, which is all the check asks for (the first three significant
-     * words of the committed title). Returns light [{id, title}] rows; the trigram
-     * similarity itself runs in JS over what this returns.
-     */
     titlesLike: function (workspaceId, words) {
       var terms = (words || [])
         .map(function (w) { return String(w || '').trim(); })
@@ -1609,7 +986,6 @@ window.NoteApp = window.NoteApp || {};
       );
     },
 
-    /** Every note in a workspace, for the tree and the All notes listing. */
     listAllNotes: function (workspaceId, sort) {
       return query(
         'SELECT id, folder_id, workspace_id, title, is_private, created_at, updated_at, position FROM notes ' +
@@ -1619,21 +995,6 @@ window.NoteApp = window.NoteApp || {};
       ).map(mapNote);
     },
 
-    /**
-     * Full row including content — only for opening the editor.
-     *
-     * The encryption invariant lives here rather than in the editor. Callers keep getting a
-     * synchronous row with a plaintext `content`, exactly as they always have; what changed is
-     * only what happens when the plaintext is not available:
-     *
-     *   - vault off, or a row written before it existed -> the stored value IS the content;
-     *   - vault on and unlocked -> content comes from the unlocked view, byte-identical to
-     *     what was saved;
-     *   - vault on and locked -> content is null and `locked` is true. Deliberately not an
-     *     exception: the tree, the title, the timestamps and every list still render, and the
-     *     editor can say why the body is not there. An empty string here would be a lie that
-     *     looks like the user's own blank note.
-     */
     getNote: function (id) {
       var row = queryOne('SELECT * FROM notes WHERE id = ? AND deleted_at IS NULL', [id]);
       if (!row) return null;
@@ -1649,8 +1010,6 @@ window.NoteApp = window.NoteApp || {};
         note.content = noteText[id];
         return note;
       }
-      // Encrypted, unlocked, and still not readable: the row was damaged, or it appeared in
-      // the database after the view was built. Reported as damaged, never as empty.
       note.content = null;
       note.damaged = true;
       return note;
@@ -1659,10 +1018,6 @@ window.NoteApp = window.NoteApp || {};
     createNote: function (workspaceId, folderId, title) {
       var id = util.uuid();
       var stamp = util.nowIso();
-      // The empty body is sealed like any other. With the vault on, that is what keeps the
-      // table uniform — every body is an envelope, so nothing downstream has to ask "is this
-      // one encrypted?" — and with the vault locked it is what makes this reject with the
-      // unlock message instead of writing an empty body in the clear.
       return App.crypto.encrypt('').then(function (empty) {
         return write(
           'INSERT INTO notes (id, folder_id, workspace_id, title, content, is_private, created_at, updated_at, position) ' +
@@ -1685,28 +1040,14 @@ window.NoteApp = window.NoteApp || {};
       });
     },
 
-    /**
-     * Flip the manual Private flag. One write() (one snapshot), parameterized —
-     * the flag is 0/1, never interpolated. Bulk export skips private notes;
-     * per-note copy/download stay allowed.
-     */
     setNotePrivate: function (id, flag) {
       var value = flag ? 1 : 0;
       return write('UPDATE notes SET is_private = ?, updated_at = ? WHERE id = ?',
         [value, util.nowIso(), id]);
     },
 
-    /**
-     * Save title/content. Called by the debounced autosave on every keystroke burst.
-     * Returns the new updated_at so the UI can show it without a re-read.
-     */
     updateNote: function (id, title, content) {
       var stamp = util.nowIso();
-      // A null body means "the caller does not have the text in hand", which is exactly the
-      // case while the notebook is locked: renameNote() passes on the null content getNote()
-      // gave it. COALESCE then leaves the stored ciphertext alone instead of writing NULL —
-      // or, worse, an empty string — over it. Every other caller passes a real string, and a
-      // real string is always written.
       var sealed = content === null || content === undefined
         ? Promise.resolve(null)
         : App.crypto.encrypt(content);
@@ -1714,19 +1055,15 @@ window.NoteApp = window.NoteApp || {};
       try {
         var prev = queryOne('SELECT title FROM notes WHERE id = ?', [id]);
         prevTitle = prev ? prev.title || '' : '';
-      } catch (e) { /* treat as unchanged */ }
+      } catch (e) {  }
       return sealed.then(function (stored) {
         return write(function (run) {
           run('UPDATE notes SET title = ?, content = COALESCE(?, content), updated_at = ? WHERE id = ?',
             [title, stored, stamp, id]);
-          // Links ride the same transaction: one snapshot for text and graph.
           refreshLinksInto(run, id, content);
         });
       }).then(function () {
-        // Keep the unlocked view in step with the write, so the next read is the text we
-        // already have in hand rather than a decryption round trip for it.
         if (viewReady && typeof content === 'string') noteText[id] = content;
-        // A changed title pulls its incoming links along with it.
         if (typeof content === 'string' && title !== prevTitle) {
           return propagateRenameWrites(id, prevTitle, title).then(function () {
             return { updated_at: stamp };
@@ -1739,8 +1076,6 @@ window.NoteApp = window.NoteApp || {};
     moveNote: function (id, workspaceId, folderId) {
       return write('UPDATE notes SET folder_id = ?, workspace_id = ?, updated_at = ? WHERE id = ?',
         [folderId || null, workspaceId, util.nowIso(), id]).then(function (res) {
-          // Links are workspace-scoped, so they follow the note. A second write only
-          // when rows exist — moves are rare, snapshots are not free.
           var n = queryOne('SELECT COUNT(*) AS n FROM note_links WHERE source_note_id = ?', [id]);
           if (n && n.n > 0) {
             return write('UPDATE note_links SET workspace_id = ? WHERE source_note_id = ?',
@@ -1759,11 +1094,6 @@ window.NoteApp = window.NoteApp || {};
       return write('UPDATE notes SET deleted_at = ? WHERE id = ?', [util.nowIso(), id]);
     },
 
-    /**
-     * Bulk writers: one write per op, not one per row. Every write() serialises
-     * the whole database and persists a snapshot, so a per-id loop over 40 notes
-     * would cost 40 snapshots; these cost one, atomically.
-     */
     bulkMoveNotes: function (ids, workspaceId, folderId) {
       var list = (ids || []).filter(function (id) { return id !== null && id !== undefined; });
       if (!list.length) return Promise.resolve(0);
@@ -1772,8 +1102,6 @@ window.NoteApp = window.NoteApp || {};
       return write(function (run) {
         run('UPDATE notes SET folder_id = ?, workspace_id = ?, updated_at = ? WHERE id IN (' + placeholders + ')',
           [folderId || null, workspaceId, stamp].concat(list));
-        // Links are workspace-scoped like in moveNote; setting the same value
-        // back when the workspace did not change is a harmless no-op.
         run('UPDATE note_links SET workspace_id = ? WHERE source_note_id IN (' + placeholders + ')',
           [workspaceId].concat(list));
       }).then(function () { return list.length; });
@@ -1787,14 +1115,6 @@ window.NoteApp = window.NoteApp || {};
         [util.nowIso()].concat(list)).then(function () { return list.length; });
     },
 
-    // --------------------------------------------------------------- wiki links
-    /**
-     * Backfill the links table after the v6 migration: one transaction, one
-     * snapshot — and no write at all when there is nothing to store, so a
-     * zero-link notebook never pays a snapshot per boot. Locked bodies are skipped
-     * rather than guessed: their rows stay as they were, which is still correct
-     * because a body cannot change while it is locked.
-     */
     rebuildLinks: function () {
       var have = queryOne('SELECT COUNT(*) AS n FROM note_links');
       if (have && have.n > 0) return Promise.resolve({ built: false });
@@ -1821,11 +1141,6 @@ window.NoteApp = window.NoteApp || {};
       }).then(function () { return { built: true }; });
     },
 
-    /**
-     * Resolve a normalised title to the note it names, newest first: a duplicate
-     * title resolves to the most recently touched note, which is the one the
-     * reader most likely means.
-     */
     resolveLinkTarget: function (workspaceId, norm) {
       var rows = query('SELECT id, title, updated_at FROM notes' +
         ' WHERE workspace_id = ? AND deleted_at IS NULL ORDER BY updated_at DESC, id ASC',
@@ -1836,9 +1151,6 @@ window.NoteApp = window.NoteApp || {};
       return null;
     },
 
-    /** Outgoing links of one note: [{ raw, norm, noteId|null }]. Null means no note
-     *  carries that title yet — the interface offers to create it. Resolved against
-     *  a single title scan rather than one query per link. */
     getOutgoingLinks: function (sourceId) {
       var owner = queryOne('SELECT workspace_id FROM notes WHERE id = ?', [sourceId]);
       if (!owner) return [];
@@ -1859,7 +1171,6 @@ window.NoteApp = window.NoteApp || {};
         });
     },
 
-    /** Notes linking TO this one: [{ id, title }], newest first, self-links excluded. */
     getBacklinks: function (noteId) {
       var note = queryOne('SELECT workspace_id, title FROM notes WHERE id = ? AND deleted_at IS NULL',
         [noteId]);
@@ -1874,8 +1185,6 @@ window.NoteApp = window.NoteApp || {};
         [note.workspace_id, norm, noteId]);
     },
 
-    // ----------------------------------------------------------------------- files
-    /** Attachments directly inside a folder (or at the workspace root). */
     listFilesIn: function (workspaceId, folderId, sort) {
       var order = orderOf('files', sort) || 'ORDER BY created_at DESC';
       var rows = folderId
@@ -1884,17 +1193,9 @@ window.NoteApp = window.NoteApp || {};
       return rows.map(mapFileMeta);
     },
 
-    /**
-     * Insert an attachment. `bytes` is a Uint8Array straight from FileReader/File.arrayBuffer
-     * and is written as a BLOB, so the exported .db holds the real file.
-     */
     addFile: function (workspaceId, folderId, filename, mimeType, bytes) {
       var id = util.uuid();
       var stamp = util.nowIso();
-      // size is the PLAINTEXT length, and it stays that way even when what is stored is a
-      // base64 envelope: the size column is what the interface prints and what the folder
-      // byte totals add up, so it has to describe the file rather than its encoding. With the
-      // vault off the value written is the caller's own Uint8Array, byte for byte.
       var plain = bytes ? bytes.length : 0;
       return App.crypto.encryptBytes(bytes).then(function (stored) {
         return write(
@@ -1917,20 +1218,11 @@ window.NoteApp = window.NoteApp || {};
       });
     },
 
-    /** Metadata only — deliberately excludes blob_data. */
     getFileMeta: function (id) {
       var row = queryOne('SELECT id, folder_id, workspace_id, filename, mime_type, size, created_at FROM files WHERE id = ? AND deleted_at IS NULL', [id]);
       return row ? mapFileMeta(row) : null;
     },
 
-    /**
-     * The actual bytes, fetched only when the user previews or downloads the file.
-     *
-     * Locked returns null rather than an exception — the preview pane has a lock notice to
-     * draw, and that is a state, not a failure. A stored envelope with no readable plaintext
-     * behind it DOES throw, because handing back a zero-length Blob would save an empty file
-     * over the user's attachment and call it done.
-     */
     getFileBlob: function (id) {
       var row = queryOne('SELECT filename, mime_type, blob_data FROM files WHERE id = ? AND deleted_at IS NULL', [id]);
       if (!row) return null;
@@ -1949,8 +1241,6 @@ window.NoteApp = window.NoteApp || {};
       return {
         filename: row.filename,
         mime_type: type,
-        // Wrap the bytes in a real Blob so the object URL carries the right MIME type and a
-        // `download` attribute can name the file.
         blob: new Blob([bytes], { type: type }),
       };
     },
@@ -1963,26 +1253,8 @@ window.NoteApp = window.NoteApp || {};
       return write('UPDATE files SET deleted_at = ? WHERE id = ?', [util.nowIso(), id]);
     },
 
-    // ----------------------------------------------------------------------- tasks
-    // Exposed to the renderer, which groups rows by the same boundaries the queries above
-    // filter them with. The work is done by the module-level function, deliberately not by
-    // a second copy — two copies of "where today ends" is two chances to disagree.
     taskDayBounds: function (now) { return taskDayBounds(now); },
 
-    /**
-     * The rows for one view of the task list.
-     *
-     * @param {string} workspaceId
-     * @param {object} [opts] { view: 'all'|'today'|'upcoming'|'done', folderId }
-     *
-     * The order is chosen per view rather than offered, because each view is a question
-     * ("what is late", "what is coming", "what did I finish") and each has exactly one
-     * order that answers it. Open work runs by date with the undated rows last — a task
-     * with no date is not due at the beginning of time — and ties fall to priority and
-     * then to the manual position, so a reorder survives its own re-read. Done work is
-     * newest first, because the reason to open that view is nearly always the thing just
-     * finished.
-     */
     listTasks: function (workspaceId, opts) {
       var o = opts || {};
       var view = normaliseTaskView(o.view);
@@ -2004,27 +1276,12 @@ window.NoteApp = window.NoteApp || {};
       ).map(mapTask);
     },
 
-    /**
-     * Every number the tasks pane shows, in one call.
-     *
-     * The badges and the header are counted through the same clause builder the list is
-     * read with, which is the only way a badge can be trusted to describe the list under
-     * it. This codebase has already shipped a count that belonged to a different list than
-     * the one it headed, and the shape of that bug is that the two numbers were computed in
-     * two places.
-     *
-     * `all` is the open count the header prints; there is no separate field for it, because
-     * two names for one number is the first half of that bug.
-     */
     countTasks: function (workspaceId, opts) {
       var o = opts || {};
       var bounds = taskDayBounds();
       var scope = o.folderId ? ' AND folder_id = ?' : '';
       var scopeParams = o.folderId ? [o.folderId] : [];
 
-      // Looped over the view list rather than written out four times: the badges sit in a
-      // row and are read as one object, and a view added to TASK_VIEWS without a count
-      // would then be a filter with a blank where its number should be.
       var counts = {};
       TASK_VIEWS.forEach(function (view) {
         var clause = taskViewClause(view, bounds);
@@ -2035,9 +1292,6 @@ window.NoteApp = window.NoteApp || {};
         counts[view] = row ? row.n : 0;
       });
 
-      // Overdue is not a view: it is the part of Today that has already run out of time,
-      // and the header names it separately because "three open" and "three open, two of
-      // them late" are different mornings.
       var overdue = queryOne(
         'SELECT COUNT(*) AS n FROM tasks WHERE workspace_id = ? AND done = 0' +
           ' AND due_at IS NOT NULL AND due_at < ?' + scope,
@@ -2047,43 +1301,16 @@ window.NoteApp = window.NoteApp || {};
       return counts;
     },
 
-    /**
-     * Open work in the active workspace — the rail row's count, and nothing else's.
-     *
-     * Deliberately unscoped by folder and by view: the rail names the workspace, so its
-     * number has to be a fact about the workspace. A count that followed the selection
-     * would change when a folder was clicked and read as tasks appearing and vanishing.
-     */
     countOpenTasks: function (workspaceId) {
       var row = queryOne('SELECT COUNT(*) AS n FROM tasks WHERE workspace_id = ? AND done = 0', [workspaceId]);
       return row ? row.n : 0;
     },
 
-    /**
-     * One task, with its notes — what the edit dialog and the context menu are built from.
-     *
-     * SELECT * is safe here in a way it is not for notes: nothing on this table is a blob,
-     * so the widest row is a title, a line of notes and a handful of integers.
-     */
     getTask: function (id) {
       var row = queryOne('SELECT * FROM tasks WHERE id = ?', [id]);
       return row ? mapTask(row) : null;
     },
 
-    /**
-     * Insert a task and hand back the stored row.
-     *
-     * @param {string} workspaceId
-     * @param {string|null} folderId the project, or null for the workspace root
-     * @param {string} title
-     * @param {object} [fields] { notes, due_at, due_has_time, priority }
-     *
-     * The new row is appended to the end of its own scope, exactly as a note or a folder
-     * is: position means "where the reader put it", and a new row that claimed position 0
-     * would land at the top of an arrangement it never took part in. Reading the row back
-     * rather than predicting it is what makes that true for the root as well, where the
-     * scope column is NULL and the subquery has to compare with COALESCE.
-     */
     createTask: function (workspaceId, folderId, title, fields) {
       var f = fields || {};
       var id = util.uuid();
@@ -2102,16 +1329,6 @@ window.NoteApp = window.NoteApp || {};
       ).then(function () { return API.getTask(id); });
     },
 
-    /**
-     * Change the parts of a task the edit dialog owns, and nothing else.
-     *
-     * Only the keys present in `fields` are written, so the caller never has to read the
-     * row first and hand back values it did not touch — a dialog that sends four fields
-     * cannot thereby rewrite the fifth. Which keys exist at all is decided by
-     * TASK_EDITABLE, which is also what keeps a caller's string out of the SET clause.
-     *
-     * @returns {Promise<boolean>} false when the row is gone (deleted in another tab).
-     */
     updateTask: function (id, fields) {
       var next = fields || {};
       var row = queryOne('SELECT workspace_id, folder_id, remind_at FROM tasks WHERE id = ?', [id]);
@@ -2125,8 +1342,6 @@ window.NoteApp = window.NoteApp || {};
         sets.push(column + ' = ?');
         params.push(TASK_EDITABLE[column](next[column]));
       });
-      // A reminder moved to a new time is a reminder not yet given. Without this the row
-      // would keep the stamp from the old time and stay silent at the new one.
       if (Object.prototype.hasOwnProperty.call(next, 'remind_at')
         && TASK_EDITABLE.remind_at(next.remind_at) !== (row.remind_at || null)) {
         sets.push('reminded_at = NULL');
@@ -2135,10 +1350,6 @@ window.NoteApp = window.NoteApp || {};
       sets.push('updated_at = ?');
       params.push(stamp);
 
-      // A task that changes project moves to the end of the list it moves into. Positions
-      // count from the top of one scope, so the number it carried belonged to the folder it
-      // just left: left alone, a task filed under a new project would claim a place above
-      // rows that folder's owner had already arranged.
       if (Object.prototype.hasOwnProperty.call(next, 'folder_id')
         && String(next.folder_id || '') !== String(row.folder_id || '')) {
         sets.push('position = (' +
@@ -2152,24 +1363,12 @@ window.NoteApp = window.NoteApp || {};
         .then(function () { return true; });
     },
 
-    /**
-     * Tick a task off, or put it back on the list.
-     *
-     * done and done_at are written together because they are one fact in two halves: a
-     * finished task with no completion stamp would be missing from the order the Done view
-     * is built on, and undoing one that kept its stamp would report a completion that has
-     * been taken back.
-     */
     setTaskDone: function (id, done) {
       var stamp = util.nowIso();
       if (!done) {
         return write('UPDATE tasks SET done = 0, done_at = NULL, updated_at = ? WHERE id = ?', [stamp, id])
           .then(function () { return { repeated: null }; });
       }
-      // A repeating task is not finished by ticking it: the tick moves it to its next
-      // occurrence and hands it back to the list. The rule is applied here rather than in
-      // the interface, so the checkbox, the context menu and any future caller all roll
-      // the same way.
       var row = queryOne('SELECT due_at, due_has_time, recurrence, remind_at FROM tasks WHERE id = ?', [id]);
       var rule = row ? parseRecurrence(row.recurrence) : null;
       var next = row && rule && row.due_at ? nextOccurrence(row.due_at, row.due_has_time, rule) : null;
@@ -2177,8 +1376,6 @@ window.NoteApp = window.NoteApp || {};
         return write('UPDATE tasks SET done = 1, done_at = ?, updated_at = ? WHERE id = ?', [stamp, stamp, id])
           .then(function () { return { repeated: null }; });
       }
-      // The reminder travels with the due date, keeping the distance the reader chose, and
-      // reminded_at is cleared so the new occurrence is announced in its turn.
       var remind = advanceReminder(row.remind_at, row.due_at, next);
       return write(
         'UPDATE tasks SET done = 0, done_at = NULL, due_at = ?, remind_at = ?, reminded_at = NULL, ' +
@@ -2187,12 +1384,6 @@ window.NoteApp = window.NoteApp || {};
       ).then(function () { return { repeated: next }; });
     },
 
-    /**
-     * The reminders that are due, oldest first, for the notifier started at boot.
-     *
-     * done = 0 because a finished task has nothing to announce, and reminded_at IS NULL
-     * because that stamp is what stops a thirty-second timer announcing itself twice.
-     */
     dueReminders: function (nowIso) {
       var now = nowIso || util.nowIso();
       try {
@@ -2204,42 +1395,23 @@ window.NoteApp = window.NoteApp || {};
           [now]
         ).map(mapTask);
       } catch (err) {
-        // A notebook from before v11 has no remind_at column: no reminders, no boot failure.
         return [];
       }
     },
 
-    /** Record that a reminder has been announced, so one tick cannot announce it twice. */
     markReminderFired: function (id, when) {
       return write('UPDATE tasks SET reminded_at = ? WHERE id = ? AND reminded_at IS NULL',
         [when || util.nowIso(), id]);
     },
 
-    /**
-     * Remove a task outright.
-     *
-     * A task is not soft-deleted into the trash. The trash exists to hold things that are
-     * expensive to lose — a note's body, an attachment's bytes — and it pays for that with a
-     * panel, a restore path and a permanent-delete path, all of which a single line of text
-     * does not earn. Its delete is confirmed in the pane instead.
-     */
     deleteTask: function (id) {
       return write('DELETE FROM tasks WHERE id = ?', [id]);
     },
-    // ---------------------------------------------------------------------- search
-    /**
-     * Search note titles/bodies and file names. Pass a workspace id to search inside that one
-     * workspace, or null to search the whole notebook. Results are capped so a pathological
-     * query cannot try to render the entire database.
-     */
     search: function (workspaceId, term, limit) {
       var trimmed = String(term || '').trim();
       if (!trimmed) return { notes: [], files: [] };
       var pattern = likeParam(trimmed);
       var cap = limit || 100;
-      // The one thing a scoped search and a notebook-wide one disagree about, written once:
-      // every query below is otherwise identical text, so the two scopes cannot drift into
-      // different answers to the same question.
       var scoped = workspaceId !== null && workspaceId !== undefined;
       var scope = scoped ? ' AND workspace_id = ?' : '';
       var scopeArgs = scoped ? [workspaceId] : [];
@@ -2251,8 +1423,6 @@ window.NoteApp = window.NoteApp || {};
         scopeArgs.concat([pattern, cap])
       ).map(mapFileMeta);
 
-      // With no vault, titles and bodies are both plaintext, so one SQL statement matches
-      // either of them and run-flow asserts the result byte for byte.
       if (!App.crypto.isActive()) {
         var plain = query(
           'SELECT id, folder_id, workspace_id, title, is_private, created_at, updated_at, ' +
@@ -2264,8 +1434,6 @@ window.NoteApp = window.NoteApp || {};
         return { notes: plain, files: files };
       }
 
-      // Vault on. Titles and file names are not encrypted, so SQL still answers that half in
-      // either state — which is what keeps the notebook searchable while it is locked.
       var notes = query(
         'SELECT id, folder_id, workspace_id, title, is_private, created_at, updated_at, ' +
         '(SELECT name FROM workspaces WHERE id = notes.workspace_id) AS workspace_name FROM notes ' +
@@ -2274,12 +1442,8 @@ window.NoteApp = window.NoteApp || {};
       ).map(mapNote);
 
       var result = { notes: notes, files: files, locked: !viewReady, contentScanned: 0, contentTruncated: false };
-      // Locked: only titles and file names can match, and the caller is TOLD so rather than
-      // being handed a shorter list that looks like the whole answer.
       if (!viewReady) return result;
 
-      // Unlocked: match the bodies in memory. The column holds ciphertext, so this is not a
-      // second opinion about the SQL above — it is the only way to ask the question at all.
       var matched = {};
       notes.forEach(function (note) { matched[note.id] = true; });
       var needle = trimmed.toLowerCase();
@@ -2294,7 +1458,7 @@ window.NoteApp = window.NoteApp || {};
 
       candidates.forEach(function (row) {
         result.contentScanned++;
-        if (!hasOwn(noteText, row.id)) return; // damaged row: nothing to match against
+        if (!hasOwn(noteText, row.id)) return; 
         if (noteText[row.id].toLowerCase().indexOf(needle) === -1) return;
         if (matched[row.id]) return;
         matched[row.id] = true;
@@ -2303,8 +1467,6 @@ window.NoteApp = window.NoteApp || {};
       return result;
     },
 
-    // ------------------------------------------------------------------ aggregates
-    /** Sidebar counts, in two queries rather than one per workspace. */
     counts: function (workspaceId) {
       var notes = queryOne('SELECT COUNT(*) AS n FROM notes WHERE workspace_id = ? AND deleted_at IS NULL', [workspaceId]);
       var files = queryOne('SELECT COUNT(*) AS n FROM files WHERE workspace_id = ? AND deleted_at IS NULL', [workspaceId]);
@@ -2312,13 +1474,6 @@ window.NoteApp = window.NoteApp || {};
       return { notes: notes ? notes.n : 0, files: files ? files.n : 0, folders: folders ? folders.n : 0 };
     },
 
-    /**
-     * Every folder's chain of ancestors, root first: id -> [{ id, name }, ...].
-     *
-     * The same walk folderPaths() below has always done, left as segments rather than joined into
-     * a string. A path printed as text is a fact; a path whose every step is a place to go is
-     * navigation, and a breadcrumb needs the folder ids that "A / B / C" has already thrown away.
-     */
     folderChains: function (workspaceId) {
       var folders = API.listFolders(workspaceId);
       var byId = {};
@@ -2341,7 +1496,6 @@ window.NoteApp = window.NoteApp || {};
       return out;
     },
 
-    /** The same chains joined into the "A / B / C" strings the panes print in prose. */
     folderPaths: function (workspaceId) {
       var chains = API.folderChains(workspaceId);
       var out = {};
@@ -2351,47 +1505,23 @@ window.NoteApp = window.NoteApp || {};
       return out;
     },
 
-    /**
-     * The current database as raw bytes — the "Export .db" button. This is the same
-     * byte stream that is stored in IndexedDB, so the exported file IS the app's
-     * database, directly openable by sqlite3/DBeaver/DB Browser.
-     */
     exportBytes: function () {
       return db.export();
     },
 
-    // -------------------------------------------------------------------- vault
-    /**
-     * The write queue, for a caller about to rewrite every row.
-     *
-     * The conversion paths below MUST NOT read the database while a write is still queued: the
-     * queue is ordered, so a pending autosave has not run yet at the moment they read, and the
-     * conversion's own UPDATE would then put the pre-autosave text back. Waiting here is what
-     * makes "read every row, then write every row" mean what it says.
-     */
     pendingWrites: function () {
       return writeQueue || Promise.resolve();
     },
 
-    /**
-     * Which state the notebook is in, as the one word the interface needs.
-     *
-     * 'off' is "no vault row exists"; 'unlocked' is "the view holds every plaintext"; anything
-     * else with a vault row is 'locked'. Deliberately keyed on viewReady rather than on the
-     * presence of the key: between deriving a key and finishing the decryption the notebook is
-     * neither readable nor honestly callable unlocked.
-     */
     vaultState: function () {
       if (!App.crypto.isActive()) return 'off';
       return viewReady ? 'unlocked' : 'locked';
     },
 
-    /** True when bodies and attachments exist but cannot be read right now. */
     locked: function () {
       return App.crypto.isActive() && !viewReady;
     },
 
-    /** Everything the Security section prints, read fresh. */
     vaultInfo: function () {
       var row = vaultRow();
       return {
@@ -2402,18 +1532,6 @@ window.NoteApp = window.NoteApp || {};
       };
     },
 
-    /**
-     * Turn encryption on: seal every note body and stored attachment, and commit the vault row.
-     *
-     * The whole conversion and the vault row land in ONE transaction (see write()). That is not
-     * tidiness — it is the difference between a notebook that is either plaintext or encrypted,
-     * and one that is half of each with no key to the half that is sealed. If any statement
-     * fails, write() rolls back and this promise rejects with the notebook untouched.
-     *
-     * @param {string} password
-     * @param {function} [onProgress] (done, total) => void, for the progress dialog.
-     * @returns {Promise<{notes:number, files:number}>}
-     */
     enableVault: function (password, onProgress) {
       if (!App.crypto.isSupported()) return Promise.reject(new Error(App.crypto.unsupportedMessage()));
       if (vaultRow()) return Promise.reject(new Error('This notebook is already encrypted.'));
@@ -2431,8 +1549,6 @@ window.NoteApp = window.NoteApp || {};
         .then(function (result) {
           plan = result;
           if (plan.alreadyEncrypted.length) {
-            // Re-sealing ciphertext would put the plaintext inside it out of reach for good.
-            // Nothing has been written at this point, so refusing costs the user nothing.
             throw new Error(plan.alreadyEncrypted.length + ' record'
               + (plan.alreadyEncrypted.length === 1 ? ' is' : 's are')
               + ' already encrypted, and this notebook has no key for '
@@ -2454,22 +1570,13 @@ window.NoteApp = window.NoteApp || {};
         .then(function () {
           committed = true;
           App.crypto.finishEnrollment();
-          // The plaintext that was just sealed IS the unlocked view, so enabling encryption
-          // costs one pass over the data rather than a seal followed by a decrypt of it.
           noteText = plan.noteText;
           fileBytes = plan.fileBytes;
           viewReady = true;
           var report = { notes: plan.notes.length, files: plan.files.length, compactionFailed: false };
-          // The compaction is what makes the protection true of the FILE and not just of the
-          // rows: without it the plaintext that was replaced is still in the image that gets
-          // stored and exported. It is not part of the transaction, so it can fail without
-          // undoing anything — and if it does, the user is told rather than left believing the
-          // old text is gone.
           return compactQuietly(report);
         })
         .catch(function (err) {
-          // Past the commit the vault is real, and un-saying that would be far worse than the
-          // error being reported: it would leave rows sealed by a key this module denies having.
           if (committed) throw err;
           App.crypto.cancelEnrollment();
           noteText = {};
@@ -2479,15 +1586,6 @@ window.NoteApp = window.NoteApp || {};
         });
     },
 
-    /**
-     * Verify the password, install the key, and build the unlocked view.
-     *
-     * A wrong password rejects from App.crypto.unlock() — the GCM tag on the vault's check
-     * string cannot be satisfied by any other key — and nothing here ever compares a password
-     * or a hash of one.
-     *
-     * @returns {Promise<{failures:Array}>} the rows that exist but could not be opened.
-     */
     unlockVault: function (password, onProgress) {
       var row = vaultRow();
       if (!row) return Promise.reject(new Error('This notebook is not encrypted.'));
@@ -2497,15 +1595,9 @@ window.NoteApp = window.NoteApp || {};
         .then(function () { return buildUnlockedView(onProgress); })
         .then(function (view) {
           var result = { failures: view.failures };
-          // The unlock is remembered for this tab, so a reload inside it does not ask again.
-          // Best-effort on purpose: a browser that cannot hold the key still unlocks here, it
-          // merely asks next time.
           return rememberSession().then(function () { return result; }, function () { return result; });
         })
         .catch(function (err) {
-          // A failed unlock leaves the notebook locked. Keeping a key that was derived from
-          // the wrong password, or from a notebook whose data then failed to open, would be
-          // the worst of both states: reporting one thing and holding another.
           App.crypto.lock();
           noteText = {};
           fileBytes = {};
@@ -2514,18 +1606,6 @@ window.NoteApp = window.NoteApp || {};
         });
     },
 
-    /**
-     * Adopt the unlock this tab left behind, and rebuild the view from it.
-     *
-     * Called once at boot, before the first paint, so a reload lands on the notes rather than
-     * on a lock notice. Three answers are all "locked": there is no vault; the record belongs
-     * to a tab that is gone (its id no longer matches this tab's); or the key no longer opens
-     * the data, because the notebook was re-keyed or encryption was turned off and on again
-     * since. A remembered key that has stopped working is dropped rather than kept, so the
-     * stale record cannot fail twice.
-     *
-     * @returns {Promise<{resumed:boolean, failures?:Array}>}
-     */
     resumeVault: function (onProgress) {
       if (!vaultRow()) return Promise.resolve({ resumed: false });
       if (!App.crypto.isSupported()) return Promise.resolve({ resumed: false });
@@ -2533,7 +1613,6 @@ window.NoteApp = window.NoteApp || {};
       return App.storage.loadVaultKey().then(function (record) {
         if (!record || !record.key) return { resumed: false };
         if (record.id !== App.session.id()) {
-          // Another tab's unlock, or one whose tab has closed. Not ours to keep.
           return App.storage.clearVaultKey().then(function () { return { resumed: false }; });
         }
         App.crypto.adoptKey(record.key);
@@ -2551,12 +1630,6 @@ window.NoteApp = window.NoteApp || {};
       });
     },
 
-    /**
-     * Drop the key and the plaintext with it. The stored data is untouched.
-     *
-     * The remembered unlock goes with them: "Lock now" has to mean this tab stops being able
-     * to read the notebook without the password, reload or no reload.
-     */
     lockVault: function () {
       App.crypto.lock();
       noteText = {};
@@ -2565,16 +1638,6 @@ window.NoteApp = window.NoteApp || {};
       forgetSession();
     },
 
-    /**
-     * Turn encryption off: write every payload back as plaintext and delete the vault row, in
-     * one transaction.
-     *
-     * The password is required even when the notebook is already unlocked. The key in memory
-     * would be enough to decrypt, but this is the action that puts everything back in the
-     * clear, and it should cost the same password that hid it.
-     *
-     * @returns {Promise<{notes:number, files:number}>}
-     */
     disableVault: function (password, onProgress) {
       var row = vaultRow();
       if (!row) return Promise.reject(new Error('This notebook is not encrypted.'));
@@ -2590,8 +1653,6 @@ window.NoteApp = window.NoteApp || {};
         .then(function (result) {
           plan = result;
           if (plan.failures.length) {
-            // Refuse rather than drop ciphertext on the floor: once the vault row is gone, a
-            // row that could not be decrypted is a row that can never be read again.
             throw new Error(plan.failures.length + ' record'
               + (plan.failures.length === 1 ? ' could' : 's could')
               + ' not be decrypted, so encryption was left on. Nothing was changed.');
@@ -2612,20 +1673,12 @@ window.NoteApp = window.NoteApp || {};
           noteText = {};
           fileBytes = {};
           viewReady = false;
-          // No vault, so no remembered key: a record kept for a notebook that is no longer
-          // encrypted is one more thing that could be adopted by mistake.
           forgetSession();
           var report = { notes: plan.notes.length, files: plan.files.length };
-          // Same reasoning in the other direction: the ciphertext that was just replaced is
-          // inert without the key, but leaving it in the file makes the export larger and the
-          // state harder to reason about. This one is allowed to fail silently — nothing about
-          // the result is a secret once the vault row is gone.
           return compact().then(function () { return report; }, function () { return report; });
         })
         .catch(function (err) {
           if (committed) throw err;
-          // Put the previous state back exactly: a locked notebook that was unlocked only to
-          // make this check must not be left holding a key it did not have before.
           if (!wasReady) {
             App.crypto.lock();
             noteText = {};
@@ -2636,13 +1689,6 @@ window.NoteApp = window.NoteApp || {};
         });
     },
 
-    /**
-     * Diagnostics and check tools only: the stored (possibly encrypted) text of a note, and
-     * the raw value of a file's blob column, exactly as they sit in SQLite. The app never calls
-     * these — a caller that wants a note's text uses getNote(), which decrypts. What this
-     * returns is ciphertext, so it cannot leak plaintext; it exists so a check can prove that
-     * ciphertext is what is stored rather than taking a flag's word for it.
-     */
     storedContent: function (id) {
       var row = queryOne('SELECT content FROM notes WHERE id = ?', [id]);
       return row ? row.content : null;
@@ -2653,15 +1699,6 @@ window.NoteApp = window.NoteApp || {};
       return row ? row.blob_data : null;
     },
 
-    // ------------------------------------------------------------------- trash
-    /**
-     * How many items are in the trash, optionally scoped to one workspace.
-     *
-     * The corner control passes the workspace on screen, because the panel it opens lists
-     * THAT workspace's deleted rows: a badge counting rows the panel will not show — rows
-     * belonging to another workspace — contradicts itself the moment it is clicked. The
-     * parameter stays optional so a caller can still ask the database-wide question.
-     */
     countTrash: function (workspaceId) {
       var scope = workspaceId ? ' AND workspace_id = ?' : '';
       var args = workspaceId ? [workspaceId] : [];
@@ -2671,7 +1708,6 @@ window.NoteApp = window.NoteApp || {};
       return (folders ? folders.n : 0) + (notes ? notes.n : 0) + (files ? files.n : 0);
     },
 
-    /** List deleted items in a workspace. */
     listTrash: function (workspaceId) {
       var folderRows = query(
         'SELECT id, workspace_id, name, deleted_at FROM folders WHERE workspace_id = ? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC',
@@ -2692,15 +1728,6 @@ window.NoteApp = window.NoteApp || {};
       };
     },
 
-    /**
-     * Total bytes of every file inside a folder's subtree, including nested folders.
-     * One grouped query rather than a SUM per folder, because the trash lists a size for
-     * each deleted folder it shows. Deleted rows are included on purpose: the caller is
-     * usually asking about a folder that is itself in the trash, and the honest answer to
-     * "how many bytes are in here" counts everything the folder holds.
-     *
-     * @returns {Object<string, number>} folderId -> bytes
-     */
     subtreeFileBytes: function (workspaceId) {
       var rows = query(
         'SELECT folder_id AS folder_id, SUM(size) AS bytes FROM files ' +
@@ -2728,16 +1755,6 @@ window.NoteApp = window.NoteApp || {};
       return totals;
     },
 
-    /**
-     * Every folder id in the subtree rooted at `rootId`, including the root, following
-     * links through soft-deleted folders as well.
-     *
-     * deleteFolder() stamps the entire subtree, so when a folder is restored the deleted
-     * folders *inside* it are still stamped. descendantFolderIds() deliberately filters
-     * those out (it answers "what is live under here"), which is why the restore path
-     * needs this second walk — without it, restoring a folder brings back the folder and
-     * silently leaves every nested folder and its contents in the trash.
-     */
     descendantFolderIdsAll: function (rootId) {
       var seen = {};
       var ids = [rootId];
@@ -2760,7 +1777,6 @@ window.NoteApp = window.NoteApp || {};
       return ids;
     },
 
-    /** Restore a folder (and descendants) or single item. */
     restoreFolder: function (id) {
       var ids = API.descendantFolderIdsAll(id);
       return write(function (run) {
@@ -2779,17 +1795,6 @@ window.NoteApp = window.NoteApp || {};
       return write('UPDATE files SET deleted_at = NULL WHERE id = ?', [id]);
     },
 
-    /**
-     * Restore one note or file, and any deleted folder above it.
-     *
-     * A note deleted on its own still sits inside its folder, so restoring it is enough.
-     * But when the *folder* was deleted, the note was stamped as part of the cascade —
-     * clearing its own stamp alone leaves it live inside a deleted folder, where every
-     * list query filters it out. It would be restored and invisible, which reads as a
-     * lost note. Walking the ancestry is what makes single-item restore honest.
-     *
-     * @returns {number} how many ancestor folders had to be brought back as well
-     */
     restoreWithAncestors: function (kind, id) {
       var table = kind === 'note' ? 'notes' : 'files';
       var row = queryOne('SELECT folder_id FROM ' + table + ' WHERE id = ?', [id]);
@@ -2813,13 +1818,6 @@ window.NoteApp = window.NoteApp || {};
       }).then(function () { return ancestors.length; });
     },
 
-    /**
-     * Permanently delete a folder and its whole subtree.
-     *
-     * Uses the deleted-inclusive walk: a trashed folder's nested folders are stamped too,
-     * so the live-only walk stops at the first trashed level and would leave orphaned
-     * notes and files pointing at folders that no longer exist.
-     */
     permanentDeleteFolder: function (id) {
       var ids = API.descendantFolderIdsAll(id);
       return write(function (run) {
@@ -2840,21 +1838,17 @@ window.NoteApp = window.NoteApp || {};
       return write('DELETE FROM files WHERE id = ?', [id]);
     },
 
-    // Templates (v7)
     listTemplates: function (wsId) { return query('SELECT * FROM templates WHERE workspace_id=? ORDER BY name', [wsId||0]); },
     saveTemplate: function (id, wsId, name, content) { return write('INSERT INTO templates (id, workspace_id, name, content, created_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET workspace_id=excluded.workspace_id, name=excluded.name, content=excluded.content', [id||null, wsId||0, String(name).trim()||'Untitled', content||'']); },
     deleteTemplate: function (id) { return write('DELETE FROM templates WHERE id=?', [id]); },
 
-    /** Tear the engine down (used by "reset everything" before a reload). */
     destroy: function () {
-      // The unlocked view goes with it. Whatever is about to happen — a reload, a wipe — the
-      // decrypted notebook must not outlive the database it was read from.
       App.crypto.lock();
       noteText = {};
       fileBytes = {};
       viewReady = false;
       if (db) {
-        try { db.close(); } catch (err) { /* already closed */ }
+        try { db.close(); } catch (err) {  }
         db = null;
       }
     },

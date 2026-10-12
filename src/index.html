@@ -5,35 +5,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Notebook</title>
 <meta name="description" content="Offline note taking with SQLite (WASM) and IndexedDB. No server, no account.">
-<!-- The installable-app files are written beside this page by tools/build.js. A copy
-     opened from disk has no origin to register a worker against, so these are read only
-     when the app is served (npm run serve); on file:// the links are inert. -->
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="theme-color" content="#3b4ede">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Notebook">
-<!-- The tab icon is the .topbar__logo mark, drawn from the same geometry: an accent
-     tile holding a text-cursor bar and four note lines. It is inline so the app still
-     has an icon on file:// with no network and no sibling asset; app.js re-draws it
-     from the live --accent token, so the tab follows the theme and the palette. -->
 <link id="app-icon" rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2022%2022'%3E%3Crect%20width='22'%20height='22'%20rx='6'%20fill='%233b4ede'/%3E%3Crect%20x='5.5'%20y='5.5'%20width='2'%20height='11'%20rx='1'%20fill='%23ffffff'/%3E%3Cg%20fill='%23ffffff'%20opacity='0.55'%3E%3Crect%20x='9.5'%20y='5.5'%20width='7'%20height='1'/%3E%3Crect%20x='9.5'%20y='8.5'%20width='7'%20height='1'/%3E%3Crect%20x='9.5'%20y='11.5'%20width='7'%20height='1'/%3E%3Crect%20x='9.5'%20y='14.5'%20width='7'%20height='1'/%3E%3C/g%3E%3C/svg%3E">
-<!-- Set before first paint so a saved theme or palette does not flash the defaults.
-     Both preferences share one try/catch and fail soft together: a malformed value has
-     to leave the page on the tokens the stylesheet already declares, not on a partial
-     theme. -->
 <script>
   try {
     var t = JSON.parse(localStorage.getItem('noteapp.pref.theme'));
     if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
     var p = JSON.parse(localStorage.getItem('noteapp.pref.palette'));
-    // 'indigo' is the default and needs no attribute, so it is deliberately missing from
-    // this list: an unrecognised name then falls through to the values the token block
-    // already declares, instead of selecting a palette block the stylesheet may not have.
     if (['teal', 'amber', 'rose', 'violet', 'graphite'].indexOf(p) !== -1) {
       document.documentElement.setAttribute('data-palette', p);
     }
-  } catch (e) { /* first run */ }
+  } catch (e) {  }
 </script>
 <style>
 /*__CSS__*/
@@ -41,7 +27,6 @@
 </head>
 <body>
 
-<!-- ============================ top bar ============================ -->
 <header class="topbar">
   <button id="nav-toggle" class="icon-btn nav-toggle" type="button" data-action="toggle-nav" aria-label="Back to the notebook list" title="Back to the notebook list">
     <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" style="font-size:16px">
@@ -62,34 +47,20 @@
   </div>
 
   <div class="topbar__actions">
-    <!-- The task list is a view OF the workspace rather than a place inside it, so its way in
-         sits at the right end of the header with the other view-level controls, not among the
-         rail's rows, which are what the notebook holds. ui.js fills this host; it is the one
-         control here that is not a bare icon, because the number of open tasks is the reason
-         to look at it. -->
     <div id="topbar-views" class="topbar__views"></div>
-    <!-- Icon markup is injected by components.js so the theme swap reuses the same set. -->
     <button id="theme-toggle" class="icon-btn" type="button" aria-label="Toggle dark mode" title="Toggle dark mode"></button>
     <button id="settings-open" class="icon-btn" type="button" aria-label="Settings" title="Settings"></button>
   </div>
 </header>
 
-<!-- ============================ app body ============================ -->
-<!-- `is-mobile-list` is managed by app.js and only matters under 820px: it
-     picks which single pane is on screen instead of splitting the viewport. -->
 <div class="layout is-mobile-list">
 
-  <!-- ---------------------------- sidebar ---------------------------- -->
   <aside id="sidebar" class="sidebar" aria-label="Notebook navigation">
     <div class="sidebar__head">
       <div class="workspace-row">
-        <!-- The switcher is a custom select built by components.js, which keeps a real
-             <select> underneath; this div is its mount point. -->
         <div id="workspace-select" class="workspace-select-host"></div>
         <button id="workspace-add" class="icon-btn icon-btn--sm" type="button" title="New workspace" aria-label="New workspace">+</button>
       </div>
-      <!-- Small icon+label buttons: the workspace actions sit under the switcher, and
-           icons are injected by components.js so the whole app uses one icon set. -->
       <div class="workspace-tools">
         <button id="workspace-rename" class="mini-btn" type="button"></button>
         <button id="workspace-delete" class="mini-btn mini-btn--danger" type="button"></button>
@@ -97,9 +68,6 @@
     </div>
 
     <nav class="sidebar__section sidebar__section--grow" aria-label="Folders and notes">
-      <!-- The label row carries one quiet control: the sort menu. It governs the tree
-           below it and the pane listing beside it, which is why it lives on this row
-           rather than beside either one — a second copy would be a second state. -->
       <div class="sidebar__label-row">
         <span class="sidebar__label">Contents</span>
         <button id="sort-menu" class="sidebar__sort" type="button" data-action="sort-menu"
@@ -111,40 +79,21 @@
 
     <div class="sidebar__footer">
       <p id="upload-status" class="upload-status is-hidden" role="status"></p>
-      <!-- Action pair and the storage readout are rebuilt by ui.js: both depend on live
-           counts, and the buttons carry their own icons from the one icon set. -->
       <div id="rail-actions" class="rail-actions"></div>
-      <!-- The floor's closing line is the storage readout on its own: how much is
-           stored, and the way to the database facts behind it. The trash used to share
-           this line; it has moved to the workspace area's corner, which is the surface
-           it acts on. -->
       <div id="rail-storage" class="rail-storage"></div>
       <input id="file-input" class="visually-hidden" type="file" multiple
              accept="image/*,.pdf,.txt,.md,.docx,.doc,.csv,.json,.zip">
     </div>
   </aside>
 
-  <!-- ------------------------------ tabs ------------------------------ -->
-  <!-- Open tabs: one row above the main pane listing every note/file currently
-       open. Rendered by ui.renderTabs from app state; hidden when empty or when
-       the task list is in front. Each tab carries data-kind/data-id plus
-       data-ctx="tab" so right-click offers Close / Close others / Close all. -->
   <div id="tabs" class="tabs is-hidden" role="tablist" aria-label="Open notes and files"></div>
 
-  <!-- ------------------------------ main ------------------------------ -->
   <main id="main" class="main" aria-live="polite"></main>
 
-  <!-- The trash is an overlay destination, not a place in the tree, so it does not
-       belong in the Contents list — it closes the workspace area's bottom-right corner,
-       the edge the eye leaves the pane through. It is anchored to .layout, whose second
-       column *is* #main, so a long listing scrolls underneath it without the control
-       ever moving or covering live content. Its badge is filled in by ui.js; a corner
-       control with no count is decoration. -->
   <button id="workspace-trash" class="trash-fab" type="button" data-action="view-trash"
           aria-label="Open the trash" title="Open the trash"></button>
 </div>
 
-<!-- drop affordance, shown while files are dragged over the window -->
 <div class="dropzone" aria-hidden="true">
   <div class="dropzone__inner">
     <strong>Drop files to attach</strong>
@@ -152,9 +101,6 @@
   </div>
 </div>
 
-<!-- ============================ settings ============================ -->
-<!-- The one persistent dialog. Transient asks (rename, delete) are built on demand by
-     components.js, so they cannot be left behind in the tree. -->
 <dialog id="settings-dialog" class="dialog dialog--wide" aria-labelledby="settings-title">
   <div class="dialog__form">
     <header class="dialog__head">
@@ -166,10 +112,6 @@
     <div class="dialog__body">
       <section class="dialog__section">
         <h3>Appearance</h3>
-        <!-- Six real radios behind custom chips. The group keeps the arrow-key and
-             screen-reader contract; each chip paints only a dot and a name, so the
-             chooser stays legible in the palette it is currently describing. The dot
-             colours come from the fixed swatch tokens, not from the live accent. -->
         <div id="palette-group" class="palette-group" role="radiogroup" aria-label="Colour palette">
           <label class="palette-option">
             <input class="palette-option__input" type="radio" name="palette" value="indigo">
@@ -225,11 +167,6 @@
 
       <section class="dialog__section">
         <h3>Security</h3>
-        <!-- State first, then the honest account of what this does and does not protect.
-             The prose is static markup rather than a string in app.js on purpose: it is a
-             claim about the product, and it belongs where it can be read next to the
-             controls it describes. It is deliberately specific about what stays readable,
-             because "encrypted" on its own invites exactly the wrong assumption. -->
         <div id="vault-info" class="info-list"></div>
         <p class="dialog__note">
           Note bodies and stored file contents are encrypted with your password. Everything else
@@ -255,7 +192,6 @@
   </div>
 </dialog>
 
-<!-- Template picker: command-palette surface — filter, borderless rows, preview, footer actions. -->
 <dialog id="template-picker" class="dialog dialog--wide" aria-labelledby="tp-title">
   <div class="dialog__form">
     <header class="dialog__head">
@@ -274,11 +210,8 @@
     </footer>
   </div>
 </dialog>
-<!-- vendored sql.js engine (classic script; required before app scripts) -->
 <!--__VENDOR__-->
-<!-- SQLite WASM binary as a base64 data: URI, so file:// needs no fetches -->
 <!--__WASM__-->
-<!-- application modules -->
 <!--__SCRIPTS__-->
 </body>
 </html>

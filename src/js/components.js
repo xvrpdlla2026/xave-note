@@ -1,26 +1,3 @@
-/**
- * components.js — reusable interface pieces: vector icons, the dialog family
- * (settings, prompt, destructive confirm, fullscreen panel), the form controls and the
- * context menu.
- *
- * Why this file exists: the app used `window.prompt` and `window.confirm` for every
- * rename and every delete. Those are the browser's chrome, not the app's — they cannot
- * be styled, cannot state what a destructive action actually destroys, and cannot be
- * verified. Everything here is built on the platform rather than around it:
- *
- *   - Dialogs are real <dialog> elements, so focus trapping, Escape and scroll lock
- *     come from the browser instead of hand-rolled listeners. A fullscreen panel is the
- *     same element with a different size class, not a second mechanism.
- *   - Selects keep a real <select> in the DOM as the form control and the accessible
- *     value, with a styled button and listbox as the visible surface. Checkboxes and
- *     radios are the real inputs, restyled — never a div pretending to be one.
- *   - The context menu replaces the browser's default menu on the elements where the app
- *     has something more useful to offer, and leaves it alone inside text fields, where
- *     cut/copy/paste and spellcheck are the more useful menu.
- *   - Errors are rendered with an icon and text as well as colour.
- *
- * Loaded as a classic script: everything attaches to window.NoteApp.
- */
 window.NoteApp = window.NoteApp || {};
 
 (function (App) {
@@ -29,24 +6,6 @@ window.NoteApp = window.NoteApp || {};
   var util = App.util;
   var el = util.el;
 
-  // ------------------------------------------------------------------- icons
-  /**
-   * Inline SVG paths, 24x24 grid, 1.6 stroke, no fill.
-   *
-   * These are hand-authored on purpose, and that is a deliberate departure from the
-   * usual "never draw icon paths" rule: this project ships as ONE offline file with no
-   * build step and no dependencies, so an icon package cannot be added. The set is
-   * small, drawn on one grid with one stroke weight, and lives in a single place, which
-   * is what keeps it coherent. Each path is a single element, not a traced outline.
-   *
-   * Two glyphs are constrained by what they have to sit next to, not by taste:
-   *   - `settings` is a toothed gear outline. It previously read as a knob on eight
-   *     radial stalks, which at 16px was the same visual sentence as `sun` — and since
-   *     those two glyphs are the only two controls in the top bar, they were genuinely
-   *     indistinguishable. A closed outline with an even tooth count is unmistakable.
-   *   - `sun` / `moon` are the theme pair and share a silhouette family, so the button's
-   *     meaning survives the swap without the label.
-   */
   var ICONS = {
     close: ['M6.5 6.5 17.5 17.5', 'M17.5 6.5 6.5 17.5'],
     search: ['M11 4.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13Z', 'M15.8 15.8 20 20'],
@@ -69,22 +28,6 @@ window.NoteApp = window.NoteApp || {};
     server: ['M4 5.5h16v5H4Z', 'M4 13.5h16v5H4Z', 'M7.2 8h.01', 'M7.2 16h.01'],
     chevron: ['M6.5 9.5 12 15l5.5-5.5'],
 
-    /**
-     * Settings, drawn as two control rails with their knobs — the current convention for
-     * "settings", and the shape that survives this app's constraints.
-     *
-     * Three attempts at a gear are worth recording, because each looked fine in code:
-     *   1. Eight radial stalks around a circle. At 16px that is the same visual sentence as
-     *      the sun glyph beside it, so the top bar's two controls were indistinguishable.
-     *   2. Eight teeth with arc crowns and arc valleys. Deep valleys plus a 1.6 stroke close
-     *      the gaps between teeth, and a stroked path of arcs reads as a pinwheel.
-     *   3. Eight flat-topped teeth with straight flanks. Legible on its own, but in a 24px
-     *      viewBox at 16px the pitch leaves about 1.8px of valley after the stroke — a
-     *      starburst, not a gear. Four teeth would fit; four teeth do not read as a gear.
-     *
-     * So the constraint is real and it is the pitch, not the drawing. Two rails carry the
-     * same meaning, are unambiguous at 16px, and cannot be mistaken for a sun.
-     */
     settings: [
       'M4 8.6h16',
       'M4 15.4h16',
@@ -96,12 +39,8 @@ window.NoteApp = window.NoteApp || {};
     arrowLeft: ['M19 12H5.5', 'M11 5.5 4.5 12l6.5 6.5'],
     spinner: ['M12 4.5a7.5 7.5 0 1 0 7.5 7.5'],
 
-    // Restore: a counter-clockwise arrow around a clock face. The direction is the
-    // whole message ("put it back"), which is why it is not a plain chevron.
     restore: ['M3.6 12a8.4 8.4 0 1 0 2.5-6', 'M3.2 3.6V9h5.4', 'M12 7.9V12l3 1.7'],
 
-    // Context-menu and control glyphs. No separate `sliders` glyph: it would be the same
-    // picture, and two names for one picture is how an icon set drifts.
     filter: ['M4 6h16', 'M7 12h10', 'M10 18h4'],
     sort: ['M7 5v14', 'M4 16l3 3 3-3', 'M17 19V5', 'M14 8l3-3 3 3'],
     external: ['M14 4.5h5.5V10', 'M19.5 4.5 11 13', 'M18 14.5v4a1 1 0 0 1-1 1H5.5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h4'],
@@ -112,25 +51,12 @@ window.NoteApp = window.NoteApp || {};
     emptyTrash: ['M4.5 7h15', 'M9.5 7V5.5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1V7', 'M6.5 7l0.9 11.5a1.5 1.5 0 0 0 1.5 1.4h6.2a1.5 1.5 0 0 0 1.5-1.4L17.5 7', 'M9.8 10.5l4.4 6', 'M14.2 10.5l-4.4 6'],
     chart: ['M4 20.5h16', 'M7 20.5v-6', 'M12 20.5V7.5', 'M17 20.5v-3.5'],
 
-    // The two arrangements the folder pane offers for the same items. Four squares, and a
-    // stack of rows that each carry a leading marker: every picture is the layout it names,
-    // so the control needs no legend, and the marker is what keeps `list` from reading as
-    // the `filter` glyph three rules below it.
     grid: ['M4.5 4.5h6v6h-6Z', 'M13.5 4.5h6v6h-6Z', 'M4.5 13.5h6v6h-6Z', 'M13.5 13.5h6v6h-6Z'],
     list: ['M4.5 6.5h3.2', 'M10.6 6.5h8.9', 'M4.5 12h3.2', 'M10.6 12h8.9', 'M4.5 17.5h3.2', 'M10.6 17.5h8.9'],
   };
 
   var SVG_NS = 'http://www.w3.org/2000/svg';
 
-  /**
-   * Build an SVG node in the *SVG* namespace.
-   *
-   * document.createElement() always produces HTML-namespace elements, and an <svg> or
-   * <path> in the HTML namespace is parsed but never rendered — it has geometry and
-   * computed styles and still draws nothing. Only createElementNS puts an element in the
-   * namespace the SVG renderer looks at. Attribute names are also case-sensitive here
-   * (viewBox, not viewbox), which is why they are set with setAttributeNS.
-   */
   function svgEl(tag, attrs) {
     var node = document.createElementNS(SVG_NS, tag);
     if (attrs) {
@@ -141,7 +67,6 @@ window.NoteApp = window.NoteApp || {};
     return node;
   }
 
-  /** One icon element. `size` is a font-size, so CSS controls the box it fills. */
   function icon(name, size) {
     var d = ICONS[name];
     if (!d) return null;
@@ -158,42 +83,9 @@ window.NoteApp = window.NoteApp || {};
     return node;
   }
 
-  // ------------------------------------------------------------------ dialog
-  /** The element that currently holds focus while a dialog is open, per dialog. */
   var FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
   var openDialogs = [];
 
-  /**
-   * Build and show a dialog. Resolves with the submitted value, `true` for a plain
-   * confirm, or `null` when dismissed (Escape, the close control, or Cancel).
-   *
-   * @param {object} cfg
-   * @param {string} cfg.title            headline, also the accessible name
-   * @param {string} [cfg.icon]           icon name shown in the tinted tile
-   * @param {boolean} [cfg.danger]        destructive: danger tile, danger confirm button
-   * @param {string} [cfg.message]        leading sentence
-   * @param {string[]} [cfg.consequences] concrete effects, listed under the message
-   * @param {Node} [cfg.body]             arbitrary content appended after the consequences
-   * @param {object} [cfg.input]          { label, value, placeholder, helper, select }
-   * @param {object} [cfg.gate]           { label, phrase } type-to-confirm requirement
-   * @param {string} [cfg.confirmLabel]
-   * @param {string} [cfg.cancelLabel]
-   * @param {Node} [cfg.footer]           extra footer controls, placed before Cancel
-   * @param {boolean} [cfg.fullscreen]    render as a fullscreen panel rather than a card
-   * @param {boolean} [cfg.hideFooter]    suppress the Cancel/confirm footer entirely
-   * @param {boolean} [cfg.hideHeader]    suppress the shell header (title + close control).
-   *                                      For a fullscreen panel that brings its own header:
-   *                                      the shell draws no chrome of its own, and names
-   *                                      itself with aria-label instead of aria-labelledby.
-   * @param {boolean} [cfg.closeOnBackdrop]
-   * @param {function} [cfg.onOpen]       ({ root, form, body, footer, close }) => void,
-   *                                      called after the dialog is in the DOM, so a panel
-   *                                      can wire its own controls without this file
-   *                                      knowing anything about the feature
-   * @param {function} [cfg.onSubmit]     (value) => Promise; keeps the dialog open with a
-   *                                      busy footer, and shows the failure inline
-   * @returns {Promise<string|boolean|null>}
-   */
   function dialog(cfg) {
     var config = cfg || {};
 
@@ -203,25 +95,16 @@ window.NoteApp = window.NoteApp || {};
       var titleId = 'dlg-title-' + util.uuid().slice(0, 8);
       var described = [];
 
-      // What had focus before the dialog opened, so it can be handed back on close.
       var returnFocus = document.activeElement && document.activeElement !== document.body
         ? document.activeElement
         : null;
 
-      // A fullscreen panel brings its own header, and stacking two of them puts a
-      // second title and a second close control on screen — the first of the pair
-      // painting outside the surface the reader is actually looking at. `hideHeader`
-      // is how a caller says "the panel *is* the header": the shell then draws no
-      // chrome of its own and takes its accessible name from `title`.
       var dialogAttrs = {
         class: 'dialog'
           + (config.danger ? ' dialog--danger' : '')
           + (config.wide ? ' dialog--wide' : '')
           + (config.fullscreen ? ' dialog--full' : ''),
       };
-      // Stated only when there is a title to state: an empty aria-label is an accessible
-      // name that overrides whatever the content would have contributed, so omitting the
-      // attribute is strictly better than setting it to nothing.
       if (config.hideHeader && config.title) dialogAttrs['aria-label'] = config.title;
       else dialogAttrs['aria-labelledby'] = titleId;
 
@@ -229,12 +112,9 @@ window.NoteApp = window.NoteApp || {};
 
       var form = el('form', { class: 'dialog__form', novalidate: 'novalidate' });
 
-      // ---- header
       var closeBtn = null;
       if (!config.hideHeader) {
         var head = el('div', { class: 'dialog__head' });
-        // No explicit size: the stylesheet owns the tile's icon scale, so it stays in step
-        // with the tile rather than fighting an inline override.
         if (config.icon) head.appendChild(el('span', { class: 'dialog__icon' }, [icon(config.icon)]));
         head.appendChild(el('h2', { id: titleId, class: 'dialog__title', text: config.title || '' }));
         closeBtn = el('button', {
@@ -247,7 +127,6 @@ window.NoteApp = window.NoteApp || {};
         form.appendChild(head);
       }
 
-      // ---- body
       var body = el('div', { class: 'dialog__body' });
 
       if (config.message) {
@@ -256,8 +135,6 @@ window.NoteApp = window.NoteApp || {};
         body.appendChild(el('p', { id: msgId, class: 'dialog__message', text: config.message }));
       }
 
-      // Consequences are a list, not a paragraph: a delete dialog should name what goes,
-      // and a sentence buries that.
       if (config.consequences && config.consequences.length) {
         var list = el('ul', { class: 'dialog__consequences' });
         config.consequences.forEach(function (line) { list.appendChild(el('li', { text: line })); });
@@ -272,7 +149,6 @@ window.NoteApp = window.NoteApp || {};
         body.appendChild(field.root);
       }
 
-      // Type-to-confirm gate, used for the one action that erases everything.
       if (config.gate) {
         gate = fieldShell({
           label: 'Confirmation',
@@ -289,13 +165,10 @@ window.NoteApp = window.NoteApp || {};
         ]));
       }
 
-      // Free-form content last, so a caller can append a list, a panel or a form
-      // without this builder having to know what it is.
       if (config.body) body.appendChild(config.body);
 
       form.appendChild(body);
 
-      // ---- footer
       var cancelBtn = el('button', {
         class: 'btn',
         type: 'button',
@@ -308,7 +181,6 @@ window.NoteApp = window.NoteApp || {};
       }, [config.confirmLabel || 'Save']);
 
       var footer = el('div', { class: 'dialog__footer' }, [cancelBtn, confirmBtn]);
-      // Extra controls land on the leading edge of the footer, away from the confirm.
       if (config.footer) footer.insertBefore(config.footer, cancelBtn);
       if (config.hideFooter) {
         footer = null;
@@ -319,7 +191,6 @@ window.NoteApp = window.NoteApp || {};
       if (described.length) form.setAttribute('aria-describedby', described.join(' '));
       node.appendChild(form);
 
-      // A gate starts locked: the button only becomes available once the phrase matches.
       if (gate) {
         confirmBtn.disabled = true;
         gate.input.addEventListener('input', function () {
@@ -328,7 +199,6 @@ window.NoteApp = window.NoteApp || {};
         });
       }
 
-      // ---- behaviour helpers
       function gateSatisfied() {
         return !gate || gate.input.value.trim() === config.gate.phrase;
       }
@@ -360,15 +230,6 @@ window.NoteApp = window.NoteApp || {};
         if (returnFocus && document.contains(returnFocus)) returnFocus.focus();
       }
 
-      /**
-       * Close with an exit animation, then resolve. `dialog.close()` alone would snap;
-       * the closing state is a class so reduced-motion collapses it cleanly.
-       *
-       * The removal timer is the authority, not `animationend`: a dialog that closed while
-       * the viewport was resizing can have its animation cancelled, and an `animationend`
-       * that never arrives would leave the element in the DOM and the promise unsettled.
-       * The event is kept only so the usual path is instant.
-       */
       function dismiss(value) {
         if (settled) return;
         node.classList.add('dialog--closing');
@@ -400,8 +261,6 @@ window.NoteApp = window.NoteApp || {};
           setTimeout(remove, reduceMotion() ? 0 : 140);
         }).catch(function (err) {
           setBusy(false);
-          // Failures stay in the dialog, next to the retry, rather than in a toast the
-          // user may never connect to the action they just took.
           var text = (err && err.message) || 'That did not work.';
           if (field) setFieldError(field, text);
           else body.appendChild(el('p', { class: 'field__message field__message--error', text: text }));
@@ -410,22 +269,15 @@ window.NoteApp = window.NoteApp || {};
 
       form.addEventListener('submit', function (event) {
         event.preventDefault();
-        // A form with a single field submits implicitly on Enter, and a dialog that hides
-        // its footer has no submit button for that to be reaching: the Enter belongs to the
-        // field. Submitting there would dismiss the panel in the middle of a filter, which
-        // is the one thing a list you are working through must not do.
         if (config.hideFooter) return;
         submit();
       });
 
-      // Escape is the browser's job; this only settles the promise.
       node.addEventListener('cancel', function (event) {
         event.preventDefault();
         dismiss(null);
       });
 
-      // Backdrop click: <dialog> reports the click target as the dialog element itself,
-      // so the coordinates decide whether it landed outside the panel.
       node.addEventListener('click', function (event) {
         if (event.target !== node) return;
         var box = node.getBoundingClientRect();
@@ -434,8 +286,6 @@ window.NoteApp = window.NoteApp || {};
         if (outside && config.closeOnBackdrop !== false) dismiss(null);
       });
 
-      // Explicit focus containment: <dialog> traps Tab in current engines, but stating
-      // the contract here keeps it true for the reduced/simplified paths too.
       node.addEventListener('keydown', function (event) {
         if (event.key !== 'Tab') return;
         var items = Array.prototype.filter.call(node.querySelectorAll(FOCUSABLE), function (n) {
@@ -459,19 +309,13 @@ window.NoteApp = window.NoteApp || {};
       if (typeof node.showModal === 'function') node.showModal();
       else node.setAttribute('open', '');
 
-      // Hand the panel to its owner before anything is focused, so a fullscreen panel can
-      // fill its list and pick its own first focus target.
       var api = { root: node, form: form, body: body, footer: footer, close: dismiss };
       if (typeof config.onOpen === 'function') {
         try { config.onOpen(api); } catch (err) {
-          // eslint-disable-next-line no-console
           console.error('dialog onOpen failed', err);
         }
       }
 
-      // Focus the field for an input dialog (the user came here to type); for a
-      // destructive confirm, focus Cancel rather than Delete, so Enter cannot destroy
-      // anything by reflex.
       var focusTarget = null;
       if (!config.focus) {
         focusTarget = field ? field.input : (gate ? gate.input : (config.danger ? cancelBtn : confirmBtn));
@@ -489,10 +333,6 @@ window.NoteApp = window.NoteApp || {};
     return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   }
 
-  /**
-   * One labelled field: label above, control, then a message slot below that doubles as
-   * the helper text and the error text. Returns the pieces so callers can set errors.
-   */
   function fieldShell(opts) {
     var o = opts || {};
     var uid = 'fld-' + util.uuid().slice(0, 8);
@@ -518,7 +358,6 @@ window.NoteApp = window.NoteApp || {};
       message,
     ]);
 
-    // Clear an error as soon as the user starts fixing it, then re-validate on blur.
     input.addEventListener('input', function () {
       if (input.getAttribute('aria-invalid') === 'true') setFieldError({ input: input, message: message }, null);
     });
@@ -526,22 +365,12 @@ window.NoteApp = window.NoteApp || {};
     return { root: root, input: input, message: message, uid: uid };
   }
 
-  /**
-   * A labelled field around any control, not just a text input: the same label-above /
-   * control / message-below contract, with a label that is programmatically attached to
-   * whatever is inside. `control` may be a Node or a widget with a `.root` element (the
-   * select and checkbox factories below both return one).
-   *
-   * @param {object} opts { label, control, helper, id, className }
-   */
   function field(opts) {
     var o = opts || {};
     var control = o.control && o.control.root ? o.control.root : o.control;
     if (!control) return null;
 
     var uid = o.id || ('fld-' + util.uuid().slice(0, 8));
-    // Attach the label to the real focusable element when one can be found, so clicking
-    // the label focuses the control the way a native form does.
     var focusable = control.matches && control.matches('input, select, textarea, button')
       ? control
       : control.querySelector('input, select, textarea, .select__trigger, .checkbox__input');
@@ -563,7 +392,6 @@ window.NoteApp = window.NoteApp || {};
     return { root: root, control: control, helper: helper, uid: uid };
   }
 
-  /** Set or clear a field's error state: text plus icon, never colour alone. */
   function setFieldError(field, text) {
     if (!field || !field.input || !field.message) return;
     var node = field.message;
@@ -581,8 +409,6 @@ window.NoteApp = window.NoteApp || {};
     field.input.setAttribute('aria-describedby', field.uid + '-msg');
   }
 
-  // ------------------------------------------------------------ named dialogs
-  /** A plain confirmation. Resolves true or null. */
   function confirm(cfg) {
     var c = cfg || {};
     return dialog({
@@ -597,10 +423,6 @@ window.NoteApp = window.NoteApp || {};
     }).then(function (value) { return value === true; });
   }
 
-  /**
-   * A single-value text prompt. Resolves the trimmed string, or null if dismissed.
-   * Replaces window.prompt entirely.
-   */
   function prompt(cfg) {
     var c = cfg || {};
     return dialog({
@@ -620,19 +442,6 @@ window.NoteApp = window.NoteApp || {};
     }).then(function (value) { return typeof value === 'string' ? value : null; });
   }
 
-  // ------------------------------------------------------------------ select
-  /**
-   * A custom select over a real native <select>.
-   *
-   * Progressive enhancement rather than replacement: the hidden select holds the value
-   * and is what assistive tech and any automated check reads, while the button and
-   * listbox are the visible surface. Keyboard support covers the usual listbox
-   * contract: Up/Down to move, Home/End, Enter to commit, Escape to cancel, and
-   * type-ahead to jump to an option by its first letters.
-   *
-   * @param {object} cfg { options: [{value,label}], value, onChange, className, label,
-   *                       lead: icon name, hiddenLabel: bool }
-   */
   function select(cfg) {
     var c = cfg || {};
     var options = (c.options || []).map(function (o) {
@@ -643,7 +452,6 @@ window.NoteApp = window.NoteApp || {};
     options.forEach(function (o) {
       native.appendChild(el('option', { value: o.value, text: o.label, selected: o.value === String(c.value) }));
     });
-    // The native control stays reachable to assistive tech through its own label.
     if (c.label) {
       var labelId = 'sel-' + util.uuid().slice(0, 8);
       native.setAttribute('aria-label', c.label);
@@ -787,7 +595,6 @@ window.NoteApp = window.NoteApp || {};
         return;
       }
       if (key === 'Escape' || key === 'Tab') { closeList(key === 'Escape'); return; }
-      // Type-ahead: accumulate letters briefly, then jump to the first match.
       if (key.length === 1 && /\S/.test(key)) {
         typed += key.toLowerCase();
         if (typedTimer) clearTimeout(typedTimer);
@@ -802,7 +609,6 @@ window.NoteApp = window.NoteApp || {};
       }
     });
 
-    // Clicking away commits nothing, exactly like a native select.
     listbox.addEventListener('blur', function () {
       setTimeout(function () {
         if (open && !root.contains(document.activeElement)) closeList(false);
@@ -822,24 +628,11 @@ window.NoteApp = window.NoteApp || {};
       trigger.disabled = !!disabled;
       if (disabled) closeList(false);
     };
-    /** The real form control, for code that needs the element itself. */
     root.native = native;
 
     return root;
   }
 
-  // --------------------------------------------------------------- checkbox
-  /**
-   * A real <input type="checkbox">, restyled. The input is the control, so the label,
-   * the keyboard behaviour (Space), the indeterminate state and the accessibility tree
-   * all come from the platform; only the painted box is ours.
-   *
-   * `indeterminate` has no HTML attribute — it is a property only — so a caller passing
-   * `mixed: true` (the select-all box while part of the list is selected) gets it set
-   * as a property after construction.
-   *
-   * @param {object} cfg { label, checked, mixed, disabled, onChange, className, hideLabel }
-   */
   function checkbox(cfg) {
     var c = cfg || {};
     var uid = 'chk-' + util.uuid().slice(0, 8);
@@ -854,9 +647,6 @@ window.NoteApp = window.NoteApp || {};
     if (c.mixed) input.indeterminate = true;
     if (c.name) input.name = c.name;
     if (c.value !== undefined) input.value = String(c.value);
-    // With the visible label hidden, the wrapping <label> has no text at all and
-    // the control would be announced unnamed. The same string becomes its
-    // accessible name instead of being discarded.
     if (c.hideLabel && c.label) input.setAttribute('aria-label', c.label);
 
     if (typeof c.onChange === 'function') {
@@ -882,13 +672,6 @@ window.NoteApp = window.NoteApp || {};
     return label;
   }
 
-  // ------------------------------------------------------------- radio group
-  /**
-   * A segmented radio group: real radio inputs behind a segmented surface, so arrow-key
-   * navigation and "one of these" semantics are the platform's, not a re-implementation.
-   *
-   * @param {object} cfg { name, value, options: [{value,label,icon,badge}], onChange, className }
-   */
   function radioGroup(cfg) {
     var c = cfg || {};
     var name = c.name || ('seg-' + util.uuid().slice(0, 8));
@@ -934,31 +717,10 @@ window.NoteApp = window.NoteApp || {};
     return root;
   }
 
-  // ----------------------------------------------------------- context menu
-  /**
-   * The app's own right-click menu.
-   *
-   * The browser's default menu is not useless — inside a text field its cut/copy/paste
-   * and spelling suggestions are exactly right, and app.js deliberately leaves it alone
-   * there. Everywhere else it offers "Back", "Reload" and "Inspect", none of which
-   * relate to the row under the cursor. Replacing it with the actions that do relate is
-   * the difference between right-click being a habit and right-click being a shortcut.
-   *
-   * One root element is reused for every menu: opening a second menu replaces the first
-   * rather than stacking portals, and there is exactly one listener set to reason about.
-   */
   var menuRoot = null;
-  var menuState = null; // { items, buttons, onClose, returnFocus }
-  var menuHost = null;  // the node the root is currently parented to
+  var menuState = null; 
+  var menuHost = null;  
 
-  /**
-   * Where the menu has to live.
-   *
-   * A modal `<dialog>` paints its `::backdrop` between the page and the top layer, so
-   * anything appended to `<body>` while a dialog is open renders *behind* that backdrop —
-   * visible in the DOM, reported by every query, and invisible on screen. The menu is
-   * therefore a child of the open dialog when there is one, and of `<body>` otherwise.
-   */
   function menuParent() {
     var dialogs = document.querySelectorAll('dialog[open]');
     return dialogs.length ? dialogs[dialogs.length - 1] : document.body;
@@ -967,8 +729,6 @@ window.NoteApp = window.NoteApp || {};
   function ensureMenuRoot() {
     var parent = menuParent();
     if (menuRoot && menuHost === parent && parent.contains(menuRoot)) return menuRoot;
-    // Reparenting means building a fresh root (a node cannot be in two places), so the old
-    // one is removed rather than left behind as a second, hidden `.menu` in the document.
     if (menuRoot && menuRoot.parentNode) menuRoot.parentNode.removeChild(menuRoot);
     menuRoot = el('div', {
       class: 'menu is-hidden',
@@ -981,17 +741,6 @@ window.NoteApp = window.NoteApp || {};
     return menuRoot;
   }
 
-  /**
-   * Open a menu at a point in the viewport.
-   *
-   * @param {object} cfg
-   * @param {number} cfg.x            client coordinates of the pointer
-   * @param {number} cfg.y
-   * @param {Array} cfg.items         [{ label, icon, onclick, danger, disabled, checked,
-   *                                     shortcut, sep }]
-   * @param {string} [cfg.title]      small heading naming what was clicked
-   * @param {function} [cfg.onClose]
-   */
   function openMenu(cfg) {
     var c = cfg || {};
     closeMenu();
@@ -1036,8 +785,6 @@ window.NoteApp = window.NoteApp || {};
       if (typeof handler === 'function') handler();
     }
 
-    // Visible before measuring: an element with `display: none` reports a zero-size box,
-    // which is how a menu ends up clamped to the top-left corner.
     root.classList.remove('is-hidden');
     root.style.left = '0px';
     root.style.top = '0px';
@@ -1051,8 +798,6 @@ window.NoteApp = window.NoteApp || {};
 
     menuState = { items: items, buttons: buttons, onClose: c.onClose, returnFocus: document.activeElement };
 
-    // Focus lands on the first enabled item so the arrow keys work straight away; the
-    // menu itself takes focus when everything is disabled, so Escape still closes it.
     var first = buttons.filter(function (b) { return !b.disabled; })[0];
     (first || root).focus();
 
@@ -1064,11 +809,9 @@ window.NoteApp = window.NoteApp || {};
     var state = menuState;
     menuState = null;
     if (menuRoot) menuRoot.classList.add('is-hidden');
-    // Focus goes back where the menu came from — a menu that steals focus and drops it
-    // on <body> breaks keyboard navigation from that point on.
     if (state.returnFocus && document.contains(state.returnFocus)
         && typeof state.returnFocus.focus === 'function') {
-      try { state.returnFocus.focus(); } catch (err) { /* not focusable any more */ }
+      try { state.returnFocus.focus(); } catch (err) {  }
     }
     if (typeof state.onClose === 'function') state.onClose();
   }

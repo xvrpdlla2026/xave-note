@@ -1,32 +1,14 @@
-/* ==========================================================================
-   Notebook — local-first notes
 
-   Plain CSS, no framework, no webfonts (the app has to run offline from
-   file://, so the type stack is the platform UI stack).
-
-   Three rules keep this file coherent:
-     1. Every colour, radius and shadow is a token. No literal colour appears
-        below the token block, so the dark variant only redefines variables.
-     2. One accent (indigo), one neutral family (cool slate), one radius scale
-        (4 / 8 / 12), one shadow tier.
-     3. Zones are separated by hairlines and surface tone, not by boxes: the
-        rail is a shade darker than the canvas, the canvas a shade darker than
-        a raised card.
-   ========================================================================== */
-
-/* ---------------------------------------------------------------- tokens */
 :root {
   color-scheme: light;
 
-  /* Type: platform UI stack with a real monospace for counts and byte sizes. */
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", "Cascadia Mono", Menlo, Consolas, "Liberation Mono", monospace;
 
-  /* Surfaces: rail < canvas < raised, so zone changes read without a border. */
-  --bg: #f4f5f8;          /* rail */
-  --bg-canvas: #fafbfc;   /* main pane */
-  --bg-raised: #ffffff;   /* cards, dialogs */
-  --bg-sunken: #eceef2;   /* inputs, wells, glyph tiles */
+  --bg: #f4f5f8;          
+  --bg-canvas: #fafbfc;   
+  --bg-raised: #ffffff;   
+  --bg-sunken: #eceef2;   
   --bg-hover: #e7eaef;
   --bg-active: #e6eafd;
 
@@ -47,9 +29,6 @@
   --success: #1c7a4d;
   --warning: #8a5a00;
 
-  /* Highlight marker: paper-yellow with dark ink, identical in both themes — a
-     highlight reads as a marker stroke, not as the palette, so it does not follow
-     the accent. Declared once because both modes wear the same yellow. */
   --mark: #ffe14d;
   --mark-ink: #1a1d23;
 
@@ -58,11 +37,6 @@
   --shadow-lg: 0 32px 64px -24px rgba(23, 28, 44, 0.32);
   --shadow-accent: 0 1px 2px rgba(59, 78, 222, 0.24);
 
-  /* One fixed chip per palette so the Settings chooser can name a palette with its own
-     colour. The light accents are used verbatim in both modes: a swatch that followed the
-     live theme would repaint the five unselected chips in the chosen palette's clothes,
-     which is the one thing a chooser must never do — the chips are the label, not a
-     preview of the page. */
   --palette-indigo-swatch: #3b4ede;
   --palette-teal-swatch: #0f766e;
   --palette-amber-swatch: #a15c07;
@@ -82,11 +56,6 @@
   --fast: 120ms var(--ease);
   --slow: 260ms var(--ease);
 
-  /* One glyph width and one indent step drive the whole tree geometry; the
-     guide rails below are positioned from these two numbers. The indent step is
-     deliberately equal to --tree-chevron: that is what keeps a folder's icon and
-     label in the same columns as the items inside it (see the tree block below),
-     and 16px is the tightest step that still reads as a separate level. */
   --twisty-w: 16px;
   --tree-indent: 16px;
 }
@@ -124,21 +93,6 @@
   --shadow-accent: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
-/* ------------------------------------------------------------- palettes
-   Six palettes, each valid in both modes. Indigo is the default and is already what
-   the two blocks above declare, so it has no block of its own here: the default stays
-   defined in exactly one place instead of being copied, and any name the app fails to
-   recognise falls through to it.
-
-   A palette overrides the surfaces and the accent family together, because those are
-   one decision. An amber accent dropped onto indigo's cool grey rail reads as a bug,
-   not as a palette. Text, danger, success and warning are deliberately left alone:
-   those tokens carry meaning rather than mood. A destructive button has to look
-   destructive in all six, and body text has to keep the contrast it was measured for
-   against whichever surfaces the palette chose.
-
-   Each block is scoped to one mode. The dark selectors carry both attributes, so they
-   win on specificity (0,2,0 against 0,1,0) and never depend on source order. */
 [data-palette="teal"] {
   --bg: #f2f6f5;
   --bg-canvas: #f9fbfb;
@@ -299,7 +253,6 @@
   --shadow-accent: 0 1px 2px rgba(0, 0, 0, 0.28);
 }
 
-/* ------------------------------------------------------------ base reset */
 *, *::before, *::after { box-sizing: border-box; }
 
 html, body { height: 100%; }
@@ -340,7 +293,6 @@ input, textarea, select { font: inherit; }
 
 .is-hidden { display: none !important; }
 
-/* ------------------------------------------------------------- top bar */
 .topbar {
   height: var(--topbar-h);
   flex: 0 0 auto;
@@ -367,9 +319,6 @@ input, textarea, select { font: inherit; }
   font-size: 0;
   line-height: 1;
 }
-/* Hand-built mark: an accent tile holding a text-cursor bar and three note
-   lines. It is the app's own vocabulary (this is a writing surface), drawn with
-   two pseudo-elements rather than an icon path that would not survive at 22px. */
 .topbar__logo::before {
   content: "";
   width: 2px;
@@ -437,7 +386,6 @@ input, textarea, select { font: inherit; }
 
 .topbar__actions { margin-left: auto; display: flex; gap: 4px; }
 
-/* --------------------------------------------------------------- buttons */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -479,8 +427,6 @@ input, textarea, select { font: inherit; }
 
 .btn--block { width: 100%; }
 
-/* An icon-only destructive action: square, and red for a reason that a label would
-   otherwise have to carry. Used in list rows where a full-width button does not fit. */
 .btn--icon-danger {
   width: 28px;
   padding: 0;
@@ -525,30 +471,19 @@ input, textarea, select { font: inherit; }
 .link-btn:hover { color: var(--text); text-decoration-color: currentColor; }
 .link-btn--danger:hover { color: var(--danger); }
 
-/* --------------------------------------------------------------- layout */
 .layout {
   flex: 1 1 auto;
   display: grid;
   grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
-  /* Positioning context for the workspace trash control, which takes the bottom-right
-     corner of the second column — that column *is* #main. */
   position: relative;
 }
 
-/* The tab strip lives in the second column's top row; the sidebar spans both rows
-   so its full height is unchanged. #main is the bottom row of that column. */
 .sidebar { grid-row: 1 / 3; grid-column: 1; }
 .tabs { grid-row: 1; grid-column: 2; }
 .main { grid-row: 2; grid-column: 2; }
 
-/* ------------------------------------------------------------------ tabs
-   Open notes/files above the main pane: one row, horizontal scroll, no wrap.
-   Inactive tabs are quiet raised cards; the active tab carries the filled pill
-   plus the same 2px accent underline the tree uses, so "what is in front" reads
-   identically on both surfaces. The strip is hidden (is-hidden) when empty or
-   while the task list is in front. */
 .tabs {
   display: flex;
   align-items: stretch;
@@ -589,9 +524,6 @@ input, textarea, select { font: inherit; }
   border-color: var(--border-strong);
   box-shadow: inset 0 2px 0 var(--accent);
 }
-/* Drag state: the held tab goes quiet, and a 2px insertion line marks the seat it
-   would land in. The active tab keeps its own top accent too, so the two signals
-   never cover each other. Inset shadows move no layout, so the strip never jumps. */
 .tab.is-dragging { opacity: 0.45; }
 .tab.is-drop-before { box-shadow: inset 2px 0 0 var(--accent); }
 .tab.is-drop-after { box-shadow: inset -2px 0 0 var(--accent); }
@@ -599,9 +531,6 @@ input, textarea, select { font: inherit; }
 .tab.is-active.is-drop-after { box-shadow: inset -2px 0 0 var(--accent), inset 0 2px 0 var(--accent); }
 .tab.is-active .tab__label { font-weight: 620; }
 .tab.is-active .tab__glyph { color: var(--accent); }
-/* Pinned tabs are icon-only: the glyph and the tooltip carry the name, so the
-   strip's regulars take a fraction of the room. No close button on a pinned tab —
-   unpin (or Close from the menu) to remove one. */
 .tab.is-pinned { max-width: 42px; padding: 0 4px; justify-content: center; }
 .tab.is-pinned .tab__label,
 .tab.is-pinned .tab__close,
@@ -648,7 +577,6 @@ input, textarea, select { font: inherit; }
 }
 .tab__close:hover { background: var(--bg-hover); color: var(--text); }
 
-/* -------------------------------------------------------------- sidebar */
 .sidebar {
   position: relative;
   display: flex;
@@ -658,20 +586,16 @@ input, textarea, select { font: inherit; }
   border-right: 1px solid var(--border);
 }
 
-/* Workspace switcher: the one elevated control in the rail, because it scopes
-   everything below it. */
 .sidebar__head { padding: 12px 12px 10px; border-bottom: 1px solid var(--border); }
 
 .workspace-row { display: flex; gap: 6px; align-items: center; }
 
-/* The switcher widget fills the row; the select inside it is the same shape. */
 .workspace-select-host { flex: 1 1 auto; min-width: 0; }
 .workspace-select-host .select { display: block; }
 
 .workspace-tools { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; margin-top: 6px; }
 .dot { color: var(--text-faint); font-size: 11px; }
 
-/* Small icon+label buttons for the workspace actions under the switcher. */
 .mini-btn {
   display: inline-flex;
   align-items: center;
@@ -694,7 +618,6 @@ input, textarea, select { font: inherit; }
 .mini-btn--danger { background: var(--danger-soft); color: var(--danger); }
 .mini-btn--danger:hover { background: var(--danger-soft); color: var(--danger); }
 
-/* Tree region. The label sits outside #tree so it never scrolls with the rows. */
 .sidebar__section--grow {
   flex: 1 1 auto;
   min-height: 0;
@@ -703,16 +626,10 @@ input, textarea, select { font: inherit; }
   padding: 14px 0 0;
 }
 
-/* The label row is the label plus one control. The control is absolutely positioned, so
-   it is out of the row's flow: that is what keeps this line exactly as tall with a sort
-   button on it as it was without one, and stops a 22px control from pushing the tree
-   down by 22px the moment sorting gained an affordance. */
 .sidebar__label-row {
   position: relative;
   display: flex;
   align-items: center;
-  /* 12px, not 16px: the tree's own padding is 8px and a row's selection bar sits 4px
-     inside that, so this is the label edge lining up with the rows it names. */
   margin: 0 12px 6px;
   min-height: 18px;
 }
@@ -726,9 +643,6 @@ input, textarea, select { font: inherit; }
   color: var(--text-faint);
 }
 
-/* The sort control. Muted until it is touched, because it describes the list rather than
-   being part of it; the accent is reserved for the one state that is not the default —
-   a manual order the user set up, which is a property of the document, not of the view. */
 .sidebar__sort {
   position: absolute;
   right: 0;
@@ -752,30 +666,11 @@ input, textarea, select { font: inherit; }
 .sidebar__sort[aria-expanded="true"] { background: var(--bg-hover); color: var(--text); }
 .sidebar__sort.is-manual { color: var(--accent); }
 
-/* ------------------------------------------------------------------ tree */
-/* Row rhythm. Everything about vertical spacing lives in this block, because the
-   relationships it encodes are the whole point: siblings breathe, and a child reads as
-   belonging to the row above it.
-     - --tree-gap    space between any two adjacent rows
-     - --tree-group  space opening a child group, so a parent's children sit closer to
-                     their parent than to the next sibling folder
-     - --tree-break  space around the workspace root, which is a section of its own
-   The gap is what stops a hovered row's fill from touching its neighbours, and the whole
-   ladder is deliberately tight: the sidebar is 296px wide and has to hold three levels of
-   hierarchy without the labels running out of room, so the depth is carried by indent,
-   icon and weight rather than by air. */
 .tree {
   --tree-gap: 3px;
   --tree-group: 7px;
   --tree-break: 14px;
-  /* The row is inset from the rail by this much: it is the row's own leading gutter. */
   --tree-inset: 8px;
-  /* The disclosure slot: a compact column the chevron sits in, immediately after the
-     selection bar. It is exactly one indent step (--tree-indent), so a folder's chevron
-     occupies the same step its children are indented by - that is what keeps a folder's
-     icon and label in the same columns as the notes inside it. It must stay equal to
-     --tree-indent: the row's leading padding is built from this value, so changing one
-     without the other slides every nested label out of its parent's column. */
   --tree-chevron: var(--tree-indent);
   flex: 1 1 auto;
   min-height: 0;
@@ -785,26 +680,13 @@ input, textarea, select { font: inherit; }
   scrollbar-gutter: stable;
 }
 
-/* One grid: disclosure slot, icon, label, trailing count. The leading accent bar of a
-   selected row is drawn in the padding to the left of this grid (see .is-active below),
-   which keeps it attached to the row it marks instead of floating in an outer gutter.
-   Grid rather than flex because the columns must line up down the whole tree, and because
-   it removed the negative-margin hack the chevron used to need. */
 .tree__row {
   position: relative;
   display: grid;
   grid-template-columns: var(--tree-chevron) 20px minmax(0, 1fr) auto;
   align-items: center;
-  /* Tight: the chevron, its icon and the label are one cluster, so the eye reads them as
-     a single leading mark rather than three spaced tokens. */
   gap: 4px;
   min-height: 30px;
-  /* Depth is entirely leading padding: the row's inset, the lane the selection bar is
-     drawn in, the chevron column, then one step per level. The lane term is negative
-     because the selection bar is absolutely positioned 4px in from the row's own edge,
-     so the inset has already reserved the lane it sits in. -12px is the value the whole
-     file is aligned against: the guide rails, the label column and the nested placeholder
-     in `.tree__row--group-start.tree__empty` are all computed to land on this column. */
   padding: 3px 10px 3px calc(var(--tree-inset) + -12px + var(--tree-chevron) + var(--indent, 0px));
   border-radius: var(--radius-sm);
   cursor: pointer;
@@ -813,10 +695,6 @@ input, textarea, select { font: inherit; }
   transition: background var(--fast), color var(--fast);
 }
 
-/* Tracks are assigned explicitly, never left to auto-placement: a note or file row has no
-   chevron, so auto-placement would slide its icon and label one track left and squeeze
-   the label into the icon column. The chevron hugs the start of its track - it points at
-   the row, so it belongs beside the selection bar rather than centred in the gutter. */
 .tree__twisty {
   grid-column: 1;
   justify-self: start;
@@ -825,15 +703,8 @@ input, textarea, select { font: inherit; }
 }
 .tree__glyph { grid-column: 2; }
 .tree__label { grid-column: 3; }
-/* Only one of these ever sits in the trailing track of a given row: a folder's child
-   count, or the open note's age. A trailing count does need the extra auto track back -
-   without it the count is pushed onto a second implicit grid row and every counted row
-   doubles in height. */
 .tree__count,
 .tree__when { grid-column: 4; justify-self: end; }
-/* The root's total is a tally rather than a per-row count, so it sits in the auto track
-   right after the label instead of being pushed to the far edge of the rail by
-   `justify-self: end` the way a folder's count is. */
 .tree__badge {
   grid-column: 4;
   justify-self: start;
@@ -848,33 +719,16 @@ input, textarea, select { font: inherit; }
 }
 .tree__row--root:hover .tree__badge { background: var(--bg-active); color: var(--accent); }
 
-/* Separates siblings; the row that opens a child group gets the larger gap instead, so a
-   parent's children cluster to their parent rather than floating between levels. */
 .tree__row + .tree__row { margin-top: var(--tree-gap); }
 .tree__row + .tree__row--group-start { margin-top: var(--tree-group); }
 .tree__empty + .tree__row { margin-top: var(--tree-gap); }
-/* The root is a section divider rather than a sibling: one clear break below it separates
-   "everything" from the folder list without doubling that space back up, because the
-   first folder's own group gap is not applied under the root (ui.js drops the opening gap
-   for the first top-level row). */
 .tree__row--root { margin-bottom: var(--tree-break); }
-/* Breathing room after the folder group: the row the loose section opens after, or
-   the tree's final row when nothing follows it. One tunable number for the gap. It is
-   deliberately NOT on the last folder row or the last note row: on an expanded folder
-   that would gap the group from the inside — between a folder and its first child, or
-   between a note and the file rows after it — instead of after the group as a whole.
-   The loose section always opens with --loose-start on its first row, so :has(+ ...)
-   reliably finds the group's final row whatever kind of row it is. */
 #tree > .tree__row:has(+ .tree__row--loose-start) { margin-bottom: 16px; }
 #tree > .tree__row:last-child { margin-bottom: 16px; }
-/* An expanded-but-empty final folder ends in its placeholder rather than a row. */
 #tree > .tree__empty:last-child { margin-bottom: 16px; }
 
 .tree__row:hover { background: var(--bg-hover); }
 
-/* Selection: the filled pill plus a 2px accent bar just inside the row's leading edge,
-   sitting in the lane reserved to the left of the chevron. Weight and an accent-tinted
-   icon carry the state too, so it never depends on colour alone. */
 .tree__row.is-active { background: var(--bg-active); }
 .tree__row.is-active::before {
   content: "";
@@ -887,12 +741,8 @@ input, textarea, select { font: inherit; }
 .tree__row.is-active .tree__label { font-weight: 620; color: var(--text); }
 .tree__row.is-active svg.tree__glyph { color: var(--accent); }
 
-/* The whole-workspace row is the tree's root: same grid, one step heavier, its total
-   beside the label. */
 .tree__row--root .tree__glyph { color: var(--accent); }
 
-/* The loose items at the workspace root (anything not inside a folder) sit below the
-   folder list, opening with a hairline so the two groups stay legible. */
 .tree__row--loose-start { margin-top: var(--tree-group); }
 .tree__row--loose-start::after {
   content: "";
@@ -904,20 +754,11 @@ input, textarea, select { font: inherit; }
   pointer-events: none;
 }
 
-/* Guide rails: one hairline per ancestor level, one indent step apart, drawn in the row's
-   leading padding. The lattice starts one step in rather than at the row's own edge: the
-   stripe at 0 points at nothing, because a nested row's nearest ancestor is a top-level
-   folder (or the workspace root) whose disclosure control sits a step further in than
-   that. Left in, it renders as a rail hanging in the sidebar's outer gutter - an extra
-   line above the first real level, running the full length of the subtree with no row
-   beneath the "All notes" break to attach to. They extend into the row gaps to stay
-   continuous. */
 .tree__row--nested::after {
   content: "";
   position: absolute;
   left: var(--tree-indent);
   top: calc(-1 * var(--tree-gap) - 1px); bottom: calc(-1 * var(--tree-gap) - 1px);
-  /* The original span minus the step the lattice was pulled in by. */
   width: calc(var(--tree-inset) + var(--tree-chevron) / 2 + 5px + var(--indent, 0px) - 2 * var(--tree-indent));
   background-image: repeating-linear-gradient(
     to right,
@@ -926,15 +767,10 @@ input, textarea, select { font: inherit; }
   );
   pointer-events: none;
 }
-/* A row's own hairline is hidden by its filled background, which is what keeps a rail
-   from ever crossing a selected row. */
 .tree__row--nested:hover::after { opacity: 0.5; }
 
 .tree__row--folder .tree__label { font-weight: 520; }
 
-/* Glyph column: a fixed 20px grid track, so labels form one optical edge down the tree
-   whatever the leading mark is (an SVG icon for folders and notes, a type pill for
-   files). SVG glyphs take their box from font-size, so each one states its own. */
 .tree__glyph {
   display: inline-flex;
   align-items: center;
@@ -954,15 +790,10 @@ svg.tree__glyph--folder { font-size: 16px; stroke-width: 1.5; }
 svg.tree__glyph--note { font-size: 14.5px; }
 .tree__row:hover svg.tree__glyph--note { color: var(--text-muted); }
 
-/* The folder icon carries the expanded state, not just the chevron: an open folder is
-   tinted, a closed one stays quiet. */
 .tree__row--folder.is-expanded svg.tree__glyph--folder { color: var(--accent); }
 .tree__row--folder:hover svg.tree__glyph--folder { color: var(--text-muted); }
 .tree__row--folder.is-expanded:hover svg.tree__glyph--folder { color: var(--accent); }
 
-/* Files keep a type pill rather than a document icon: TXT / PDF / CSV is what you scan
-   an attachment list for. It hugs the leading edge of the glyph track rather than filling
-   it, and the trailing letter-spacing is cancelled so the pill stays optically centred. */
 .tree__glyph--file {
   width: auto;
   min-width: 24px;
@@ -975,19 +806,9 @@ svg.tree__glyph--note { font-size: 14.5px; }
   letter-spacing: 0.03em;
   text-indent: 0.03em;
 }
-/* Air between the pill and the filename. It lives on the label, not the pill: the
-   pill hugs the leading edge of a fixed 20px track while overflowing it (it is 24px
-   wide), so its own margin would dissolve into that track instead of moving anything.
-   A filled mark needs more daylight than the outline icons' 4px cluster gap, or the
-   sticker reads glued to the name beside it. */
 .tree__row--file .tree__label { margin-left: 8px; }
 .tree__row:hover .tree__glyph--file { background: var(--bg-active); color: var(--accent); }
 
-/* Twisty: a 16px hit target matching --twisty-w, no layout shift on toggle. The chevron
-   is drawn with clip-path rather than a glyph: the geometric arrows (U+25B8 and friends)
-   fall back to a symbol font on Windows, which rendered the collapsed and expanded states
-   as two different shapes. Two clip paths, one element, no font in the loop. Its track
-   placement lives with the rest of the grid above. */
 .tree__twisty {
   display: inline-flex;
   align-items: center;
@@ -1016,9 +837,6 @@ svg.tree__glyph--note { font-size: 14.5px; }
   height: 6px;
   clip-path: polygon(0 0, 10px 0, 10px 1.8px, 5px 6px, 0 1.8px);
 }
-/* Pressed feedback for the whole-row toggle: :active only fires on the arrow itself, so
-   the row's own press state drives the chevron instead. The tree re-renders on toggle,
-   which removes the class - no cleanup needed. */
 .tree__row--folder:active > .tree__twisty { background: var(--border); color: var(--text); }
 
 .tree__label {
@@ -1030,8 +848,6 @@ svg.tree__glyph--note { font-size: 14.5px; }
   font-size: 13px;
 }
 
-/* Only one of these ever sits in the trailing track of a given row: a folder's child
-   count, or the open note's age. */
 .tree__count {
   font-family: var(--mono);
   font-size: 10.5px;
@@ -1048,9 +864,6 @@ svg.tree__glyph--note { font-size: 14.5px; }
   justify-self: end;
 }
 
-/* A search hit names the workspace it lives in when that is not the open one. It shares the
-   trailing track with the age stamp above, and ui.js drops the stamp whenever this chip is
-   drawn, so only one of them is ever in that column. */
 .tree__ws {
   grid-column: 4;
   justify-self: end;
@@ -1072,33 +885,14 @@ svg.tree__glyph--note { font-size: 14.5px; }
   font-size: 12px;
   color: var(--text-faint);
 }
-/* A hint is not a row: it sits directly under the "All notes" break rather than adding a
-   second gap of its own above it, and it is prose rather than a placeholder. */
 .tree__hint { padding-top: 2px; font-style: normal; }
-/* Nested placeholders line up under the labels they stand in for: grid columns 1-3 plus
-   the two gaps, plus one indent step. */
 .tree__row--group-start.tree__empty {
   padding-left: calc(var(--tree-inset) + var(--indent, 0px) + var(--twisty-w) + 20px + 12px);
 }
 .tree__empty { font-style: italic; opacity: 0.85; }
 .tree__empty.tree__row--group-start { margin-top: var(--tree-group); }
 
-/* -------------------------------------------------- workspace trash control */
-/* The trash: a round control that closes the workspace area's bottom-right corner —
-   the edge the eye leaves the pane through, on the surface the control acts on.
-   Round is the deliberate exception to this app's radius scale (4/8/12), and it is
-   earned: a corner control is not part of the column of content above it, so a square
-   here would read as one more card in the pane.
-   It floats rather than sitting in the flow, and it is anchored to .layout rather than
-   to #main, because #main scrolls: a control inside the scroller would travel away with
-   a long listing and be missing exactly when the listing is what you are reading. The
-   second grid column of .layout *is* #main, so anchoring there puts the control on the
-   pane's corner without the scroll position ever being able to move it.
-   The one thing it must never do is cover live data. Main's own bottom padding is
-   deeper than the control, so the last row of a listing clears it, and the editor's
-   footer gives the corner up whenever the control is on screen. */
 .trash-fab {
-  /* The corner itself, and the positioning context for the badge. */
   position: absolute;
   right: 28px;
   bottom: 26px;
@@ -1115,8 +909,6 @@ svg.tree__glyph--note { font-size: 14.5px; }
   color: var(--text-muted);
   font-size: 19px;
   cursor: pointer;
-  /* Heavier than a rail control's: this one floats over the pane, so the shadow is what
-     separates it from the content underneath rather than a shared background. */
   box-shadow: var(--shadow-md);
   transition: background var(--fast), color var(--fast), border-color var(--fast),
               transform 90ms var(--ease), box-shadow var(--fast);
@@ -1131,9 +923,6 @@ svg.tree__glyph--note { font-size: 14.5px; }
 .trash-fab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .trash-fab[hidden] { display: none; }
 
-/* The count rides the corner of the control, so "there is something in there" is legible
-   without opening it. It carries a number, not a dot: a dot says "something", a number
-   says how much, and how much is the only reason to look. */
 .trash-fab__badge {
   position: absolute;
   top: -3px;
@@ -1155,19 +944,6 @@ svg.tree__glyph--note { font-size: 14.5px; }
   box-shadow: 0 0 0 2px var(--bg-canvas);
 }
 
-/* ------------------------------------------------------- rail action bar
-   The rail's floor, and the busiest 90px in the app: it has to carry the two
-   create actions, the upload progress and a live storage readout without
-   becoming a second toolbar. Three decisions carry it:
-     1. One primary. "New note" is the only filled control; everything else in
-        the block is quiet until hovered, so the rail still reads as a tree with
-        a foot rather than a stack of buttons.
-     2. The action row is a grid, not two full-width stacks. Two 32px buttons
-        with their own icons fill the 272px content width exactly (1fr + 1fr),
-        which is what stops the block being 40% taller than it needs to be.
-     3. The storage line is data, not an action: it gets the mono face, tabular
-        figures, and a 3px meter tinted with the accent, and it opens the
-        database facts. A stat that looks like a button is a trap. */
 .sidebar__footer {
   flex: 0 0 auto;
   display: flex;
@@ -1179,11 +955,7 @@ svg.tree__glyph--note { font-size: 14.5px; }
 }
 
 .rail-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-/* The floor's closing line: the storage readout on its own. The trash used to close this
-   line; it now closes the corner of the workspace area, which is the surface it acts on. */
 
-/* Rail-scale buttons: pygmy variants of .btn, sized to the row height of the tree
-   above them so the block reads as part of the same surface. */
 .btn--rail { height: 30px; padding: 0 7px; font-size: 12px; gap: 5px; }
 .btn--rail .icon { font-size: 13.5px; opacity: 0.9; }
 .btn--rail.btn--primary .icon { opacity: 1; }
@@ -1192,7 +964,6 @@ svg.tree__glyph--note { font-size: 14.5px; }
   display: flex;
   align-items: center;
   gap: 8px;
-  /* The whole line: the corner control that used to share it has moved to the pane. */
   flex: 1 1 auto;
   min-width: 0;
   padding: 5px 4px 3px;
@@ -1233,8 +1004,6 @@ svg.tree__glyph--note { font-size: 14.5px; }
   font-variant-numeric: tabular-nums;
   font-size: 10.5px;
 }
-/* A share of the browser's quota is not a count, so the two states are drawn
-   differently: a count is printed, a percentage gets a 28px meter. */
 .rail-storage__meter {
   flex: 0 0 auto;
   position: relative;
@@ -1250,8 +1019,6 @@ svg.tree__glyph--note { font-size: 14.5px; }
   border-radius: 999px;
   background: var(--accent);
 }
-/* Past 4/5 of the quota the meter switches to the warning tone *and* the readout
-   changes colour, so the signal is never carried by colour alone. */
 .rail-storage--near .rail-storage__fill { background: var(--warning); }
 .rail-storage--near .rail-storage__pct { color: var(--warning); font-weight: 650; }
 
@@ -1263,8 +1030,6 @@ svg.tree__glyph--note { font-size: 14.5px; }
   font-size: 11.5px;
   color: var(--accent);
 }
-/* Indeterminate progress: uploads report counts, not percentages, so a moving
-   bar is the honest affordance rather than a fake percentage fill. */
 .upload-status::after {
   content: "";
   flex: 1 1 auto;
@@ -1280,7 +1045,6 @@ svg.tree__glyph--note { font-size: 14.5px; }
   to { background-position: 160% 0; }
 }
 
-/* ------------------------------------------------------------------ main */
 .main {
   min-width: 0;
   overflow-y: auto;
@@ -1289,18 +1053,12 @@ svg.tree__glyph--note { font-size: 14.5px; }
   scrollbar-gutter: stable;
 }
 
-/* The editor is the one pane that does not scroll as a page: it is given the pane's height,
-   and the note body inside it scrolls instead (see .editor). Everything else keeps the
-   ordinary scrolling pane, which is why this is scoped to the editor's presence. */
 .main:has(> .editor) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
-/* A single measure keeps every pane on the same optical column. The editor is
-   deliberately narrower: a 760px box is a comfortable line length for prose, and the
-   footer shares it so the two stay aligned. */
 .pane-head,
 .pane-actions,
 .pane-section,
@@ -1343,8 +1101,6 @@ svg.tree__glyph--note { font-size: 14.5px; }
   color: var(--text-muted);
   word-break: break-word;
 }
-/* The pane's own layout control, at the far end of the head row: it is about the pane rather
-   than about the folder, so it belongs with the heading and not among the folder's actions. */
 .pane-head__views { margin-left: auto; flex: 0 0 auto; }
 
 .pane-head__path {
@@ -1354,9 +1110,6 @@ svg.tree__glyph--note { font-size: 14.5px; }
   word-break: break-word;
 }
 
-/* A path whose steps are places to go. The folder buttons stay inline and unadorned so the path
-   still reads as one line of text; colour is what says it can be pressed, and the final step is
-   the item already open, so it keeps the colour of the sentence around it. */
 .crumb {
   padding: 0;
   border: 0;
@@ -1369,8 +1122,6 @@ svg.tree__glyph--note { font-size: 14.5px; }
 .crumb--current { color: inherit; cursor: default; }
 .crumb__sep { color: var(--text-faint); }
 
-/* Action row: exactly one filled button carries the primary action; every
-   other action is quiet until hover, so hierarchy is legible at a glance. */
 .pane-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1396,15 +1147,12 @@ svg.tree__glyph--note { font-size: 14.5px; }
   opacity: 0.75;
 }
 
-/* ------------------------------------------------------------- card grid */
 .card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(216px, 1fr));
   gap: 10px;
 }
 
-/* Bulk-select wrapper: the card stays a real <button> inside, the checkbox is an
-   overlay on the wrapper's corner that never bubbles into the card. */
 .card-wrap { position: relative; }
 .card-wrap .card { width: 100%; }
 .card-wrap.is-selected .card {
@@ -1550,15 +1298,6 @@ svg.tree__glyph--note { font-size: 14.5px; }
   font-variant-numeric: tabular-nums;
 }
 
-/* -------------------------------------------------------------- card list view
-   The same cards, one per row, when the pane is in list view. The markup is deliberately
-   unchanged, a wrapper holding a real button and its checkbox, so bulk select, the context
-   menu and the active state all keep working and the whole change stays a class on the grid.
-   The checkbox leaves its corner overlay for the head of the row: on a 32px row an overlay
-   would sit on top of the metadata sharing that line. Rows in a section are a grid with the
-   same tracks, so a name, a size and a date line up down the table the way a file manager's
-   columns do, and the header row is a row of that same grid, which is what keeps it in
-   register with the values under it. */
 .card__meta--split { display: flex; align-items: baseline; gap: 6px; }
 .card-list__head { display: none; }
 .card-grid--list {
@@ -1645,12 +1384,6 @@ svg.tree__glyph--note { font-size: 14.5px; }
 .card-grid--list.card-grid--files .card__size { text-align: right; }
 .card-grid--list.card-grid--files .card-list__cell--num { text-align: right; }
 
-/* ---------------------------------------------------------------- editor */
-/* The editor fills the pane instead of growing past it, and the note body is the one part
-   that scrolls. That is what keeps the footer from having to float over the text: a pinned
-   footer covers the lines it is pinned above, and a half-covered line of a note reads as a
-   fragmented one. Here the footer is simply the row under the body, always in the same
-   place, and nothing can ever be underneath it. */
 .editor {
   display: flex;
   flex-direction: column;
@@ -1677,9 +1410,6 @@ svg.tree__glyph--note { font-size: 14.5px; }
 .editor__title:focus { outline: none; border-bottom-color: var(--accent); }
 .editor__title::placeholder { color: var(--text-faint); }
 
-/* The format bar: one quiet row between the title and the body. Buttons are text
-   tokens (B, I, H, list, checkbox, clear) rather than stroked glyphs, because at
-   12px a letter is legible where a 1.6-stroke path would be a smudge. */
 .fmt-bar {
   display: flex;
   flex-wrap: wrap;
@@ -1703,10 +1433,6 @@ svg.tree__glyph--note { font-size: 14.5px; }
   transition: background var(--fast), color var(--fast);
 }
 .fmt-btn:hover { background: var(--bg-hover); color: var(--text); }
-/* Deja-vu: silent, chrome-free surface.
-   The Deja-vu chip is one quiet
-   row under the title: a label plus the same link-chip language the Links block
-   already speaks. */
 .dejavu {
   display: flex;
   flex-wrap: wrap;
@@ -1718,7 +1444,6 @@ svg.tree__glyph--note { font-size: 14.5px; }
 }
 .fmt-btn--b { font-weight: 800; }
 .fmt-btn--i { font-style: italic; }
-/* The highlight button wears the yellow it applies. */
 .fmt-btn--h {
   background: var(--mark);
   color: var(--mark-ink);
@@ -1726,11 +1451,8 @@ svg.tree__glyph--note { font-size: 14.5px; }
   font-weight: 800;
 }
 .fmt-btn--h:hover { background: var(--mark); color: var(--mark-ink); filter: brightness(0.96); }
-/* Clear-formatting reads as "take the styling off the A". */
 .fmt-btn--clear { text-decoration: line-through; }
 
-/* Template picker: command-palette rows, not buttons. Borderless rows with hover
-   fill speak the same language as the menus; the check marks the previewed row. */
 .template-filter {
   width: 100%;
   height: 34px;
@@ -1792,7 +1514,6 @@ svg.tree__glyph--note { font-size: 14.5px; }
 }
 .tpl-row:hover .tpl-row__delete, .tpl-row__delete:focus-visible { opacity: 1; }
 .tpl-row__delete:hover { background: var(--danger-soft); color: var(--danger); }
-/* Preview pane under the list: the template body as it will land in the note. */
 .template-preview { border-top: 1px solid var(--border); margin-top: 10px; padding-top: 10px; }
 .template-preview__title { font-size: 13px; font-weight: 650; margin-bottom: 6px; }
 .template-preview__body { max-height: 220px; overflow-y: auto; margin-bottom: 10px; }
@@ -1810,24 +1531,16 @@ svg.tree__glyph--note { font-size: 14.5px; }
   font-size: 16px;
   line-height: 1.72;
   overflow-wrap: break-word;
-  /* Tabs and pasted line breaks render instead of collapsing away. */
   white-space: pre-wrap;
-  /* The note scrolls inside its own box: the pane has already given the editor exactly the
-     height it has, so a growing body would only push the footer off the bottom. */
   overflow-y: auto;
 }
 .editor__body:focus { outline: none; }
-/* A div has no placeholder attribute: the prompt renders while the body is empty. */
 .editor__body[data-placeholder]:empty::before {
   content: attr(data-placeholder);
   color: var(--text-faint);
   pointer-events: none;
 }
 
-/* Highlights are paper-yellow with dark ink in both themes — a deliberate exception
-   to the palette, because a highlight has to read as a marker stroke, not as the
-   accent. Body text keeps its own colour underneath in light mode; in dark mode the
-   ink stays dark so the stroke stays legible. */
 mark {
   background: var(--mark);
   color: var(--mark-ink);
@@ -1835,9 +1548,6 @@ mark {
   padding: 0 1px;
 }
 
-/* Checkbox rows: a real checkbox (keyboard-togglable, announced) plus a text span.
-   The box is decorative-adjacent — tabindex -1 keeps Tab moving through prose, and
-   Space on the focused row still toggles because the click lands on the box. */
 .task-row {
   display: flex;
   align-items: flex-start;
@@ -1857,11 +1567,6 @@ mark {
   min-width: 0;
 }
 
-/* -------------------------------------------------------- wiki pills
-   Links read as pills, not brackets: an accent-tinted chip inline with the prose,
-   atomic under the caret (one Backspace removes it whole) and a door on press —
-   clicking, Enter or Space follows it instead of editing inside. A pill with no
-   note behind it wears the same dashed language as the missing chips below. */
 .wikilink {
   display: inline-block;
   padding: 0 9px;
@@ -1877,9 +1582,6 @@ mark {
 }
 .wikilink:hover { background: var(--bg-hover); text-decoration: underline; }
 .wikilink:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-/* The hover remove: a fixed 16px box that grows out of nothing, so pills keep
-   their measure until hovered and the line never reflows around it otherwise.
-   Missing pills dim the × with them rather than hiding a way out. */
 .wikilink__x {
   display: inline-flex;
   align-items: center;
@@ -1904,11 +1606,6 @@ mark {
 }
 .wikilink.is-missing:hover { color: var(--accent); border-color: var(--accent); }
 
-/* -------------------------------------------------------- wiki links
-   The graph under the editor: outgoing [[links]] and backlinks. Chips speak the
-   breadcrumb's language (accent text that navigates); a link with no note behind
-   it wears a dashed underline and a leading plus instead. Absent entirely when
-   the note links nowhere and nothing links back. */
 .links { margin-top: 22px; }
 .links__head {
   display: flex;
@@ -1939,9 +1636,6 @@ mark {
   color: var(--text-muted);
 }
 .link-chip--missing:hover { color: var(--accent); }
-/* An outgoing chip with its own remove control: the pair reads as one unit, and
-   the × stays quiet until hovered, in the icon-danger language. Backlink chips
-   belong to other notes and carry no remove — opening one is the way to edit it. */
 .link-chip-wrap {
   display: inline-flex;
   align-items: center;
@@ -1965,7 +1659,6 @@ mark {
 }
 .link-x:hover { background: var(--danger-soft); color: var(--danger); }
 
-/* The [[ completion card: floats at the caret, in the menu's own clothes. */
 .link-suggest {
   min-width: 220px;
   max-width: 320px;
@@ -1999,8 +1692,6 @@ mark {
   white-space: nowrap;
 }
 
-/* Editor footer: the last row of the editor, never over the note. Save state stays visible
-   without being pinned because the note body scrolls inside the box above it. */
 .editor__toolbar {
   display: flex;
   align-items: center;
@@ -2024,14 +1715,7 @@ mark {
   font-variant-numeric: tabular-nums;
 }
 
-/* The workspace trash control owns the pane's bottom-right corner while it is on
-   screen, so the editor's footer gives that corner up rather than letting its own
-   actions sit under the control. `:has()` keeps the reservation honest: with an empty
-   trash there is no control in the corner, and the footer keeps its full width. */
 .layout:has(> .trash-fab:not([hidden])) .editor__toolbar { padding-right: 68px; }
-/* Weighted separators instead of middle-dots: the dot is rationed. Drawn at 90% of
-   the text colour and kept inside the text item so a wrapped line can never open
-   with a dangling rule. */
 .editor__meta > span + span { position: relative; }
 .editor__meta > span + span::before {
   content: "";
@@ -2056,14 +1740,11 @@ mark {
   border-radius: 999px;
   background: currentColor;
 }
-/* "Unsaved…" and "Save failed" reuse the same dot, recoloured — one shape,
-   three states, so the footer never jumps. */
 .editor__status--dirty { color: var(--text-faint); }
 .editor__status--error { color: var(--danger); }
 
 .editor__buttons { display: flex; gap: 6px; flex: 0 0 auto; }
 
-/* -------------------------------------------------------- search results */
 .search-head {
   padding: 2px 2px 12px;
   font-size: 12.5px;
@@ -2071,7 +1752,6 @@ mark {
 }
 .search-head strong { color: var(--text); font-weight: 600; }
 
-/* --------------------------------------------------------------- preview */
 .preview { max-width: 940px; }
 
 .preview__body {
@@ -2120,7 +1800,6 @@ mark {
 
 .preview__actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
-/* ----------------------------------------------------------- empty state */
 .empty-state {
   margin-top: 20px;
   padding: 32px 28px;
@@ -2149,7 +1828,6 @@ mark {
 
 .empty-state__actions { display: flex; gap: 8px; justify-content: center; margin-top: 22px; }
 
-/* Centred mark for the whole-workspace empty state. */
 .empty-state__mark {
   display: inline-flex;
   align-items: center;
@@ -2164,7 +1842,6 @@ mark {
   box-shadow: var(--shadow-sm);
 }
 
-/* --------------------------------------------------------------- dropzone */
 .dropzone {
   position: fixed;
   inset: 0;
@@ -2200,16 +1877,7 @@ body.is-dragging .dropzone { display: flex; }
   letter-spacing: -0.01em;
 }
 
-/* ==========================================================================
-   Components
-   Icons, the dialog family (settings + prompt + destructive confirm) and the
-   custom form controls. Built on the native elements wherever one exists:
-   <dialog> gives focus trapping, Escape and scroll lock for free, and the
-   styled dropdown keeps a real <select> underneath.
-   ========================================================================== */
 
-/* ------------------------------------------------------------------ icons */
-/* Sized in em so one font-size declaration controls the tile it sits in. */
 .icon {
   width: 1em;
   height: 1em;
@@ -2219,12 +1887,8 @@ body.is-dragging .dropzone { display: flex; }
   stroke: currentColor;
   stroke-width: 1.6;
   stroke-linecap: round;
-  /* Round joins, not the default miter: the gear's tooth tips are acute angles, and a miter
-     there throws a spike well outside the 24px grid. Rounding them keeps every glyph's
-     silhouette inside its own box, which is what stops icons looking different weights. */
   stroke-linejoin: round;
   color: inherit;
-  /* Fallback for an icon with no font-size set by its container. */
   font-size: 16px;
 }
 .icon--spin { animation: icon-spin 700ms linear infinite; }
@@ -2232,7 +1896,6 @@ body.is-dragging .dropzone { display: flex; }
   to { transform: rotate(360deg); }
 }
 
-/* ---------------------------------------------------------------- dialog */
 .dialog {
   width: min(480px, calc(100vw - 32px));
   max-height: min(86vh, 760px);
@@ -2249,8 +1912,6 @@ body.is-dragging .dropzone { display: flex; }
   background: rgba(12, 15, 22, 0.5);
   backdrop-filter: blur(2px);
 }
-/* Closing is a state, not an unmount, so the dialog has an exit as well as an
-   entry. app.js adds --closing and waits for the animation before close(). */
 .dialog--closing { animation: dialog-out 140ms var(--ease) forwards; }
 .dialog--closing::backdrop { animation: backdrop-out 140ms var(--ease) forwards; }
 @keyframes dialog-in {
@@ -2264,24 +1925,12 @@ body.is-dragging .dropzone { display: flex; }
   to { opacity: 0; }
 }
 
-/* The settings panel is the one wide dialog; every prompt uses the 480px form. */
 .dialog--wide { width: min(560px, calc(100vw - 32px)); }
 
 .dialog__form { display: flex; flex-direction: column; padding: 20px 22px 20px; }
 
-/* A modal <dialog> that is not open must not paint. The UA stylesheet does this itself,
-   but only through a rule with no author counterpart — so an author `display` on .dialog
-   silently defeats it and the closed panel renders in the middle of the page. That is
-   exactly what happened here: `.dialog { display: flex }` (added to give the panel a
-   header/body/footer stack) made the closed settings dialog paint at rest. Stating the
-   contract explicitly means a future layout change cannot reintroduce it. */
 dialog:not([open]) { display: none; }
 
-/* A dialog is a header / body / footer stack, and the body is the only part that
-   scrolls. `overflow: auto` on the dialog itself scrolled the footer out of reach
-   on a long panel, which is exactly where the confirm button lives. `min-height: 0`
-   on both levels is what lets the body actually scroll inside the flex column
-   instead of growing past it. */
 .dialog { display: flex; flex-direction: column; overflow: hidden; }
 .dialog__form { flex: 1 1 auto; min-height: 0; }
 .dialog__body { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
@@ -2294,8 +1943,6 @@ dialog:not([open]) { display: none; }
   border-bottom: 1px solid var(--border);
 }
 
-/* The tinted tile is the whole tell for what kind of dialog this is: accent for a
-   normal ask, danger for something that destroys data. */
 .dialog__icon {
   flex: 0 0 auto;
   display: inline-flex;
@@ -2341,7 +1988,6 @@ dialog:not([open]) { display: none; }
 .dialog__body { padding: 14px 0 2px; }
 .dialog__body > * + * { margin-top: 13px; }
 
-/* Lead sentence of a confirm. */
 .dialog__message {
   font-size: 13px;
   line-height: 1.6;
@@ -2351,7 +1997,6 @@ dialog:not([open]) { display: none; }
 }
 .dialog__message strong { color: var(--text); font-weight: 620; }
 
-/* The concrete consequences, listed rather than buried in a sentence. */
 .dialog__consequences {
   margin: 0;
   padding: 12px 14px;
@@ -2375,7 +2020,6 @@ dialog:not([open]) { display: none; }
   background: var(--danger);
 }
 
-/* Type-to-confirm gate: the strong option, used only for the whole-database reset. */
 .dialog__gate { display: flex; flex-direction: column; gap: 8px; }
 .dialog__gate code {
   padding: 1px 6px;
@@ -2397,8 +2041,6 @@ dialog:not([open]) { display: none; }
   margin-top: 16px;
 }
 
-/* Sentence-case section headings: the rail already carries the only uppercase
-   micro-labels in the app, so the settings dialog does not repeat that rhythm. */
 .dialog__section { padding: 18px 0 0; border-top: 1px solid var(--border); margin-top: 18px; }
 .dialog__section:first-of-type { border-top: 0; margin-top: 4px; }
 .dialog__section h3 {
@@ -2439,8 +2081,6 @@ dialog:not([open]) { display: none; }
 }
 .info-row + .info-row { border-top: 1px solid var(--border); }
 .info-row__key { flex: 0 0 auto; color: var(--text-muted); }
-/* The value column can carry a second line (a consequence, not another fact), so it
-   wraps inside its own box instead of pushing the row layout around. */
 .info-row__col {
   display: flex;
   flex-direction: column;
@@ -2453,8 +2093,6 @@ dialog:not([open]) { display: none; }
 .info-row__val { font-weight: 600; font-variant-numeric: tabular-nums; }
 .info-row__hint { font-size: 11.5px; line-height: 1.45; color: var(--text-faint); }
 
-/* ------------------------------------------------------------ form fields */
-/* Label above, control, then helper or error text. Never placeholder-as-label. */
 .field { display: flex; flex-direction: column; gap: 6px; }
 
 .field__label {
@@ -2491,8 +2129,6 @@ dialog:not([open]) { display: none; }
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 28%, transparent);
 }
 
-/* Error text carries an icon as well as the danger colour, so the state is never
-   signalled by colour alone. */
 .field__message {
   display: flex;
   align-items: flex-start;
@@ -2504,19 +2140,10 @@ dialog:not([open]) { display: none; }
 .field__message--error { color: var(--danger); }
 .field__message .icon { margin-top: 2px; font-size: 12px; }
 
-/* Two fields in one dialog body. The dialog spaces its own children, so a stack of fields
-   needs its own rhythm — otherwise the second label sits directly under the first input
-   and the pair reads as one four-line control. */
 .field-stack { display: flex; flex-direction: column; gap: 12px; }
 
-/* ------------------------------------------------------------- vault / security */
-/* The action row under the Security section. Same button language as everywhere else;
-   this only says where the buttons sit. */
 .vault-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
-/* The lock notice: what stands where encrypted content would have been drawn — the editor,
-   a file preview. Centred and quiet, because it is a state of the pane rather than an
-   error, and it carries the one action that leaves it. */
 .lock-notice {
   display: flex;
   flex-direction: column;
@@ -2552,17 +2179,12 @@ dialog:not([open]) { display: none; }
 }
 .lock-notice p { font-size: 13px; line-height: 1.6; max-width: 46ch; }
 .lock-notice .btn { margin-top: 8px; }
-/* Damage is not the same message as locked, so it does not get the same tile: the accent
-   mark says "there is a way in", and here there is not. */
 .lock-notice--damaged .lock-notice__mark {
   border-color: color-mix(in srgb, var(--danger) 34%, transparent);
   background: var(--danger-soft);
   color: var(--danger);
 }
 
-/* Indeterminate-versus-measured: the vault conversions know how many records there are, so
-   this one fills. It is deliberately not the sweeping upload rail, which reports counts
-   rather than a fraction. */
 .progress-block { display: flex; flex-direction: column; gap: 10px; }
 .progress {
   height: 6px;
@@ -2578,9 +2200,6 @@ dialog:not([open]) { display: none; }
   transition: width var(--fast);
 }
 
-/* -------------------------------------------------------------- select */
-/* A native <select> stays in the DOM as the real form control; the button and
-   listbox are the visible surface. Positioning is set from the wrapper. */
 .select { position: relative; min-width: 0; }
 .select__native {
   position: absolute !important;
@@ -2680,19 +2299,9 @@ dialog:not([open]) { display: none; }
 }
 .select__option[aria-selected="true"] .select__option-check { opacity: 1; }
 
-/* ------------------------------------------- selects inside dialogs
-   Micro (saas-ui-skills): a destination picker must read as the dialog's own field,
-   not as a foreign control. The trigger borrows the field-input surface (strong
-   border, no shadow), and the open list spans the trigger's full width instead of
-   capping at 320px — the cap is what left the list narrower than its trigger and
-   floating detached from the dialog's column. Scoped to .dialog__body so rail and
-   pane selects keep their own surfaces. */
 .dialog__body .select__trigger { border-color: var(--border-strong); box-shadow: none; }
 .dialog__body .select__list { left: 0; right: 0; max-width: none; }
 
-/* ------------------------------------------- workspace switcher (compact) */
-/* A select with a leading glyph and a transparent, borderless trigger, for the
-   rail header where a boxed control would compete with the tree. */
 .select--rail .select__trigger {
   padding-left: 8px;
   border-color: transparent;
@@ -2707,11 +2316,6 @@ dialog:not([open]) { display: none; }
 }
 .select__lead { flex: 0 0 auto; color: var(--text-faint); font-size: 15px; }
 
-/* ------------------------------------------- workspace picker (trash-panel kin)
-   Macro (taste-skill): the picker reuses the trash panel's own bands — head, tools,
-   list, foot — so it reads as the same surface at a glance. No new panel chrome.
-   Micro (saas-ui-skills): the rail trigger keeps the old select affordance, the rows
-   are real buttons with listbox semantics, and every state is a token, never a literal. */
 .workspace-select-host .ws-trigger {
   padding-left: 8px;
   border-color: transparent;
@@ -2754,7 +2358,6 @@ dialog:not([open]) { display: none; }
 .ws-row + .ws-row { margin-top: 1px; }
 .ws-row:hover { background: var(--bg-hover); }
 .ws-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* Current workspace carries the same accent fill + 2px leading bar as tree and trash. */
 .ws-row.is-selected { background: var(--bg-active); }
 .ws-row.is-selected::before {
   content: "";
@@ -2768,10 +2371,6 @@ dialog:not([open]) { display: none; }
 .ws-row.is-selected .trash-row__name { font-weight: 620; }
 .ws-row__check { flex: 0 0 auto; color: var(--accent); font-size: 14px; }
 
-/* ---------------------------------------------------------------- toasts */
-/* A notification, not a panel: one plain line of text, centred at the top of the work area,
-   below the header rather than over the search field it would otherwise cover. No border, no
-   accent stripe, no dismiss control — it arrives, is read, and leaves on its own timer. */
 .toast-host {
   position: fixed;
   top: calc(var(--topbar-h) + 16px);
@@ -2783,15 +2382,9 @@ dialog:not([open]) { display: none; }
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  /* The highest index in the app, above the menus' 130 — and, through the popover attribute the
-     host carries, above a modal dialog's backdrop as well, which no z-index can reach. */
   z-index: 1000;
   max-width: min(560px, calc(100vw - 32px));
-  /* Nothing in a toast is clickable, so it must not swallow a click aimed at the app
-     underneath it. */
   pointer-events: none;
-  /* A popover arrives with a box model of its own: a border, a background, padding, inset 0 and
-     a margin of auto. None of it belongs on this surface, so all of it is cleared. */
   margin: 0;
   padding: 0;
   border: 0;
@@ -2821,50 +2414,25 @@ dialog:not([open]) { display: none; }
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* ------------------------------------------------------------ scrollbars */
-/* One scrollbar design for every scroller in the app — the rail, the canvas, the
-   editor, the dialog bodies, the trash list, the menus and the select listbox. It
-   used to be declared on .tree and .main alone, which left a default grey bar on
-   every surface added since (the panel, the menus), and those are exactly the
-   surfaces that hold the longest lists.
-   Two mechanisms, because no engine implements both:
-     - Blink and WebKit get the pseudo-elements. They are the only way to inset the
-       thumb inside its track with a transparent border, which is what gives the
-       rounded, airy bar this interface uses.
-     - Firefox has no pseudo-elements at all, so it gets the standard properties.
-   They cannot be declared together: since Chrome 121, setting scrollbar-color
-   switches the engine off the legacy pseudo-elements and every ::-webkit-* rule
-   below stops applying. "@supports not selector(...)" is the standard way to reach
-   Firefox alone — Firefox does not implement ::-webkit-scrollbar, so the test is
-   false there and true in Blink/WebKit. */
 ::-webkit-scrollbar { width: 12px; height: 12px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
   background: var(--border-strong);
-  /* The air between thumb and track is the transparent border, not a margin: a
-     border is part of the thumb's box, so the thumb stays draggable edge to edge
-     while only its middle 6px paints. */
   border: 3px solid transparent;
   border-radius: 999px;
   background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-faint); background-clip: content-box; }
 ::-webkit-scrollbar-corner { background: transparent; }
-/* A scrollbar here is a position indicator, not chrome: no stepper arrows. */
 ::-webkit-scrollbar-button { display: none; }
 
 @supports not selector(::-webkit-scrollbar) {
   html { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
 }
 
-/* ------------------------------------------------------- mobile nav toggle */
-/* Wider than the narrow breakpoint below: this control only exists there. */
 .nav-toggle { display: none; }
 
-/* ------------------------------------------------------------- narrow view */
 @media (max-width: 820px) {
-  /* The control only exists while the canvas is in front: on the tree there is nothing
-     to go back to, so the arrow is not shown there at all. */
   .nav-toggle { display: inline-flex; }
   body:has(.layout.is-mobile-list) .nav-toggle { display: none; }
   .topbar { gap: 10px; padding: 0 10px; }
@@ -2872,18 +2440,10 @@ dialog:not([open]) { display: none; }
   .topbar__name { display: none; }
   .topbar__search { max-width: none; }
 
-  /* One pane at a time. `is-mobile-list` on .layout (set by app.js) chooses
-     which one; without it the canvas is shown, so a wide→narrow resize while
-     reading a note does not throw the reader back to the list. */
   .layout {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
   }
-  /* The base grid places the tab strip and the canvas on column 2. Collapsing the
-     template to one column without re-homing them manufactures an implicit second
-     track, which pushes the canvas into it — a blank gutter exactly as wide as the
-     sidebar used to be, from ~455px up to the 820px breakpoint. (The sidebar is
-     already on column 1 and spanning both rows, so it needs no restating.) */
   .layout > .tabs,
   .layout > .main { grid-column: 1; }
   .layout.is-mobile-list .main { display: none; }
@@ -2895,11 +2455,7 @@ dialog:not([open]) { display: none; }
   .tree__row { min-height: 38px; }
   .tree__label { font-size: 14px; }
 
-  /* The corner control tightens into the viewport's corner at narrow widths, and
-     whichever pane is on screen gives it that corner. */
   .trash-fab {
-    /* 20px, not 16: #main reserves a stable scrollbar gutter of up to 17px, and the
-       control must not end up over the pane's scrollbar. */
     right: 20px;
     bottom: 20px;
     width: 48px;
@@ -2907,10 +2463,6 @@ dialog:not([open]) { display: none; }
     font-size: 20px;
   }
 
-  /* The corner control and the closing line share the bottom of the rail: the readout
-     keeps the left of that line and the trash control the right. The footer used to
-     reserve a block of empty height beneath the line to keep clear of it, which read as
-     a hole at the bottom of the sidebar. */
   .layout.is-mobile-list .sidebar__footer {
     padding-bottom: max(12px, env(safe-area-inset-bottom));
   }
@@ -2921,17 +2473,11 @@ dialog:not([open]) { display: none; }
 
   .main { padding: 18px 16px 64px; }
   .editor__title { font-size: 22px; }
-  /* No floor: the body takes whatever the pane leaves it and scrolls inside that. */
   .editor__body { min-height: 0; }
 
-  /* The header keeps its height: the task count stays, its label goes. The badge carries
-     the only part of the button that changes, and a long label would push the search field
-     out of the way at this width. */
   .view-btn { padding: 0 8px; }
   .view-btn__label { display: none; }
 
-  /* One line of provenance, truncated rather than wrapped, so the toolbar stays a
-     predictable height while writing and the actions keep their place. */
   .editor__toolbar { flex-wrap: nowrap; gap: 10px; }
   .editor__meta { flex-wrap: nowrap; min-width: 0; overflow: hidden; }
   .editor__meta > span + span::before { margin: 0 7px; }
@@ -2940,8 +2486,6 @@ dialog:not([open]) { display: none; }
   .card-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
   .pane-head__title { font-size: 18px; }
 
-  /* The bar carries a count plus four actions; unwrapped it cannot fit a phone and
-     would push the pane into horizontal scroll instead of staying inside it. */
   .bulk-bar { flex-wrap: wrap; }
 
   .menu { min-width: 216px; }
@@ -2952,19 +2496,7 @@ dialog:not([open]) { display: none; }
   .card-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* ==========================================================================
-   Trash — a fullscreen panel
-   Not a popup: recovering data is a browsing task (scan the list, pick several
-   things, act on them), and a 480px card in the middle of the screen is the
-   wrong shape for browsing. Same <dialog> element as every other dialog, so it
-   still owns focus trapping, Escape and scroll lock.
-   ========================================================================== */
 .dialog--full {
-  /* The <dialog> stays the full viewport: it owns the backdrop, the focus trap, Escape
-     and the scroll lock, and those contracts belong to the browser, not to a card. It
-     paints nothing of its own, though — the surface is the panel inside it. That is
-     what leaves no frame, band or hairline outside the surface to read as leftover
-     chrome, and it is why the panel's own inset is the only edge on screen. */
   width: 100vw;
   height: 100dvh;
   max-width: none;
@@ -2976,16 +2508,10 @@ dialog:not([open]) { display: none; }
   background: transparent;
   box-shadow: none;
 
-  /* Three numbers carry the whole panel. The measure is the reading column; the inset
-     is the air between the surface and the viewport edge; the pad is the panel's own
-     internal margin, stated once so the header, toolbar, list and footer all land on
-     one column. */
   --panel-measure: 940px;
   --panel-pad: 22px;
   --panel-inset: 32px;
 }
-/* The shell's body is the only thing that positions the panel: it centres it, insets it
-   from every edge, and lets it take the rest of the height. */
 .dialog--full .dialog__body {
   flex: 1 1 auto;
   display: flex;
@@ -2996,17 +2522,12 @@ dialog:not([open]) { display: none; }
 }
 .dialog--full .dialog__form { flex: 1 1 auto; min-height: 0; padding: 0; }
 
-/* The surface. One rounded, bounded card, and every band lives inside it — so the
-   panel is the only thing on screen with a shape, and a row is never stretched across a
-   monitor the card does not cover. */
 .panel {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
   width: 100%;
-  /* The measure plus the panel's own padding, and the 2px of hairline borders — which
-     sit outside the reading column, so the column stays exactly the app's 940px. */
   max-width: calc(var(--panel-measure) + 2 * var(--panel-pad) + 2px);
   margin: 0 auto;
   border: 1px solid var(--border);
@@ -3016,8 +2537,6 @@ dialog:not([open]) { display: none; }
   overflow: hidden;
 }
 
-/* The one place the uppercase micro-label returns: the panel has more structure
-   than a 480px prompt, and these headings are the map. */
 .panel__head {
   flex: 0 0 auto;
   display: flex;
@@ -3051,9 +2570,6 @@ dialog:not([open]) { display: none; }
   font-variant-numeric: tabular-nums;
 }
 
-/* The panel's exit. The shell around the panel draws no header, so this is the only
-   close control on screen — which is why it is not a bare cross: it wears the app's
-   button clothes, says what it does, and names the key that does the same thing. */
 .panel__close {
   flex: 0 0 auto;
   height: 32px;
@@ -3064,8 +2580,6 @@ dialog:not([open]) { display: none; }
 .panel__close .icon { color: var(--text-muted); }
 .panel__close:hover .icon { color: var(--text); }
 
-/* Toolbar: select-all, filters, search. Its own band, with the hairline doing the
-   work so the list below can start immediately. */
 .panel__tools {
   flex: 0 0 auto;
   display: flex;
@@ -3078,8 +2592,6 @@ dialog:not([open]) { display: none; }
 .panel__sep { flex: 0 0 auto; width: 1px; height: 18px; background: var(--border); }
 .panel__spacer { flex: 1 1 auto; min-width: 0; }
 
-/* A framed search field at panel scale — the top bar's 34px pill would be a
-   toy in a fullscreen panel. */
 .search-field { position: relative; flex: 0 0 auto; width: 244px; }
 .search-field .icon {
   position: absolute;
@@ -3110,9 +2622,6 @@ dialog:not([open]) { display: none; }
 
 .panel__list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 20px var(--panel-pad) 24px; }
 
-/* Group heading. Sticky, because a 60-row list is scannable only if you can see
-   which section you are in — and it paints its own background so rows scroll
-   underneath it rather than through it. */
 .panel__group {
   position: sticky;
   top: 0;
@@ -3150,8 +2659,6 @@ dialog:not([open]) { display: none; }
 }
 .trash-row + .trash-row { margin-top: 1px; }
 .trash-row:hover { background: var(--bg-hover); }
-/* Selected rows carried the accent-tinted fill and the same 2px leading bar the
-   tree uses, so "chosen" looks identical on both surfaces. */
 .trash-row.is-selected { background: var(--bg-active); }
 .trash-row.is-selected::before {
   content: "";
@@ -3174,8 +2681,6 @@ dialog:not([open]) { display: none; }
   font-size: 14px;
 }
 .trash-row.is-selected .trash-row__glyph { background: var(--bg-raised); color: var(--accent); }
-/* A file keeps its type pill here too — the same glyph the tree shows, so an item
-   is recognisable in the trash without reading its name. */
 .trash-row__glyph--file {
   font-family: var(--font);
   font-size: 8px;
@@ -3206,10 +2711,6 @@ dialog:not([open]) { display: none; }
   white-space: nowrap;
 }
 .trash-row__meta > * { overflow: hidden; text-overflow: ellipsis; }
-/* Weighted separators, matching the editor's provenance line: a hairline rule
-   rather than a middle dot, which is rationed in this interface. Each rule lives
-   on the *next* item's leading padding — as a `::before` it became an anonymous
-   flex item and an extra gap opened on the first one. */
 .trash-row__meta > * + * {
   position: relative;
   padding-left: 15px;
@@ -3231,9 +2732,6 @@ dialog:not([open]) { display: none; }
   opacity: 0;
   transition: opacity var(--fast);
 }
-/* Revealed on hover, on keyboard focus, and permanently once the row is part of
-   a selection — otherwise the actions for a multi-row operation would be
-   invisible on every row but the one under the cursor. */
 .trash-row:hover .trash-row__actions,
 .trash-row:focus-within .trash-row__actions,
 .trash-row.is-selected .trash-row__actions { opacity: 1; }
@@ -3241,7 +2739,6 @@ dialog:not([open]) { display: none; }
   .trash-row__actions { opacity: 1; }
 }
 
-/* ---------------------------------------------------------- panel footer */
 .panel__foot {
   flex: 0 0 auto;
   display: flex;
@@ -3263,7 +2760,6 @@ dialog:not([open]) { display: none; }
 .panel__count strong { color: var(--text); font-weight: 620; }
 .panel__count--has strong { color: var(--accent); }
 
-/* ------------------------------------------------------- trash empty state */
 .trash-empty {
   display: flex;
   flex-direction: column;
@@ -3289,15 +2785,6 @@ dialog:not([open]) { display: none; }
 .trash-empty h3 { font-size: 15px; font-weight: 620; letter-spacing: -0.01em; color: var(--text); }
 .trash-empty p { font-size: 13px; line-height: 1.6; }
 
-/* Narrow screens: the panel keeps its insets, they just tighten — below the measure
-   plus its padding the card is simply the viewport minus the inset, and the bands get
-   a tighter gutter. On a phone the toolbar wraps instead of squeezing the filters, and
-   a row grows to a touch target with its actions permanently visible, because there is
-   no hover to reveal them.
-   This block sits *after* the panel rules it modifies on purpose. A media query
-   adds no specificity, so an earlier copy of these rules — which is where they
-   used to live — was overridden by the very base rules they were written to
-   replace, and every padding, gap and flex-wrap declaration in it was inert. */
 @media (max-width: 820px) {
   .dialog--full { --panel-pad: 14px; --panel-inset: 12px; }
   .panel__head { padding: 12px var(--panel-pad); }
@@ -3315,12 +2802,6 @@ dialog:not([open]) { display: none; }
   .trash-row__meta { flex-wrap: wrap; white-space: normal; }
 }
 
-/* ==========================================================================
-   Micro controls
-   Checkboxes, radios and the segmented group. Each one is a real form control
-   wearing the app's clothes: the input keeps the keyboard contract, the
-   accessibility tree and the `:checked` state, and CSS paints the box.
-   ========================================================================== */
 .checkbox {
   display: inline-flex;
   align-items: center;
@@ -3329,8 +2810,6 @@ dialog:not([open]) { display: none; }
   user-select: none;
 }
 .checkbox--bare { gap: 0; }
-/* Visually hidden but focusable — `display: none` would take the control out of
-   the tab order and off the accessibility tree entirely. */
 .checkbox__input,
 .segmented__input {
   position: absolute;
@@ -3358,8 +2837,6 @@ dialog:not([open]) { display: none; }
   border-color: var(--accent);
   color: var(--text-inverse);
 }
-/* Indeterminate (select-all with a partial selection) is a dash, not a tick:
-   it has to be distinguishable from "all of them" at a glance. */
 .checkbox__input:indeterminate + .checkbox__box {
   background: var(--accent);
   border-color: var(--accent);
@@ -3430,13 +2907,6 @@ dialog:not([open]) { display: none; }
 .segmented__input:disabled + .segmented__icon,
 .segmented__input:disabled ~ .segmented__label { opacity: 0.5; }
 
-/* ==========================================================================
-   Palette chooser
-   Six named chips in the settings dialog. The chip is its own label: the dot is
-   the palette's accent, drawn from the fixed swatch tokens rather than from the
-   live --accent, because a chooser whose options repaint themselves as you pick
-   one is unreadable exactly when you want to compare them.
-   ========================================================================== */
 .palette-group {
   display: flex;
   flex-wrap: wrap;
@@ -3458,9 +2928,6 @@ dialog:not([open]) { display: none; }
   transition: background var(--fast), border-color var(--fast), color var(--fast);
 }
 .palette-option:hover { border-color: var(--border-strong); color: var(--text); }
-/* :has() rather than the adjacent-sibling selector the segmented group uses: the
-   input has to come first in the markup for the label to wrap it, so there is no
-   single sibling that means "checked" for every element that has to react. */
 .palette-option:has(.palette-option__input:checked) {
   border-color: var(--accent);
   background: var(--accent-soft);
@@ -3470,9 +2937,6 @@ dialog:not([open]) { display: none; }
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
-/* Visually hidden but still a real radio: `display: none` would drop the whole
-   group out of the tab order and off the accessibility tree, taking arrow-key
-   navigation and the checked state with it. */
 .palette-option__input {
   position: absolute;
   width: 1px; height: 1px;
@@ -3484,8 +2948,6 @@ dialog:not([open]) { display: none; }
   flex: 0 0 auto;
   width: 14px; height: 14px;
   border-radius: 50%;
-  /* A ring rather than a border, so the two dots that sit closest to the light
-     surfaces keep a defined edge without the dark chip growing a pale outline. */
   box-shadow: 0 0 0 1px var(--border-strong);
 }
 .palette-option__dot--indigo { background: var(--palette-indigo-swatch); }
@@ -3495,16 +2957,8 @@ dialog:not([open]) { display: none; }
 .palette-option__dot--violet { background: var(--palette-violet-swatch); }
 .palette-option__dot--graphite { background: var(--palette-graphite-swatch); }
 
-/* ==========================================================================
-   Context menu
-   The app's answer to right-click. One reused root element, positioned in the
-   viewport rather than appended to the element that opened it, so it cannot be
-   clipped by the rail's `overflow: hidden` or the panel's scroll container.
-   ========================================================================== */
 .menu {
   position: fixed;
-  /* Above every dialog: inside a dialog the menu is a child of it, and outside one it has
-     to clear the panel it was opened from. */
   z-index: 130;
   min-width: 208px;
   max-width: min(320px, calc(100vw - 16px));
@@ -3549,9 +3003,6 @@ dialog:not([open]) { display: none; }
   cursor: pointer;
 }
 .menu__item + .menu__item { margin-top: 1px; }
-/* The sort menu's items carry no glyph — a sort key has no icon of its own — but the grid
-   above reserves a column for one, and a missing child shifts the label into that 16px
-   column, where it is clipped to an ellipsis. An item that really has no icon drops it. */
 .menu__item:not(:has(.menu__icon)) { grid-template-columns: 14px minmax(0, 1fr) auto; }
 .menu__item:hover, .menu__item:focus-visible {
   background: var(--bg-hover);
@@ -3568,8 +3019,6 @@ dialog:not([open]) { display: none; }
 .menu__item:hover .menu__icon { color: var(--text-muted); }
 .menu__item--danger .menu__icon, .menu__item--danger:hover .menu__icon { color: var(--danger); }
 .menu__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* The shortcut doubles as the sort menu's trailing hint (an arrow, or a right-aligned
-   note), so it is pushed to the trailing edge however long the label before it is. */
 .menu__shortcut {
   margin-left: auto;
   font-family: var(--mono);
@@ -3586,23 +3035,7 @@ dialog:not([open]) { display: none; }
   .menu { animation: none; }
 }
 
-/* ==========================================================================
- Tasks pane
 
- The task list is assembled from elements the rest of the app already has: the same
- pane head, the same 940px measure, the same row rhythm and the same hairline
- separators as the tree and the trash. Three things are its own, and each exists
- because a task is not a note: a checkbox leads every row, a due chip carries the
- tone of the bucket heading above it, and the quick-add row is a field rather than
- a button. Every colour below is a token, so the pane follows the palette and the
- mode without a single rule of its own — which is why there is no dark variant here.
- ========================================================================== */
-
-/* The header's task button. The task list is a view of the workspace rather than a place
-   inside it, so it belongs with the view-level controls at the right end of the header, not
-   among the rail's rows, which are what the notebook holds. It is the one control up there
-   that is not a bare icon: the number of open tasks is the reason to look at it, so it wears
-   a short label and a count and reads as a button in its own right. */
 .topbar__views { display: flex; align-items: center; }
 
 .view-btn {
@@ -3628,17 +3061,11 @@ dialog:not([open]) { display: none; }
 .view-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .view-btn__glyph { color: var(--text-muted); }
 .view-btn__label { white-space: nowrap; }
-/* The count wears the tree's badge rather than a badge of its own: two ways of printing a
-   number in this app would be two languages. */
 .view-btn .tree__badge { margin-left: 0; }
-/* Active is the app's selected treatment, unchanged: the same pill and the same accent glyph
-   a folder row gets, because the tasks pane IS the pane on screen. */
 .view-btn.is-active { background: var(--bg-active); color: var(--text); }
 .view-btn.is-active .view-btn__label { font-weight: 620; }
 .view-btn.is-active .view-btn__glyph { color: var(--accent); }
 
-/* One measure, shared with the folder view: the head, the quick add, the filter and
-   every group line up on the same optical column as the cards beside them. */
 .task-add,
 .task-filters,
 .task-group { max-width: 940px; }
@@ -3655,8 +3082,6 @@ dialog:not([open]) { display: none; }
   box-shadow: var(--shadow-sm);
   transition: border-color var(--fast), box-shadow var(--fast);
 }
-/* The field is the pane's primary way in, so it takes the accent ring the app's own
-   focused inputs take, rather than a bare outline of its own invention. */
 .task-add:focus-within {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-ring);
@@ -3675,9 +3100,6 @@ dialog:not([open]) { display: none; }
 }
 .task-add__input:focus { outline: none; }
 .task-add__input::placeholder { color: var(--text-faint); }
-/* A real button at the end of the field: the hand's way to do what Enter does. Quiet while
-   there is nothing to file — a control that files nothing is worse than one that is plainly
-   not ready — and it answers the pointer when there is. */
 .task-add__submit {
   flex: 0 0 auto;
   height: 26px;
@@ -3701,8 +3123,6 @@ dialog:not([open]) { display: none; }
 .task-filters__group { flex-wrap: wrap; }
 
 .task-group { margin-top: 4px; }
-/* The heading is the pane's own section label, so its rhythm comes from .pane-section;
-   the first group only has to clear the filter above it. */
 .task-group:first-of-type .pane-section { margin-top: 18px; }
 
 .task-row {
@@ -3742,8 +3162,6 @@ dialog:not([open]) { display: none; }
   white-space: nowrap;
 }
 .task-row__title:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* A finished task is struck through as well as dimmed: the tick is the state, and the
-   strike is what makes it legible while the eye is running down a long list. */
 .task-row.is-done .task-row__title { color: var(--text-faint); text-decoration: line-through; }
 
 .task-row__meta {
@@ -3756,10 +3174,6 @@ dialog:not([open]) { display: none; }
   overflow: hidden;
   white-space: nowrap;
 }
-/* Weighted separators, matching the trash row's metadata line: a hairline rule rather
-   than a middle dot, which is rationed in this interface. Each rule lives on the next
-   item's leading padding — as a ::before on the item itself it became an anonymous flex
-   item and opened an extra gap on the first one. */
 .task-row__meta > * + * { position: relative; padding-left: 13px; }
 .task-row__meta > * + *::before {
   content: "";
@@ -3772,14 +3186,9 @@ dialog:not([open]) { display: none; }
 }
 
 .task-chip { overflow: hidden; text-overflow: ellipsis; }
-/* A due chip's tone follows the bucket heading above it, so the two can never appear to
-   disagree: late is the danger tone, today and tomorrow are the accent, and everything
-   still ahead of the reader stays plain. */
 .task-chip--overdue { color: var(--danger); }
 .task-chip--today, .task-chip--tomorrow { color: var(--accent); }
 
-/* High priority is the attention tone, not the danger tone: something late and something
-   important are different claims, and painting both red would flatten them into one. */
 .task-row__priority {
   grid-column: 3;
   padding: 1px 7px;
@@ -3806,16 +3215,11 @@ dialog:not([open]) { display: none; }
 }
 .task-row__action--danger:hover { background: var(--danger-soft); color: var(--danger); }
 
-/* The edit dialog's form: two columns for the four short facts, one column for the text,
-   so the dialog keeps the proportions of every other form in the app instead of becoming
-   a ladder of full-width fields. */
 .task-form { display: flex; flex-direction: column; gap: 14px; }
 .task-form__row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .task-form .select,
 .task-form .select__trigger { width: 100%; }
 .task-form__when { gap: 10px; }
-/* A textarea is the one control that does not take the field's fixed height: it is a
-   body of text, and the field heights in this app are for single lines. */
 .field__input--area {
   height: auto;
   min-height: 64px;
@@ -3826,8 +3230,6 @@ dialog:not([open]) { display: none; }
 }
 
 @media (max-width: 560px) {
-  /* The four short facts pair up only while there is width for two columns; stacked,
-     they are read one after another in the order the task is described. */
   .task-form__row { grid-template-columns: 1fr; }
   .task-row { gap: 8px; }
 }
@@ -3839,10 +3241,6 @@ dialog:not([open]) { display: none; }
   .menu { animation: none; }
 }
 
-/* ------------------------------------------------------------------- note pictures
-   A pasted picture is an atomic pill like a link: it holds the caret's place, cannot be
-   typed into, and is sized to the body rather than to its own pixels, so a screenshot
-   cannot push the text off the screen. */
 .note-img {
   display: block;
   max-width: 100%;
@@ -3852,8 +3250,6 @@ dialog:not([open]) { display: none; }
   border-radius: 10px;
   background: var(--bg-sunken);
 }
-/* A file that has been deleted, or bytes the vault will not hand over: a labelled box
-   rather than the browser's broken-image glyph, which says nothing about why. */
 .note-img.is-missing {
   min-height: 76px;
   min-width: 160px;
@@ -3863,14 +3259,9 @@ dialog:not([open]) { display: none; }
   font-size: 12.5px;
 }
 
-/* A reminder or a repeat rule is a fact about a task rather than a state of it, so the
-   chips keep the muted tone the project chip uses; a reminder already given is history
-   and fades further. */
 .task-chip--reminder { color: var(--text-muted); }
 .task-chip--reminder.is-fired { color: var(--text-faint); }
 
-/* One line of guidance under the task form's controls: what a reminder is measured from,
-   and what this browser will do with it. */
 .task-form__hint {
   margin: 0;
   font-size: 12px;
