@@ -1374,7 +1374,7 @@ body.is-marquee * {
   --col-when: 96px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 4px;
 }
 .card-grid--list .card-list__head {
   display: flex;
@@ -1400,7 +1400,7 @@ body.is-marquee * {
   align-items: center;
   column-gap: 24px;
   min-height: 0;
-  padding: 7px 14px;
+  padding: 4px 12px;
   border-color: transparent;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -1426,7 +1426,7 @@ body.is-marquee * {
 .card-grid--list .card-list__cell--num { text-align: right; }
 .card-grid--list .card--head {
   grid-template-columns: 22px minmax(0, 1fr) var(--col-size) var(--col-when);
-  padding: 2px 14px 6px;
+  padding: 2px 12px 6px;
   border-color: transparent;
   border-radius: 0;
   background: none;
