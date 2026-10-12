@@ -1419,7 +1419,7 @@ body.is-marquee * {
 }
 .card.is-focused { box-shadow: inset 0 0 0 1px var(--accent); }
 .card-grid--list > .card,
-.card-grid--list > .card-wrap { width: 100%; margin-bottom: 6px; }
+.card-grid--list > .card-wrap { width: 100%; margin-bottom: 4px; }
 .card-grid--list .card-wrap .card { flex: 1 1 auto; min-width: 0; }
 .card-grid--list .card__glyph { flex: 0 0 auto; }
 .card-grid--list .card__title { min-width: 0; }
