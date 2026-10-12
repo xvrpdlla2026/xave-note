@@ -859,11 +859,14 @@ window.NoteApp = window.NoteApp || {};
       ]));
     }
 
+    var bulk = ctx.bulkSelected || [];
+
     if (ctx.subfolders && ctx.subfolders.length) {
       var grid = cardGrid('folders');
       ctx.subfolders.forEach(function (folder) {
         grid.appendChild(el('button', {
-          class: 'card card--folder' + (isFocused(ctx, 'folder', folder.id) ? ' is-focused' : ''),
+          class: 'card card--folder' + (isFocused(ctx, 'folder', folder.id) ? ' is-focused' : '')
+            + (bulk.indexOf(folder.id) !== -1 ? ' is-selected' : ''),
           type: 'button',
           dataset: { id: folder.id, ctx: 'folder', ctxLabel: folder.name },
         }, [
@@ -880,7 +883,6 @@ window.NoteApp = window.NoteApp || {};
 
     if (ctx.notes.length) {
       var noteCards = cardGrid('notes');
-      var bulk = ctx.bulkSelected || [];
       ctx.notes.forEach(function (note) {
         var isChecked = bulk.indexOf(note.id) !== -1;
         noteCards.appendChild(el('div', {
@@ -914,7 +916,8 @@ window.NoteApp = window.NoteApp || {};
       ctx.files.forEach(function (file) {
         fileCards.appendChild(el('button', {
           class: 'card card--file' + (file.id === ctx.activeFileId ? ' is-active' : '')
-            + (isFocused(ctx, 'file', file.id) ? ' is-focused' : ''),
+            + (isFocused(ctx, 'file', file.id) ? ' is-focused' : '')
+            + (bulk.indexOf(file.id) !== -1 ? ' is-selected' : ''),
           type: 'button',
           dataset: { id: file.id, ctx: 'file', ctxLabel: file.filename },
         }, [

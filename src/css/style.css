@@ -1185,7 +1185,8 @@ svg.tree__glyph--note { font-size: 14.5px; }
 
 .card-wrap { position: relative; }
 .card-wrap .card { width: 100%; }
-.card-wrap.is-selected .card {
+.card-wrap.is-selected .card,
+.card.is-selected {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-ring);
 }
@@ -1364,6 +1365,7 @@ svg.tree__glyph--note { font-size: 14.5px; }
 .card-grid--list.card-grid--files .card { grid-template-columns: 22px minmax(0, 1fr) var(--col-size) var(--col-when); }
 .card-grid--list .card:hover { transform: none; background: var(--bg-hover); }
 .card-grid--list .card.is-active,
+.card-grid--list .card.is-selected,
 .card-grid--list .card-wrap.is-selected .card {
   border-color: transparent;
   background: var(--accent-soft);

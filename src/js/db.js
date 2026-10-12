@@ -1019,6 +1019,24 @@ var vaultBusy = false;
       });
     },
 
+    moveFolderTo: function (id, workspaceId, parentFolderId) {
+      var ids = API.descendantFolderIds(id);
+      if (parentFolderId && (String(parentFolderId) === String(id) || ids.indexOf(parentFolderId) !== -1)) {
+        return Promise.resolve(false);
+      }
+      var row = queryOne('SELECT workspace_id FROM folders WHERE id = ?', [id]);
+      var from = row ? row.workspace_id : null;
+      return write(function (run) {
+        if (String(from) !== String(workspaceId)) {
+          var placeholders = ids.map(function () { return '?'; }).join(',');
+          run('UPDATE folders SET workspace_id = ? WHERE id IN (' + placeholders + ')', [workspaceId].concat(ids));
+          run('UPDATE notes SET workspace_id = ? WHERE folder_id IN (' + placeholders + ')', [workspaceId].concat(ids));
+          run('UPDATE files SET workspace_id = ? WHERE folder_id IN (' + placeholders + ')', [workspaceId].concat(ids));
+        }
+        run('UPDATE folders SET parent_folder_id = ? WHERE id = ?', [parentFolderId || null, id]);
+      }).then(function () { return true; });
+    },
+
     deleteFolder: function (id) {
       var ids = API.descendantFolderIds(id);
       var stamp = util.nowIso();

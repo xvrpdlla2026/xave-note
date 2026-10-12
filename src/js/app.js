@@ -33,6 +33,7 @@ window.NoteApp = window.NoteApp || {};
     trashOpen: false,
     trashSelected: [],
     bulkSelected: [],
+    bulkKinds: {},
     focused: null,
     bulkAnchor: null,
     bulkScope: null,
@@ -1262,15 +1263,26 @@ window.NoteApp = window.NoteApp || {};
 
     if (state.bulkScope !== bulkScopeKey()) {
       state.bulkSelected = [];
+      state.bulkKinds = {};
       state.bulkScope = bulkScopeKey();
     } else if (state.bulkSelected.length) {
-      var liveNotes = {};
-      treeModel.rootNotes.forEach(function (n) { liveNotes[n.id] = true; });
+      var liveBulk = {};
+      treeModel.folders.forEach(function (f) { liveBulk[f.id] = true; });
+      treeModel.rootNotes.forEach(function (n) { liveBulk[n.id] = true; });
+      treeModel.rootFiles.forEach(function (f) { liveBulk[f.id] = true; });
       Object.keys(treeModel.notesByFolder).forEach(function (fid) {
-        treeModel.notesByFolder[fid].forEach(function (n) { liveNotes[n.id] = true; });
+        treeModel.notesByFolder[fid].forEach(function (n) { liveBulk[n.id] = true; });
       });
-      var prunedBulk = state.bulkSelected.filter(function (id) { return !!liveNotes[id]; });
-      if (prunedBulk.length !== state.bulkSelected.length) state.bulkSelected = prunedBulk;
+      Object.keys(treeModel.filesByFolder).forEach(function (fid) {
+        treeModel.filesByFolder[fid].forEach(function (f) { liveBulk[f.id] = true; });
+      });
+      var prunedBulk = state.bulkSelected.filter(function (id) { return !!liveBulk[id]; });
+      if (prunedBulk.length !== state.bulkSelected.length) {
+        state.bulkSelected = prunedBulk;
+        var keptKinds = {};
+        prunedBulk.forEach(function (id) { if (state.bulkKinds[id]) keptKinds[id] = state.bulkKinds[id]; });
+        state.bulkKinds = keptKinds;
+      }
     }
     var folderBytes = App.db.subtreeBytes(state.workspaceId);
     if (state.selection.type === 'folder') {
@@ -1788,35 +1800,64 @@ window.NoteApp = window.NoteApp || {};
     });
   }
 
-  function deleteBulkNotes(ids) {
-    var list = (ids || []).filter(function (id) { return !!App.db.getNote(id); });
+  function deleteBulkItems(items) {
+    var list = (items || []).filter(function (item) { return item && item.id; });
     if (!list.length) return;
-    var n = list.length;
+    var notes = list.filter(function (i) { return i.kind === 'note'; });
+    var files = list.filter(function (i) { return i.kind === 'file'; });
+    var folders = list.filter(function (i) { return i.kind === 'folder'; });
+    var parts = [];
+    if (folders.length) parts.push(folders.length + ' folder' + (folders.length === 1 ? '' : 's'));
+    if (notes.length) parts.push(notes.length + ' note' + (notes.length === 1 ? '' : 's'));
+    if (files.length) parts.push(files.length + ' file' + (files.length === 1 ? '' : 's'));
+    var label = parts.join(', ');
     App.ui.dialog({
-      title: 'Delete ' + n + (n === 1 ? ' note?' : ' notes?'),
+      title: 'Delete ' + label + '?',
       icon: 'trash',
       danger: true,
-      message: n + (n === 1 ? ' note will be removed from this browser.' : ' notes will be removed from this browser.'),
+      message: label + ' will be removed from this browser.',
       consequences: [
         'They stay in the trash until removed for good, and can be restored from there.',
-        'Export the database from Settings first if any of it matters.',
+        folders.length
+          ? 'Everything inside a deleted folder goes with it.'
+          : 'Export the database from Settings first if any of it matters.',
       ],
-      confirmLabel: 'Delete ' + n + (n === 1 ? ' note' : ' notes'),
+      confirmLabel: 'Delete ' + label,
     }).then(function (ok) {
       if (!ok) return;
       saveOpenNote.cancel();
-      App.db.bulkDeleteNotes(list).then(function () {
-        list.forEach(function (nid) {
-          if (String(state.activeNoteId) === String(nid)) {
-            state.activeNoteId = null;
-            state.currentNote = null;
+      var work = [];
+      if (notes.length) work.push(App.db.bulkDeleteNotes(notes.map(function (i) { return i.id; })));
+      files.forEach(function (i) { work.push(App.db.deleteFile(i.id)); });
+      folders.forEach(function (i) { work.push(App.db.deleteFolder(i.id)); });
+      Promise.all(work).then(function () {
+        var gone = {};
+        list.forEach(function (i) { gone[i.id] = i.kind; });
+        if (state.activeNoteId && gone[state.activeNoteId] === 'note') {
+          state.activeNoteId = null;
+          state.currentNote = null;
+        }
+        if (state.activeFileId && gone[state.activeFileId] === 'file') state.activeFileId = null;
+        folders.forEach(function (i) {
+          var doomed = App.db.descendantFolderIds(i.id) || [];
+          if (state.selection.type === 'folder' && doomed.indexOf(state.selection.id) !== -1) {
+            state.selection = { type: 'all', id: null };
+          }
+          if (state.activeNoteId) {
+            var openNote = App.db.getNote(state.activeNoteId);
+            if (openNote && doomed.indexOf(openNote.folder_id) !== -1) {
+              state.activeNoteId = null;
+              state.currentNote = null;
+            }
+          }
+          if (state.activeFileId) {
+            var openFile = App.db.getFileMeta(state.activeFileId);
+            if (openFile && doomed.indexOf(openFile.folder_id) !== -1) state.activeFileId = null;
           }
         });
-        state.tabs = state.tabs.filter(function (t) {
-          return !(t.kind === 'note' && list.some(function (nid) { return String(nid) === String(t.id); }));
-        });
+        state.tabs = state.tabs.filter(function (t) { return !(t.kind === 'note' && gone[t.id] === 'note'); });
         clearBulkSelection();
-        util.toast(n + (n === 1 ? ' note deleted.' : ' notes deleted.'), 'info');
+        util.toast(label + ' deleted.', 'info');
         render();
       }).catch(function (err) {
         util.toast('Delete failed: ' + err.message, 'error');
@@ -1848,9 +1889,12 @@ window.NoteApp = window.NoteApp || {};
 
   function openMovePanel(kind, id) {
     if (movePanel) return;
-    var ids = Array.isArray(id) ? id.filter(function (nid) { return !!App.db.getNote(nid); }) : null;
+    var itemList = Array.isArray(id) && id.length && typeof id[0] === 'object' ? id : null;
+    if (itemList) id = null;
+    var ids = !itemList && Array.isArray(id) ? id.filter(function (nid) { return !!App.db.getNote(nid); }) : null;
     if (ids && !ids.length) return;
-    if (!ids) {
+    if (itemList && !itemList.length) return;
+    if (!ids && !itemList) {
       if (kind === 'folder') {
         var folderList = App.db.listFolders(state.workspaceId);
         var exists = folderList.some(function (f) { return f.id === id; });
@@ -1868,11 +1912,13 @@ window.NoteApp = window.NoteApp || {};
     state.moveKind = kind;
     state.moveId = ids ? null : id;
     state.moveIds = ids;
+    state.moveItems = itemList;
     state.moveTerm = '';
     state.moveView = 'all';
 
     App.ui.dialog({
-      title: ids ? 'Move ' + ids.length + ' notes' : kind === 'note' ? 'Move note' : kind === 'file' ? 'Move file' : 'Move folder',
+      title: itemList ? 'Move ' + itemList.length + ' item' + (itemList.length === 1 ? '' : 's')
+        : ids ? 'Move ' + ids.length + ' notes' : kind === 'note' ? 'Move note' : kind === 'file' ? 'Move file' : 'Move folder',
       fullscreen: true,
       hideHeader: true,
       hideFooter: true,
@@ -1898,6 +1944,7 @@ window.NoteApp = window.NoteApp || {};
       movePanel = null;
       state.moveTerm = '';
       state.moveIds = null;
+      state.moveItems = null;
     });
   }
 
@@ -1921,6 +1968,22 @@ window.NoteApp = window.NoteApp || {};
         term: state.moveTerm || '',
         view: state.moveView || 'all',
         footNote: 'The whole subtree moves with it.',
+      };
+    }
+    if (state.moveItems && state.moveItems.length) {
+      var foldersByWsItems = {};
+      workspaces.forEach(function (ws) {
+        foldersByWsItems[ws.id] = App.db.listFolders(ws.id);
+      });
+      return {
+        mode: 'place', icon: 'note',
+        title: 'Move ' + state.moveItems.length + ' item' + (state.moveItems.length === 1 ? '' : 's'),
+        sub: 'Move the selection to another folder or workspace.',
+        workspaces: workspaces, foldersByWs: foldersByWsItems, countsByWs: countsByWs,
+        currentWsId: null,
+        currentFolderId: null,
+        term: state.moveTerm || '',
+        view: state.moveView || 'all',
       };
     }
     if (state.moveIds && state.moveIds.length) {
@@ -1973,6 +2036,36 @@ window.NoteApp = window.NoteApp || {};
     var id = state.moveId;
     var targetFolder = folderId || null;
     closeMovePanel();
+    if (state.moveItems && state.moveItems.length) {
+      var chosen = state.moveItems.slice();
+      var noteIds = chosen.filter(function (i) { return i.kind === 'note'; }).map(function (i) { return i.id; });
+      var moves = [];
+      if (noteIds.length) moves.push(App.db.bulkMoveNotes(noteIds, wsId, targetFolder));
+      chosen.forEach(function (i) {
+        if (i.kind === 'file') {
+          var meta = App.db.getFileMeta(i.id);
+          if (meta && (String(meta.workspace_id) !== String(wsId) || String(meta.folder_id || '') !== String(targetFolder || ''))) {
+            moves.push(App.db.moveFile(i.id, wsId, targetFolder));
+          }
+        } else if (i.kind === 'folder') {
+          moves.push(App.db.moveFolderTo(i.id, wsId, targetFolder));
+        }
+      });
+      Promise.all(moves).then(function () {
+        if (targetFolder && wsId === state.workspaceId) state.expanded[targetFolder] = true;
+        if (state.activeNoteId && noteIds.some(function (nid) { return String(nid) === String(state.activeNoteId); })
+          && wsId !== state.workspaceId) {
+          state.activeNoteId = null;
+          state.currentNote = null;
+        }
+        clearBulkSelection();
+        util.toast(chosen.length + (chosen.length === 1 ? ' item moved.' : ' items moved.'), 'success');
+        render();
+      }).catch(function (err) {
+        util.toast('Move failed: ' + err.message, 'error');
+      });
+      return;
+    }
     if (state.moveIds && state.moveIds.length) {
       var todo = state.moveIds.filter(function (nid) {
         var n = App.db.getNote(nid);
@@ -2243,7 +2336,14 @@ window.NoteApp = window.NoteApp || {};
 
   function clearBulkSelection() {
     state.bulkSelected = [];
+    state.bulkKinds = {};
     state.bulkScope = bulkScopeKey();
+  }
+
+  function bulkItems() {
+    return state.bulkSelected.map(function (id) {
+      return { id: id, kind: state.bulkKinds[id] || 'note' };
+    });
   }
 
   function toggleTrashSelect(id, checked) {
@@ -3557,8 +3657,8 @@ window.NoteApp = window.NoteApp || {};
     'new-folder': function () { newFolder(null); },
     'new-subfolder': function () { newFolder(state.selection.type === 'folder' ? state.selection.id : null); },
     'upload-file': function () { dom.fileInput.click(); },
-    'bulk-move': function () { if (state.bulkSelected.length) openMovePanel('note', state.bulkSelected.slice()); },
-    'bulk-delete': function () { if (state.bulkSelected.length) deleteBulkNotes(state.bulkSelected.slice()); },
+    'bulk-move': function () { if (state.bulkSelected.length) openMovePanel('items', bulkItems()); },
+    'bulk-delete': function () { if (state.bulkSelected.length) deleteBulkItems(bulkItems()); },
     'bulk-clear': function () { clearBulkSelection(); render(); },
     'rename-note': function () { if (state.activeNoteId) renameNote(state.activeNoteId); },
     'delete-note': function () { if (state.activeNoteId) deleteNote(state.activeNoteId); },
@@ -3627,11 +3727,20 @@ window.NoteApp = window.NoteApp || {};
     return 'note';
   }
 
-  function paneNoteOrder() {
-    var nodes = dom.main.querySelectorAll('.card--note[data-id]');
+  function paneOrder() {
+    var nodes = dom.main.querySelectorAll('.card--folder[data-id], .card--note[data-id], .card--file[data-id]');
     return Array.prototype.map.call(nodes, function (node) {
-      return String(node.getAttribute('data-id'));
+      return { id: String(node.getAttribute('data-id')), kind: paneCardKind(node) };
     });
+  }
+
+  function syncBulkKinds(id, kind) {
+    var keep = {};
+    state.bulkSelected.forEach(function (x) {
+      if (String(x) === String(id)) keep[x] = kind;
+      else if (state.bulkKinds[x]) keep[x] = state.bulkKinds[x];
+    });
+    state.bulkKinds = keep;
   }
 
   function openPaneItem(kind, id) {
@@ -3658,21 +3767,21 @@ window.NoteApp = window.NoteApp || {};
     var add = event.ctrlKey || event.metaKey;
     var range = event.shiftKey;
 
-    if (kind !== 'note') {
-      var hadSelection = state.bulkSelected.length > 0;
-      if (!add && !range) clearBulkSelection();
-      state.bulkAnchor = null;
-      focusPaneItem(kind, id, hadSelection);
-      return;
-    }
-
     if (range && state.bulkAnchor) {
-      var order = paneNoteOrder();
-      var from = order.indexOf(String(state.bulkAnchor));
-      var to = order.indexOf(String(id));
+      var order = paneOrder();
+      var from = -1;
+      var to = -1;
+      order.forEach(function (entry, index) {
+        if (String(entry.id) === String(state.bulkAnchor)) from = index;
+        if (String(entry.id) === String(id)) to = index;
+      });
       if (from !== -1 && to !== -1) {
-        state.bulkSelected = from <= to ? order.slice(from, to + 1) : order.slice(to, from + 1);
-        focusPaneItem('note', id);
+        var slice = from <= to ? order.slice(from, to + 1) : order.slice(to, from + 1);
+        var kinds = {};
+        slice.forEach(function (entry) { kinds[entry.id] = entry.kind; });
+        state.bulkSelected = slice.map(function (entry) { return entry.id; });
+        state.bulkKinds = kinds;
+        focusPaneItem(kind, id);
         return;
       }
     }
@@ -3686,7 +3795,8 @@ window.NoteApp = window.NoteApp || {};
       state.bulkSelected = [id];
     }
     state.bulkAnchor = id;
-    focusPaneItem('note', id, before !== state.bulkSelected.join(','));
+    syncBulkKinds(id, kind);
+    focusPaneItem(kind, id, before !== state.bulkSelected.join(','));
   }
 
   function onPaneItemClickEvent(event) {
