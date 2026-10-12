@@ -1120,17 +1120,26 @@ window.NoteApp = window.NoteApp || {};
       ]));
     }
 
-    // Bulk bar: only while cards are checked. Sticky to the pane's bottom so it
-    // never scrolls away from the list it acts on; one filled primary, the
-    // destructive action quiet, matching the pane-actions hierarchy.
     var bulkCount = (ctx.bulkSelected || []).length;
     if (bulkCount) {
       frag.appendChild(el('div', { class: 'bulk-bar', role: 'toolbar', 'aria-label': 'Bulk actions' }, [
-        el('span', { class: 'bulk-bar__count', text: bulkCount + ' selected' }),
-        el('button', { class: 'btn btn--sm', type: 'button', dataset: { action: 'bulk-move' } }, ['Move…']),
-        el('button', { class: 'btn btn--sm', type: 'button', dataset: { action: 'bulk-export' } }, ['Export .md']),
-        el('button', { class: 'btn btn--sm btn--danger-ghost', type: 'button', dataset: { action: 'bulk-delete' } }, ['Delete…']),
-        el('button', { class: 'btn btn--sm btn--ghost', type: 'button', dataset: { action: 'bulk-clear' } }, ['Clear']),
+        el('div', { class: 'bulk-bar__lead' }, [
+          el('span', { class: 'bulk-bar__count', text: String(bulkCount) }),
+          el('span', { class: 'bulk-bar__label', text: 'selected' }),
+          el('button', {
+            class: 'bulk-bar__clear',
+            type: 'button',
+            dataset: { action: 'bulk-clear' },
+            'aria-label': 'Clear selection',
+            title: 'Clear selection',
+          }, [App.ui.icon('close', 13)]),
+        ]),
+        el('span', { class: 'bulk-bar__rule', 'aria-hidden': 'true' }),
+        el('div', { class: 'bulk-bar__actions' }, [
+          el('button', { class: 'btn btn--sm btn--primary', type: 'button', dataset: { action: 'bulk-move' } }, ['Move…']),
+          el('button', { class: 'btn btn--sm btn--ghost', type: 'button', dataset: { action: 'bulk-export' } }, ['Export .md']),
+          el('button', { class: 'btn btn--sm btn--danger-ghost', type: 'button', dataset: { action: 'bulk-delete' } }, ['Delete…']),
+        ]),
       ]));
     }
 
