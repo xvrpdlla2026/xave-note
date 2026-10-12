@@ -1132,6 +1132,7 @@ svg.tree__glyph--note { font-size: 14.5px; }
 }
 
 .pane-head { display: flex; align-items: flex-start; gap: 13px; margin-bottom: 16px; }
+.pane-head__id { flex: 1 1 auto; min-width: 0; }
 
 .pane-head__glyph {
   flex: 0 0 auto;
@@ -1186,8 +1187,25 @@ svg.tree__glyph--note { font-size: 14.5px; }
 .pane-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
-  margin-bottom: 24px;
+  margin-bottom: 22px;
+}
+
+.pane-actions__spacer { flex: 1 1 auto; }
+
+.pane-actions__group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+}
+
+.btn--icon-only {
+  width: 34px;
+  padding: 0;
+  justify-content: center;
 }
 
 .pane-section {

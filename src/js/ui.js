@@ -786,6 +786,16 @@ window.NoteApp = window.NoteApp || {};
     } catch (e) {  }
   }
 
+  function iconAction(action, icon, label, extra) {
+    return el('button', {
+      class: 'btn btn--ghost btn--icon-only' + (extra ? ' ' + extra : ''),
+      type: 'button',
+      title: label,
+      'aria-label': label,
+      dataset: { action: action },
+    }, [App.ui.icon(icon, 15)]);
+  }
+
   function renderFolderView(host, ctx) {
     var frag = document.createDocumentFragment();
     var list = ctx.paneView === 'list';
@@ -805,8 +815,10 @@ window.NoteApp = window.NoteApp || {};
       onChange: function (value) { if (ctx.onSetPaneView) ctx.onSetPaneView(value); },
     });
     frag.appendChild(el('div', { class: 'pane-head' }, [
-      el('h2', { class: 'pane-head__title', text: heading }),
-      el('p', { class: 'pane-head__sub', text: subtitle }),
+      el('div', { class: 'pane-head__id' }, [
+        el('h2', { class: 'pane-head__title', text: heading }),
+        el('p', { class: 'pane-head__sub', text: subtitle }),
+      ]),
       viewToggle,
     ]));
 
@@ -818,12 +830,12 @@ window.NoteApp = window.NoteApp || {};
           [App.ui.icon('folder', 14), 'New subfolder']),
         el('button', { class: 'btn btn--ghost', type: 'button', dataset: { action: 'upload-file' } },
           [App.ui.icon('upload', 14), 'Upload file']),
-        el('button', { class: 'btn btn--ghost', type: 'button', dataset: { action: 'rename-folder' } },
-          [App.ui.icon('pencil', 14), 'Rename']),
-        el('button', { class: 'btn btn--ghost', type: 'button', dataset: { action: 'move-folder' } },
-          [App.ui.icon('layers', 14), 'Move to workspace']),
-        el('button', { class: 'btn btn--danger-ghost', type: 'button', dataset: { action: 'delete-folder' } },
-          [App.ui.icon('trash', 14), 'Delete folder']),
+        el('div', { class: 'pane-actions__spacer' }),
+        el('div', { class: 'pane-actions__group' }, [
+          iconAction('rename-folder', 'pencil', 'Rename this folder'),
+          iconAction('move-folder', 'layers', 'Move this folder to another workspace'),
+          iconAction('delete-folder', 'trash', 'Delete this folder and its contents', 'btn--danger-ghost'),
+        ]),
       ]);
       frag.appendChild(actions);
     } else {
