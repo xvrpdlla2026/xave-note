@@ -1221,8 +1221,10 @@ svg.tree__glyph--note { font-size: 14.5px; }
 .card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(216px, 1fr));
-  gap: 10px;
+  gap: 12px;
 }
+
+.card-grid:not(.card-grid--list) { margin-bottom: 12px; }
 
 .card-wrap { position: relative; }
 .card-wrap .card { width: 100%; }

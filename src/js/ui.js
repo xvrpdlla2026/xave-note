@@ -855,8 +855,8 @@ window.NoteApp = window.NoteApp || {};
       return el('div', { class: 'card-grid card-grid--' + section + (list ? ' card-grid--list' : '') });
     }
 
-    if ((ctx.subfolders || []).length || ctx.notes.length || ctx.files.length) {
-      frag.appendChild(el('div', { class: 'card-grid' + (list ? ' card-grid--list' : '') }, [
+    if (list && ((ctx.subfolders || []).length || ctx.notes.length || ctx.files.length)) {
+      frag.appendChild(el('div', { class: 'card-grid card-grid--list' }, [
         el('div', { class: 'card-list__head', 'aria-hidden': 'true' }, [
           el('div', { class: 'card card--head' }, [
             el('span', { class: 'card-list__cell', text: '' }),
