@@ -3477,12 +3477,14 @@ window.NoteApp = window.NoteApp || {};
     'goto-folder': function (id) { goToFolder(id); },
     'select-folder': function (id) {
       flushPendingSave();
-      var inside = holdsTheSelection(id);
+      var already = state.selection.type === 'folder' && String(state.selection.id) === String(id)
+        && !state.activeNoteId && !state.activeFileId;
       state.view = 'notes';
       state.selection = { type: 'folder', id: id };
       state.activeNoteId = null;
       state.activeFileId = null;
-      if (!(state.expanded[id] && inside)) state.expanded[id] = !state.expanded[id];
+      if (already) state.expanded[id] = !state.expanded[id];
+      else state.expanded[id] = true;
       if (narrow) { mobilePanePinned = false; applyMobilePane(); }
       render();
     },
