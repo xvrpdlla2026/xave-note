@@ -3716,7 +3716,7 @@ window.NoteApp = window.NoteApp || {};
   }
 
   var marqueeDrag = null;
-  var suppressPaneClick = false;
+  var suppressPaneClick = null;
 
   function marqueeAllows(target) {
     if (!dom.main || !target || !dom.main.contains(target)) return false;
@@ -3729,7 +3729,7 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function onPanePointerDown(event) {
-    if (suppressPaneClick) suppressPaneClick = false;
+    suppressPaneClick = null;
     if (event.button !== 0 || marqueeDrag) return;
     if (!marqueeAllows(event.target)) return;
     marqueeDrag = {
@@ -3806,7 +3806,7 @@ window.NoteApp = window.NoteApp || {};
     if (drag.band && drag.band.parentNode) drag.band.parentNode.removeChild(drag.band);
     document.body.classList.remove('is-marquee');
     if (!drag.active) return false;
-    suppressPaneClick = true;
+    suppressPaneClick = { x: drag.x1, y: drag.y1 };
     if (state.bulkSelected.length) state.bulkAnchor = state.bulkSelected[state.bulkSelected.length - 1];
     render();
     return true;
@@ -3903,14 +3903,26 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function onPaneItemClickEvent(event) {
-    if (suppressPaneClick) {
-      suppressPaneClick = false;
+    var swallowed = suppressPaneClick
+      && Math.abs(event.clientX - suppressPaneClick.x) < 6
+      && Math.abs(event.clientY - suppressPaneClick.y) < 6;
+    suppressPaneClick = null;
+    if (swallowed) {
       event.preventDefault();
       event.stopImmediatePropagation();
       return;
     }
     var card = paneCardFrom(event);
-    if (!card) return;
+    if (!card) {
+      var blank = event.target === dom.main
+        || (event.target && event.target.closest && event.target.closest('.card-grid, .pane-section'));
+      if (blank && (state.bulkSelected.length || state.focused)) {
+        clearBulkSelection();
+        state.focused = null;
+        render();
+      }
+      return;
+    }
     onPaneItemClick(card, event);
   }
 
