@@ -190,6 +190,7 @@ window.NoteApp = window.NoteApp || {};
       title: row.title || '',
       is_private: Number(row.is_private) ? 1 : 0,
       content: '',
+      bytes: Number(row.bytes) || 0,
       created_at: row.created_at,
       updated_at: row.updated_at,
       position: row.position,
@@ -1044,8 +1045,8 @@ var vaultBusy = false;
     listNotesIn: function (workspaceId, folderId, sort) {
       var order = orderOf('notes', sort) || 'ORDER BY updated_at DESC';
       var rows = folderId
-        ? query('SELECT id, folder_id, workspace_id, title, is_private, created_at, updated_at, position FROM notes WHERE folder_id = ? AND deleted_at IS NULL ' + order, [folderId])
-        : query('SELECT id, folder_id, workspace_id, title, is_private, created_at, updated_at, position FROM notes WHERE workspace_id = ? AND folder_id IS NULL AND deleted_at IS NULL ' + order, [workspaceId]);
+        ? query('SELECT id, folder_id, workspace_id, title, is_private, created_at, updated_at, position, LENGTH(CAST(content AS BLOB)) AS bytes FROM notes WHERE folder_id = ? AND deleted_at IS NULL ' + order, [folderId])
+        : query('SELECT id, folder_id, workspace_id, title, is_private, created_at, updated_at, position, LENGTH(CAST(content AS BLOB)) AS bytes FROM notes WHERE workspace_id = ? AND folder_id IS NULL AND deleted_at IS NULL ' + order, [workspaceId]);
       return rows.map(mapNote);
     },
 
@@ -1064,7 +1065,8 @@ var vaultBusy = false;
 
     listAllNotes: function (workspaceId, sort) {
       return query(
-        'SELECT id, folder_id, workspace_id, title, is_private, created_at, updated_at, position FROM notes ' +
+        'SELECT id, folder_id, workspace_id, title, is_private, created_at, updated_at, position, ' +
+          'LENGTH(CAST(content AS BLOB)) AS bytes FROM notes ' +
           'WHERE workspace_id = ? AND deleted_at IS NULL ' +
           (orderOf('notes', sort) || 'ORDER BY updated_at DESC'),
         [workspaceId]
@@ -1880,7 +1882,7 @@ var vaultBusy = false;
         [workspaceId]
       );
       var fileRows = query(
-        'SELECT id, workspace_id, folder_id, filename, deleted_at FROM files WHERE workspace_id = ? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC',
+        'SELECT id, workspace_id, folder_id, filename, size, deleted_at FROM files WHERE workspace_id = ? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC',
         [workspaceId]
       );
       return {
@@ -1890,14 +1892,20 @@ var vaultBusy = false;
       };
     },
 
-    subtreeFileBytes: function (workspaceId) {
-      var rows = query(
+    subtreeBytes: function (workspaceId) {
+      var direct = {};
+      query(
         'SELECT folder_id AS folder_id, SUM(size) AS bytes FROM files ' +
         'WHERE workspace_id = ? AND folder_id IS NOT NULL GROUP BY folder_id',
         [workspaceId]
-      );
-      var direct = {};
-      rows.forEach(function (r) { direct[r.folder_id] = Number(r.bytes) || 0; });
+      ).forEach(function (r) { direct[r.folder_id] = Number(r.bytes) || 0; });
+      query(
+        'SELECT folder_id AS folder_id, SUM(LENGTH(CAST(content AS BLOB))) AS bytes FROM notes ' +
+        'WHERE workspace_id = ? AND folder_id IS NOT NULL GROUP BY folder_id',
+        [workspaceId]
+      ).forEach(function (r) {
+        direct[r.folder_id] = (direct[r.folder_id] || 0) + (Number(r.bytes) || 0);
+      });
 
       var folders = query(
         'SELECT id, parent_folder_id FROM folders WHERE workspace_id = ?', [workspaceId]

@@ -869,6 +869,10 @@ window.NoteApp = window.NoteApp || {};
         }, [
           el('span', { class: 'card__glyph' }, [App.ui.icon('folder')]),
           el('span', { class: 'card__title', text: folder.name }),
+          el('span', {
+            class: 'card__meta card__size',
+            text: util.formatBytes((ctx.folderBytes || {})[folder.id] || 0),
+          }),
         ]));
       });
       frag.appendChild(grid);
@@ -894,8 +898,11 @@ window.NoteApp = window.NoteApp || {};
           }, [
             el('span', { class: 'card__glyph' }, [App.ui.icon('note')]),
             el('span', { class: 'card__title', text: note.title && note.title.trim() ? note.title : 'Untitled note' }),
-            el('span', { class: 'card__gap', 'aria-hidden': 'true' }),
-            el('span', { class: 'card__meta', text: util.formatWhen(note.updated_at) }),
+            el('span', { class: 'card__meta card__meta--split' }, [
+              el('span', { class: 'card__size', text: util.formatBytes(note.bytes) }),
+              el('span', { class: 'card__sep', 'aria-hidden': 'true', text: '\u00b7' }),
+              el('span', { class: 'card__when', text: util.formatWhen(note.updated_at) }),
+            ]),
           ]),
         ]));
       });

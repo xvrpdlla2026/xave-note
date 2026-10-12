@@ -1272,6 +1272,7 @@ window.NoteApp = window.NoteApp || {};
       var prunedBulk = state.bulkSelected.filter(function (id) { return !!liveNotes[id]; });
       if (prunedBulk.length !== state.bulkSelected.length) state.bulkSelected = prunedBulk;
     }
+    var folderBytes = App.db.subtreeBytes(state.workspaceId);
     if (state.selection.type === 'folder') {
       var folder = treeModel.folders.filter(function (f) { return f.id === state.selection.id; })[0];
       if (folder) {
@@ -1282,6 +1283,7 @@ window.NoteApp = window.NoteApp || {};
           subfolders: treeModel.folders.filter(function (f) { return f.parent_folder_id === folder.id; }),
           notes: treeModel.notesByFolder[folder.id] || [],
           files: treeModel.filesByFolder[folder.id] || [],
+          folderBytes: folderBytes,
           activeNoteId: state.activeNoteId,
           activeFileId: state.activeFileId,
           bulkSelected: state.bulkSelected,
@@ -1299,6 +1301,7 @@ window.NoteApp = window.NoteApp || {};
       folderName: 'All notes',
       workspaceName: (currentWorkspace() || {}).name || '',
       subfolders: treeModel.folders.filter(function (f) { return !f.parent_folder_id; }),
+      folderBytes: folderBytes,
       notes: treeModel.rootNotes,
       files: treeModel.rootFiles,
       activeNoteId: state.activeNoteId,

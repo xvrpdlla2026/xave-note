@@ -1359,7 +1359,7 @@ svg.tree__glyph--note { font-size: 14.5px; }
   background: transparent;
   box-shadow: none;
 }
-.card-grid--list.card-grid--folders .card { grid-template-columns: 22px minmax(0, 1fr); }
+.card-grid--list.card-grid--folders .card { grid-template-columns: 22px minmax(0, 1fr) var(--col-size) var(--col-when); }
 .card-grid--list.card-grid--notes .card { grid-template-columns: 22px minmax(0, 1fr) var(--col-size) var(--col-when); }
 .card-grid--list.card-grid--files .card { grid-template-columns: 22px minmax(0, 1fr) var(--col-size) var(--col-when); }
 .card-grid--list .card:hover { transform: none; background: var(--bg-hover); }
@@ -1375,8 +1375,6 @@ svg.tree__glyph--note { font-size: 14.5px; }
 .card-grid--list .card__glyph { flex: 0 0 auto; }
 .card-grid--list .card__title { min-width: 0; }
 .card-grid--list .card__meta { margin-top: 0; padding-top: 0; }
-.card__gap { display: none; }
-.card-grid--list .card__gap { display: block; }
 .card-grid--list .card-list__cell--num { text-align: right; }
 .card-grid--list .card--head {
   grid-template-columns: 22px minmax(0, 1fr) var(--col-size) var(--col-when);
@@ -1394,9 +1392,8 @@ svg.tree__glyph--note { font-size: 14.5px; }
 }
 .card-grid--list .card--head:hover { background: none; box-shadow: none; }
 .card-grid--list .card__sep { display: none; }
-.card-grid--list.card-grid--files .card__meta { display: contents; }
-.card-grid--list.card-grid--files .card__size { text-align: right; }
-.card-grid--list.card-grid--files .card-list__cell--num { text-align: right; }
+.card-grid--list .card__meta--split { display: contents; }
+.card-grid--list .card__size { text-align: right; }
 
 .editor {
   display: flex;
