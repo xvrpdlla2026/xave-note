@@ -3716,10 +3716,11 @@ window.NoteApp = window.NoteApp || {};
   }
 
   var marqueeDrag = null;
-  var suppressContextMenu = false;
+  var suppressPaneClick = false;
 
   function marqueeAllows(target) {
     if (!dom.main || !target || !dom.main.contains(target)) return false;
+    if (!dom.main.querySelector('.card-grid')) return false;
     if (target.closest && target.closest('input, textarea, select, [contenteditable="true"], .bulk-bar, .pane-head, .pane-actions, .card-list__head')) return false;
     var control = target.closest ? target.closest('button, a') : null;
     if (control && !control.closest('.card-grid')) return false;
@@ -3728,11 +3729,12 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function onPanePointerDown(event) {
-    if (event.button !== 2 || marqueeDrag) return;
+    if (suppressPaneClick) suppressPaneClick = false;
+    if (event.button !== 0 || marqueeDrag) return;
     if (!marqueeAllows(event.target)) return;
     marqueeDrag = {
       x0: event.clientX, y0: event.clientY, x1: event.clientX, y1: event.clientY,
-      add: !!(event.ctrlKey || event.metaKey),
+      add: !!(event.ctrlKey || event.metaKey || event.shiftKey),
       base: state.bulkSelected.slice(),
       baseKinds: Object.assign({}, state.bulkKinds),
       active: false,
@@ -3777,7 +3779,7 @@ window.NoteApp = window.NoteApp || {};
     marqueeDrag.y1 = event.clientY;
     if (!marqueeDrag.active) {
       if (Math.abs(marqueeDrag.x1 - marqueeDrag.x0) < 4 && Math.abs(marqueeDrag.y1 - marqueeDrag.y0) < 4) return;
-      if (!(event.buttons & 2)) {
+      if (!(event.buttons & 1)) {
         marqueeDrag = null;
         return;
       }
@@ -3804,7 +3806,7 @@ window.NoteApp = window.NoteApp || {};
     if (drag.band && drag.band.parentNode) drag.band.parentNode.removeChild(drag.band);
     document.body.classList.remove('is-marquee');
     if (!drag.active) return false;
-    suppressContextMenu = true;
+    suppressPaneClick = true;
     if (state.bulkSelected.length) state.bulkAnchor = state.bulkSelected[state.bulkSelected.length - 1];
     render();
     return true;
@@ -3812,7 +3814,7 @@ window.NoteApp = window.NoteApp || {};
 
   function onDocumentMouseUp(event) {
     if (!marqueeDrag) return;
-    if (event.button !== 2 && !marqueeDrag.active) return;
+    if (event.button !== 0 && !marqueeDrag.active) return;
     endMarquee();
   }
 
@@ -3901,6 +3903,12 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function onPaneItemClickEvent(event) {
+    if (suppressPaneClick) {
+      suppressPaneClick = false;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
     var card = paneCardFrom(event);
     if (!card) return;
     onPaneItemClick(card, event);
@@ -3914,12 +3922,6 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function onPaneItemContextMenu(event) {
-    if (suppressContextMenu) {
-      suppressContextMenu = false;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      return;
-    }
     if (!(event.ctrlKey || event.metaKey || event.shiftKey)) return;
     var card = paneCardFrom(event);
     if (!card) return;
@@ -4371,6 +4373,9 @@ window.NoteApp = window.NoteApp || {};
     document.addEventListener('mouseup', onDocumentMouseUp);
     window.addEventListener('blur', endMarquee);
     document.addEventListener('selectstart', function (event) {
+      if (marqueeDrag && marqueeDrag.active) event.preventDefault();
+    }, true);
+    document.addEventListener('dragstart', function (event) {
       if (marqueeDrag && marqueeDrag.active) event.preventDefault();
     }, true);
 
