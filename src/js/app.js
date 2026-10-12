@@ -3620,8 +3620,10 @@ window.NoteApp = window.NoteApp || {};
     openNote(id);
   }
 
-  function focusPaneItem(kind, id) {
+  function focusPaneItem(kind, id, selectionMoved) {
+    var same = state.focused && state.focused.kind === kind && String(state.focused.id) === String(id);
     state.focused = { kind: kind, id: id };
+    if (same && !selectionMoved) return;
     state.bulkScope = bulkScopeKey();
     render();
   }
@@ -3630,15 +3632,16 @@ window.NoteApp = window.NoteApp || {};
     var kind = paneCardKind(card);
     var id = card.getAttribute('data-id');
     if (!id) return;
-    if (event.type === 'click' && event.detail === 0) { openPaneItem(kind, id); return; }
+    if (event.type === 'click' && (event.detail === 0 || event.detail > 1)) { openPaneItem(kind, id); return; }
 
     var add = event.ctrlKey || event.metaKey;
     var range = event.shiftKey;
 
     if (kind !== 'note') {
+      var hadSelection = state.bulkSelected.length > 0;
       if (!add && !range) clearBulkSelection();
       state.bulkAnchor = null;
-      focusPaneItem(kind, id);
+      focusPaneItem(kind, id, hadSelection);
       return;
     }
 
@@ -3653,6 +3656,7 @@ window.NoteApp = window.NoteApp || {};
       }
     }
 
+    var before = state.bulkSelected.join(',');
     var next = state.bulkSelected.filter(function (x) { return String(x) !== String(id); });
     if (add) {
       if (next.length === state.bulkSelected.length) next.push(id);
@@ -3661,7 +3665,7 @@ window.NoteApp = window.NoteApp || {};
       state.bulkSelected = [id];
     }
     state.bulkAnchor = id;
-    focusPaneItem('note', id);
+    focusPaneItem('note', id, before !== state.bulkSelected.join(','));
   }
 
   function onPaneItemClickEvent(event) {
