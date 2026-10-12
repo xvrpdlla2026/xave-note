@@ -838,22 +838,20 @@ window.NoteApp = window.NoteApp || {};
     }
 
     function cardGrid(section) {
-      var labels = section === 'notes'
-        ? ['Name', 'Modified']
-        : section === 'files'
-          ? ['', 'Name', 'Size', 'Modified']
-          : ['', 'Name'];
-      var grid = el('div', { class: 'card-grid card-grid--' + section + (list ? ' card-grid--list' : '') });
-      grid.appendChild(el('div', { class: 'card-list__head', 'aria-hidden': 'true' }, [
-        section === 'notes' ? el('span', { class: 'card-list__spacer' }) : null,
-        el('div', { class: 'card card--head' }, labels.map(function (label, i) {
-          return el('span', {
-            class: 'card-list__cell' + (section === 'files' && i === 2 ? ' card-list__cell--num' : ''),
-            text: label,
-          });
-        })),
+      return el('div', { class: 'card-grid card-grid--' + section + (list ? ' card-grid--list' : '') });
+    }
+
+    if (list && ((ctx.subfolders || []).length || ctx.notes.length || ctx.files.length)) {
+      frag.appendChild(el('div', { class: 'card-grid card-grid--list' }, [
+        el('div', { class: 'card-list__head', 'aria-hidden': 'true' }, [
+          el('div', { class: 'card card--head' }, [
+            el('span', { class: 'card-list__cell', text: '' }),
+            el('span', { class: 'card-list__cell', text: 'Name' }),
+            el('span', { class: 'card-list__cell card-list__cell--num', text: 'Size' }),
+            el('span', { class: 'card-list__cell', text: 'Modified' }),
+          ]),
+        ]),
       ]));
-      return grid;
     }
 
     if (ctx.subfolders && ctx.subfolders.length) {
@@ -898,6 +896,7 @@ window.NoteApp = window.NoteApp || {};
             },
           }, [
             el('span', { class: 'card__title', text: note.title && note.title.trim() ? note.title : 'Untitled note' }),
+            el('span', { class: 'card__gap', 'aria-hidden': 'true' }),
             el('span', { class: 'card__meta', text: util.formatWhen(note.updated_at) }),
           ]),
         ]));
