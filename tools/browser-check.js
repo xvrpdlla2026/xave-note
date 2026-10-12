@@ -20,6 +20,8 @@
  *   --reload                    re-navigate in the same session and eval again
  *   --restart                   close the browser, relaunch on the same profile, eval again
  *   --keep-profile              do not delete the profile afterwards (for inspection)
+ *   --shot=<file.png>           write a screenshot after the eval runs
+ *   --shot-clip=<selector>      clip that screenshot to one element (plus a 10px margin)
  */
 
 const { spawn } = require('child_process');
@@ -44,6 +46,8 @@ const preload = opt('preload', '');
 const dumpPath = opt('idb-dump', '');
 const exportPath = opt('export-dump', '');
 const keepProfile = argv.includes('--keep-profile');
+const shotPath = opt('shot', '');
+const shotClip = opt('shot-clip', '');
 const throwawayProfile = path.join(os.tmpdir(), 'dsh-cdp-profile-' + process.pid);
 const profileDir = opt('profile', throwawayProfile);
 
@@ -348,6 +352,29 @@ async function evaluate(cdp, expr) {
         console.log('--- eval exception ---');
         console.log(res.exceptionDetails.exception?.description || res.exceptionDetails.text);
         exitCode = 1;
+      }
+
+      if (shotPath) {
+        await cdp.send('Emulation.setDeviceMetricsOverride', {
+          width: 1280, height: 820, deviceScaleFactor: 2, mobile: false,
+        });
+        await sleep(300);
+        let clip;
+        if (shotClip) {
+          const box = await evaluate(cdp, `(function () {
+            var n = document.querySelector(${JSON.stringify(shotClip)});
+            if (!n) return null;
+            var r = n.getBoundingClientRect();
+            return { x: r.left, y: r.top, width: r.width, height: r.height };
+          })()`);
+          const v = box.result?.value;
+          if (v && v.width) {
+            clip = { x: Math.max(0, v.x - 10), y: Math.max(0, v.y - 10), width: v.width + 20, height: v.height + 20, scale: 3 };
+          }
+        }
+        const shot = await cdp.send('Page.captureScreenshot', clip ? { format: 'png', clip } : { format: 'png' });
+        fs.writeFileSync(shotPath, Buffer.from(shot.data, 'base64'));
+        console.log(`--- screenshot: ${shotPath} ---`);
       }
     });
 
