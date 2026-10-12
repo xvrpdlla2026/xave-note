@@ -786,13 +786,6 @@ window.NoteApp = window.NoteApp || {};
     } catch (e) {  }
   }
 
-  function paneSection(label, count) {
-    return el('h3', { class: 'pane-section' }, [
-      el('span', { text: label }),
-      count ? el('span', { class: 'pane-section__count', text: String(count) }) : null,
-    ]);
-  }
-
   function renderFolderView(host, ctx) {
     var frag = document.createDocumentFragment();
     var list = ctx.paneView === 'list';
@@ -864,7 +857,6 @@ window.NoteApp = window.NoteApp || {};
     }
 
     if (ctx.subfolders && ctx.subfolders.length) {
-      frag.appendChild(paneSection('Subfolders', ctx.subfolders.length));
       var grid = cardGrid('folders');
       ctx.subfolders.forEach(function (folder) {
         grid.appendChild(el('button', {
@@ -880,7 +872,6 @@ window.NoteApp = window.NoteApp || {};
     }
 
     if (ctx.notes.length) {
-      frag.appendChild(paneSection('Notes', ctx.notes.length));
       var noteCards = cardGrid('notes');
       var bulk = ctx.bulkSelected || [];
       ctx.notes.forEach(function (note) {
@@ -915,7 +906,6 @@ window.NoteApp = window.NoteApp || {};
     }
 
     if (ctx.files.length) {
-      frag.appendChild(paneSection('Files', ctx.files.length));
       var fileCards = cardGrid('files');
       ctx.files.forEach(function (file) {
         fileCards.appendChild(el('button', {
