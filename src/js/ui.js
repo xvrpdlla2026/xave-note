@@ -1793,9 +1793,10 @@ window.NoteApp = window.NoteApp || {};
     if (!storage) return;
     storage.textContent = '';
 
-    var used = info.bytes || 0;
+    var used = info.estimate && info.estimate.usage ? info.estimate.usage : (info.bytes || 0);
     var quota = info.estimate && info.estimate.quota ? info.estimate.quota : 0;
     var share = quota ? Math.min(1, used / quota) : 0;
+    var pct = quota ? Math.max(2, Math.round(share * 100)) : 0;
 
     var readout = el('button', {
       class: 'rail-storage' + (share >= 0.8 ? ' rail-storage--near' : ''),
@@ -1812,12 +1813,12 @@ window.NoteApp = window.NoteApp || {};
       ]),
       quota
         ? el('span', { class: 'rail-storage__meter' }, [
-            el('span', { class: 'rail-storage__fill', style: 'width:' + Math.max(2, Math.round(share * 100)) + '%' }),
+            el('span', { class: 'rail-storage__fill', style: 'width:' + pct + '%' }),
           ])
         : null,
       el('span', {
         class: quota ? 'rail-storage__pct' : 'rail-storage__value',
-        text: quota ? Math.round(share * 100) + '%' : String(files) + ' file' + (files === 1 ? '' : 's'),
+        text: quota ? (pct < 1 ? '<1%' : pct + '%') : String(files) + ' file' + (files === 1 ? '' : 's'),
       }),
     ]);
 

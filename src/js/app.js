@@ -2823,7 +2823,7 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function openSettings() {
-    var info = storageInfo();
+    var info = storageInfo({ withBytes: true });
 
     App.ui.renderStorageInfo(dom.storageInfo, info);
     renderVaultSection();
@@ -2834,7 +2834,7 @@ window.NoteApp = window.NoteApp || {};
     App.storage.estimate().then(function (est) {
       if (!est) return;
       state.estimate = est;
-      var next = storageInfo();
+      var next = storageInfo({ withBytes: true });
       App.ui.renderStorageInfo(dom.storageInfo, next);
       renderFooter();
     });
@@ -3298,8 +3298,24 @@ window.NoteApp = window.NoteApp || {};
     }
   }
 
+  var estimateAt = 0;
+  var estimatePending = false;
+
+  function refreshEstimate() {
+    if (estimatePending) return;
+    estimatePending = true;
+    App.storage.estimate().then(function (est) {
+      estimatePending = false;
+      if (!est) return;
+      state.estimate = est;
+      estimateAt = Date.now();
+      renderFooter();
+    }, function () { estimatePending = false; });
+  }
+
   function renderFooter() {
     if (!dom.railActions || !dom.railStorage) return;
+    if (!estimatePending && (!state.estimate || Date.now() - estimateAt > 15000)) refreshEstimate();
     App.ui.renderSidebarFooter({ actions: dom.railActions, storage: dom.railStorage }, {
       actions: dom.railActions,
       storage: dom.railStorage,
@@ -3307,7 +3323,7 @@ window.NoteApp = window.NoteApp || {};
     });
   }
 
-  function storageInfo() {
+  function storageInfo(options) {
     var info = {
       backend: App.storage.backendName(),
       persistent: App.storage.isPersistent(),
@@ -3320,10 +3336,12 @@ window.NoteApp = window.NoteApp || {};
       info.counts.notes += c.notes;
       info.counts.files += c.files;
     });
-    try {
-      info.bytes = App.db.exportBytes().length;
-    } catch (err) {
-      info.bytes = 0;
+    if (!options || options.withBytes || !(info.estimate && info.estimate.usage)) {
+      try {
+        info.bytes = App.db.exportBytes().length;
+      } catch (err) {
+        info.bytes = 0;
+      }
     }
     return info;
   }
