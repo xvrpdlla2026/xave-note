@@ -422,8 +422,10 @@ both migrations in order.
 - Search is a SQL `LIKE` scan over titles, bodies and file names. Fine for thousands of notes;
   there is no full-text index (SQLite's FTS5 is not compiled into the stock sql.js build).
 - Open tabs pin (compact, survive bulk closes), reorder by drag, jump back with `Alt+Q`,
-  and reopen after closing via the strip menu or `Alt+Shift+T`. `Ctrl+Tab` belongs to the
-  browser and never reaches the page, so `Alt+Q` is the substitute.
+  and reopen after closing via the strip menu or `Alt+Shift+T`. The strip's `+`, or `Alt+N`,
+  opens a blank tab that the next note, file or upload takes over, which is the only way to
+  start one on purpose. `Ctrl+Tab` and `Ctrl+T` belong to the browser and never reach the
+  page, so `Alt+Q` and `Alt+N` are the substitutes.
 - Search, and the sidebar, are scoped to the current workspace. There is no cross-workspace view.
 - Deleting a folder deletes its whole subtree, after a confirmation that counts what will go.
 - Delete is a **soft delete**: the row is stamped with `deleted_at` and disappears from every

@@ -710,7 +710,7 @@ window.NoteApp = window.NoteApp || {};
 
   function renderTabs(host, ctx) {
     var tabs = (ctx && ctx.tabs) || [];
-    if (!tabs.length || (ctx && ctx.hidden)) {
+    if (ctx && ctx.hidden) {
       host.classList.add('is-hidden');
       host.textContent = '';
       return;
@@ -737,7 +737,9 @@ window.NoteApp = window.NoteApp || {};
         title: label + (t.pinned ? ' \u00b7 pinned' : '')
           + (t.dirty ? ' \u00b7 unsaved changes' : '') + ' \u00b7 drag to reorder',
       });
-      if (t.kind === 'file') {
+      if (t.kind === 'new') {
+        tab.appendChild(el('span', { class: 'tab__glyph', text: 'NEW' }));
+      } else if (t.kind === 'file') {
         tab.appendChild(el('span', { class: 'tab__glyph', text: t.glyph || 'FILE' }));
       } else {
         var icon = App.ui.icon('note', 12);
@@ -760,6 +762,14 @@ window.NoteApp = window.NoteApp || {};
       }
       frag.appendChild(tab);
     });
+    frag.appendChild(el('button', {
+      class: 'tab-add',
+      type: 'button',
+      dataset: { action: 'new-tab' },
+      'aria-label': 'New tab',
+      'aria-keyshortcuts': 'Alt+N',
+      title: 'New tab (Alt+N)',
+    }, [App.ui.icon('plus', 14)]));
     host.appendChild(frag);
     try {
       var active = host.querySelector('.tab.is-active');

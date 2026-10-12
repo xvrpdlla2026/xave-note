@@ -15,6 +15,7 @@ window.NoteApp = window.NoteApp || {};
 
     dejavu: null,                         
     tabs: [],
+    newTabPending: false,
     tabFocus: false,                     
     tabHistory: [],                      
     closedTabs: [],                      
@@ -54,6 +55,7 @@ window.NoteApp = window.NoteApp || {};
     if (cut === -1) return null;
     var kind = s.slice(0, cut);
     var id = s.slice(cut + 1);
+    if (kind === 'new') return { kind: 'new', id: '' };
     if ((kind !== 'note' && kind !== 'file') || !id) return null;
     return { kind: kind, id: id };
   }
@@ -63,6 +65,14 @@ window.NoteApp = window.NoteApp || {};
       if (state.tabs[i].kind === kind && String(state.tabs[i].id) === String(id)) return i;
     }
     return -1;
+  }
+
+  function pendingTabIndex() {
+    return tabIndexOf('new', '');
+  }
+
+  function pendingTabActive() {
+    return pendingTabIndex() !== -1 && !state.activeNoteId && !state.activeFileId;
   }
 
   function tabRecord(kind, id) {
@@ -78,20 +88,30 @@ window.NoteApp = window.NoteApp || {};
     }
   }
 
-  function ensureTab(kind, id) {
-    if (!kind || !id) return;
-    if (tabIndexOf(kind, id) !== -1) return;
+  function makeRoom() {
     while (state.tabs.length >= MAX_TABS) {
       var activeKey = state.activeNoteId ? 'note:' + state.activeNoteId
         : state.activeFileId ? 'file:' + state.activeFileId : null;
       var dropAt = -1;
       for (var i = 0; i < state.tabs.length; i++) {
-        if (state.tabs[i].pinned) continue;
+        if (state.tabs[i].pinned || state.tabs[i].kind === 'new') continue;
         if (state.tabs[i].kind + ':' + state.tabs[i].id !== activeKey) { dropAt = i; break; }
       }
       if (dropAt === -1) break;
       state.tabs.splice(dropAt, 1);
     }
+  }
+
+  function ensureTab(kind, id) {
+    if (!kind || !id) return;
+    if (tabIndexOf(kind, id) !== -1) return;
+    var pending = pendingTabIndex();
+    if (pending !== -1 && state.newTabPending) {
+      state.tabs[pending] = { kind: kind, id: id, pinned: !!state.tabs[pending].pinned };
+      state.newTabPending = false;
+      return;
+    }
+    makeRoom();
     state.tabs.push({ kind: kind, id: id, pinned: false });
     settlePinned();
   }
@@ -173,7 +193,7 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function pruneTabs() {
-    state.tabs = state.tabs.filter(function (t) { return !!tabRecord(t.kind, t.id); });
+    state.tabs = state.tabs.filter(function (t) { return t.kind === 'new' || !!tabRecord(t.kind, t.id); });
     var seen = {};
     state.tabs = state.tabs.filter(function (t) {
       var key = t.kind + ':' + t.id;
@@ -194,6 +214,17 @@ window.NoteApp = window.NoteApp || {};
       ensureTab('file', state.activeFileId);
     }
     return state.tabs.map(function (t) {
+      if (t.kind === 'new') {
+        return {
+          kind: 'new',
+          id: '',
+          pinned: false,
+          title: 'New tab',
+          glyph: null,
+          dirty: false,
+          active: !state.activeNoteId && !state.activeFileId,
+        };
+      }
       var record = tabRecord(t.kind, t.id);
       if (!record) return null;
       var isActive = t.kind === 'note'
@@ -219,9 +250,11 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function activateTab(kind, id, opts) {
+    if (kind === 'new') { openNewTab(); return; }
     var record = tabRecord(kind, id);
     if (!record) { pruneTabs(); render(); return; }
     flushPendingSave();
+    state.newTabPending = false;
     if (record.workspace_id !== state.workspaceId) adoptWorkspaceOf(record.workspace_id);
     followSelection(record.folder_id || null);
     state.view = 'notes';
@@ -234,15 +267,32 @@ window.NoteApp = window.NoteApp || {};
     render();
   }
 
+  function openNewTab() {
+    flushPendingSave();
+    clearSearch();
+    state.view = 'notes';
+    if (pendingTabIndex() === -1) {
+      makeRoom();
+      state.tabs.push({ kind: 'new', id: '', pinned: false });
+    }
+    state.activeNoteId = null;
+    state.activeFileId = null;
+    state.currentNote = null;
+    state.newTabPending = true;
+    state.tabFocus = true;
+    render();
+  }
+
   function closeTabRef(ref) {
     var parsed = parseTabRef(ref);
     if (!parsed) return;
     flushPendingSave();
     var at = tabIndexOf(parsed.kind, parsed.id);
     if (at === -1) return;
-    var wasActive = (parsed.kind === 'note' && String(state.activeNoteId) === String(parsed.id))
+    var wasActive = (parsed.kind === 'new' && !state.activeNoteId && !state.activeFileId)
+      || (parsed.kind === 'note' && String(state.activeNoteId) === String(parsed.id))
       || (parsed.kind === 'file' && String(state.activeFileId) === String(parsed.id));
-    pushClosedTab(parsed.kind, parsed.id);
+    if (parsed.kind !== 'new') pushClosedTab(parsed.kind, parsed.id);
     state.tabs.splice(at, 1);
     if (wasActive) {
       state.activeNoteId = null;
@@ -262,6 +312,7 @@ window.NoteApp = window.NoteApp || {};
       }
       state.tabFocus = true;
     }
+    state.newTabPending = pendingTabActive();
     render();
   }
 
@@ -292,6 +343,7 @@ window.NoteApp = window.NoteApp || {};
       if (record) pushTabHistory(first.kind, first.id);
     }
     state.view = 'notes';
+    state.newTabPending = pendingTabActive();
     render();
   }
 
@@ -794,10 +846,11 @@ window.NoteApp = window.NoteApp || {};
     var place = App.prefs.get(PLACE_PREF + workspaceId, null);
     var stored = (place && place.tabs) || [];
     state.tabs = stored
-      .filter(function (t) { return t && (t.kind === 'note' || t.kind === 'file') && t.id; })
-      .filter(function (t) { return !!tabRecord(t.kind, t.id); })
+      .filter(function (t) { return t && (t.kind === 'new' ? !t.id : (t.kind === 'note' || t.kind === 'file') && !!t.id); })
+      .filter(function (t) { return t.kind === 'new' || !!tabRecord(t.kind, t.id); })
       .slice(0, MAX_TABS)
-      .map(function (t) { return { kind: t.kind, id: t.id, pinned: !!t.pinned }; });
+      .map(function (t) { return { kind: t.kind, id: t.kind === 'new' ? '' : t.id, pinned: !!t.pinned }; });
+    state.newTabPending = pendingTabActive();
   }
 
   var DEJAVU_KEY = 'noteapp.dejavu';
@@ -1043,8 +1096,8 @@ window.NoteApp = window.NoteApp || {};
       }
     }
     state.tabs = (place.tabs || [])
-      .filter(function (t) { return t && (t.kind === 'note' || t.kind === 'file') && t.id; })
-      .filter(function (t) { return !!tabRecord(t.kind, t.id); })
+      .filter(function (t) { return t && (t.kind === 'new' ? !t.id : (t.kind === 'note' || t.kind === 'file') && !!t.id); })
+      .filter(function (t) { return t.kind === 'new' || !!tabRecord(t.kind, t.id); })
       .slice(0, MAX_TABS)
       .map(function (t) { return { kind: t.kind, id: t.id, pinned: !!t.pinned }; });
     if (state.activeNoteId && tabIndexOf('note', state.activeNoteId) === -1) {
@@ -1054,6 +1107,7 @@ window.NoteApp = window.NoteApp || {};
       state.tabs.push({ kind: 'file', id: state.activeFileId });
     }
     restoreCheckpoint(workspaceId);
+    state.newTabPending = pendingTabActive();
   }
 
   function render() {
@@ -3498,6 +3552,7 @@ window.NoteApp = window.NoteApp || {};
       var parsed = parseTabRef(id);
       if (parsed) activateTab(parsed.kind, parsed.id);
     },
+    'new-tab': function () { openNewTab(); },
     'close-tab': function (id) { closeTabRef(id); },
     'close-other-tabs': function (id) { closeOtherTabs(id); },
     'close-all-tabs': function () { closeAllTabs(); },
@@ -3669,9 +3724,11 @@ window.NoteApp = window.NoteApp || {};
       var tabAt = tabParsed ? tabIndexOf(tabParsed.kind, tabParsed.id) : -1;
       var tabPinned = tabAt !== -1 && !!state.tabs[tabAt].pinned;
       var tabItems = [];
-      tabItems.push(tabPinned
-        ? { label: 'Unpin tab', onclick: function () { setTabPinned(tabRef, false); } }
-        : { label: 'Pin tab', onclick: function () { setTabPinned(tabRef, true); } });
+      if (!tabParsed || tabParsed.kind !== 'new') {
+        tabItems.push(tabPinned
+          ? { label: 'Unpin tab', onclick: function () { setTabPinned(tabRef, false); } }
+          : { label: 'Pin tab', onclick: function () { setTabPinned(tabRef, true); } });
+      }
       if (tabAt > 0) {
         tabItems.push({ label: 'Move tab left', onclick: function () { moveTab(tabRef, -1); } });
       }
@@ -4060,6 +4117,14 @@ window.NoteApp = window.NoteApp || {};
           && !App.ui.menuIsOpen() && !document.querySelector('dialog[open]')) {
         if (state.activeNoteId) { event.preventDefault(); closeTabRef('note:' + state.activeNoteId); return; }
         if (state.activeFileId) { event.preventDefault(); closeTabRef('file:' + state.activeFileId); return; }
+        if (pendingTabActive()) { event.preventDefault(); closeTabRef('new:'); return; }
+      }
+      if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey
+          && event.key.toLowerCase() === 'n'
+          && !App.ui.menuIsOpen() && !document.querySelector('dialog[open]')) {
+        event.preventDefault();
+        openNewTab();
+        return;
       }
       if (event.altKey && !event.ctrlKey && !event.metaKey
           && !App.ui.menuIsOpen() && !document.querySelector('dialog[open]')
@@ -4121,6 +4186,13 @@ window.NoteApp = window.NoteApp || {};
       if (event.shiftKey && event.key.toLowerCase() === 'u') {
         event.preventDefault();
         uploadTo(targetFolderId());
+        return;
+      }
+      if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey
+          && event.key.toLowerCase() === 'n'
+          && !App.ui.menuIsOpen() && !document.querySelector('dialog[open]')) {
+        event.preventDefault();
+        openNewTab();
       }
     });
 
@@ -4934,6 +5006,7 @@ window.NoteApp = window.NoteApp || {};
     openNote: openNote,
     openFile: openFile,
     activateTab: activateTab,
+    openNewTab: openNewTab,
     closeTabRef: closeTabRef,
     closeOtherTabs: closeOtherTabs,
     closeAllTabs: closeAllTabs,

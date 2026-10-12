@@ -577,6 +577,28 @@ input, textarea, select { font: inherit; }
 }
 .tab__close:hover { background: var(--bg-hover); color: var(--text); }
 
+.tab-add {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background var(--fast), color var(--fast), border-color var(--fast);
+}
+.tab-add:hover { background: var(--bg-hover); border-color: var(--border-strong); color: var(--text); }
+.tab-add:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 1px; }
+.tabs:not(:has(.tab)) { border-bottom-color: transparent; }
+
 .sidebar {
   position: relative;
   display: flex;
