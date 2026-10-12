@@ -1342,6 +1342,10 @@ svg.tree__glyph--note { font-size: 14.5px; }
   color: var(--text-muted);
   word-break: break-word;
 }
+/* The pane's own layout control, at the far end of the head row: it is about the pane rather
+   than about the folder, so it belongs with the heading and not among the folder's actions. */
+.pane-head__views { margin-left: auto; flex: 0 0 auto; }
+
 .pane-head__path {
   margin-top: 5px;
   font-size: 12.5px;
@@ -1506,6 +1510,48 @@ svg.tree__glyph--note { font-size: 14.5px; }
   color: var(--text-faint);
   font-variant-numeric: tabular-nums;
 }
+
+/* -------------------------------------------------------------- card list view
+   The same cards, one per row, when the pane is in list view. The markup is deliberately
+   unchanged, a wrapper holding a real button and its checkbox, so bulk select, the context
+   menu and the active state all keep working and the whole change stays a class on the grid.
+   The checkbox leaves its corner overlay for the head of the row: on a 32px row an overlay
+   would sit on top of the metadata sharing that line. */
+.card-grid--list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.card-grid--list .card-wrap {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.card-grid--list .card__check {
+  position: static;
+  flex: 0 0 auto;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+}
+.card-grid--list .card {
+  flex: 1 1 auto;
+  width: auto;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  min-height: 0;
+  padding: 7px 11px;
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+}
+.card-grid--list .card:hover { transform: none; }
+/* A row is too shallow for a gradient to read as anything but a smudge; the folder keeps its
+   identity in the colour of its glyph, which is what tells it from a note at this size. */
+.card-grid--list .card--folder { background: var(--bg-raised); }
+.card-grid--list .card__glyph { flex: 0 0 auto; }
+.card-grid--list .card__title { flex: 1 1 auto; min-width: 0; }
+.card-grid--list .card__meta { flex: 0 0 auto; margin-top: 0; padding-top: 0; }
 
 /* ---------------------------------------------------------------- editor */
 /* The editor fills the pane instead of growing past it, and the note body is the one part

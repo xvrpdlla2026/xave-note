@@ -111,6 +111,13 @@ window.NoteApp = window.NoteApp || {};
     checkCircle: ['M12 3.8a8.2 8.2 0 1 0 0 16.4 8.2 8.2 0 0 0 0-16.4Z', 'M8.4 12.2l2.6 2.6 4.8-5.2'],
     emptyTrash: ['M4.5 7h15', 'M9.5 7V5.5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1V7', 'M6.5 7l0.9 11.5a1.5 1.5 0 0 0 1.5 1.4h6.2a1.5 1.5 0 0 0 1.5-1.4L17.5 7', 'M9.8 10.5l4.4 6', 'M14.2 10.5l-4.4 6'],
     chart: ['M4 20.5h16', 'M7 20.5v-6', 'M12 20.5V7.5', 'M17 20.5v-3.5'],
+
+    // The two arrangements the folder pane offers for the same items. Four squares, and a
+    // stack of rows that each carry a leading marker: every picture is the layout it names,
+    // so the control needs no legend, and the marker is what keeps `list` from reading as
+    // the `filter` glyph three rules below it.
+    grid: ['M4.5 4.5h6v6h-6Z', 'M13.5 4.5h6v6h-6Z', 'M4.5 13.5h6v6h-6Z', 'M13.5 13.5h6v6h-6Z'],
+    list: ['M4.5 6.5h3.2', 'M10.6 6.5h8.9', 'M4.5 12h3.2', 'M10.6 12h8.9', 'M4.5 17.5h3.2', 'M10.6 17.5h8.9'],
   };
 
   var SVG_NS = 'http://www.w3.org/2000/svg';

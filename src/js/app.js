@@ -32,6 +32,11 @@ window.NoteApp = window.NoteApp || {};
     // render. Every list in the app reads this one object, which is what keeps the tree,
     // the pane and the rail from ever describing different orders.
     sort: { key: 'manual', dir: 'asc' },
+    // How the folder pane arranges what it holds: roomy cards, or one compact row per item.
+    // Adopted from the stored preference by applyPaneView() before the first render, and
+    // notebook-wide like the sort, because the same list drawn two ways must not change shape
+    // for a reason nothing on screen explains.
+    paneView: 'tiles',                     // 'tiles' | 'list'
     // The row a reorder just moved, held for exactly one render so the list can reveal it.
     sortTouched: null,
     searchTerm: '',
@@ -1196,6 +1201,33 @@ window.NoteApp = window.NoteApp || {};
     return state.sort;
   }
 
+  // ----------------------------------------------------------------- pane layout
+  /**
+   * How the folder pane draws what it holds: roomy cards, or one compact row per item.
+   *
+   * One preference for the whole notebook, like the sort order, and for the same reason: the
+   * tree and the pane are two drawings of one list, and a per-folder memory would change the
+   * shape of the pane for a reason the reader cannot see.
+   */
+  var PANE_VIEW_PREF = 'paneView';
+
+  /** Adopt the stored arrangement. Called once, before the first render, so the pane is never
+   *  painted as tiles and then rearranged into rows on the way to the database opening. */
+  function applyPaneView() {
+    state.paneView = App.prefs.get(PANE_VIEW_PREF, null) === 'list' ? 'list' : 'tiles';
+    return state.paneView;
+  }
+
+  /** Choose an arrangement and remember it. The pane is rearranged in place rather than
+   *  re-rendered, which is what keeps the pressed radio focused. */
+  function setPaneView(view) {
+    var next = view === 'list' ? 'list' : 'tiles';
+    if (next === state.paneView) return;
+    state.paneView = next;
+    App.prefs.set(PANE_VIEW_PREF, next);
+    App.ui.applyPaneView(dom.main, next);
+  }
+
   /** Choose a sort and remember it. A new key keeps the direction the notebook is already in;
    *  the direction toggle is the one that changes direction, so it is the one that says so. */
   function setSort(key, direction) {
@@ -1584,6 +1616,8 @@ window.NoteApp = window.NoteApp || {};
           activeFileId: state.activeFileId,
           bulkSelected: state.bulkSelected,
           onToggleBulk: toggleBulkSelect,
+          paneView: state.paneView,
+          onSetPaneView: setPaneView,
         });
         return;
       }
@@ -1601,6 +1635,8 @@ window.NoteApp = window.NoteApp || {};
       activeFileId: state.activeFileId,
       bulkSelected: state.bulkSelected,
       onToggleBulk: toggleBulkSelect,
+      paneView: state.paneView,
+      onSetPaneView: setPaneView,
     });
   }
 
@@ -6092,6 +6128,9 @@ window.NoteApp = window.NoteApp || {};
     // another while the database opens.
     applySort();
     paintSortButton();
+    // The pane's arrangement is the same kind of decision, and it is read by the same first
+    // render, so it is adopted here rather than when the first folder is opened.
+    applyPaneView();
 
     App.ui.renderEmptyState(dom.main, { title: 'Opening your notebook\u2026', body: 'Loading the local SQLite database.' });
 

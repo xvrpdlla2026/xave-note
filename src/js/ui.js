@@ -960,6 +960,7 @@ window.NoteApp = window.NoteApp || {};
   /** Main-pane listing shown when a folder (or "All notes") is selected. */
   function renderFolderView(host, ctx) {
     var frag = document.createDocumentFragment();
+    var list = ctx.paneView === 'list';
     var heading = ctx.kind === 'all' ? 'All notes' : ctx.folderName;
     var subtitle = ctx.kind === 'all'
       ? 'Everything in ' + ctx.workspaceName
@@ -968,9 +969,23 @@ window.NoteApp = window.NoteApp || {};
     // The pane's identity mark stays a text label, matching the file-type pills in the
     // tree and the cards; the placeholder folder name would make the mark redundant with
     // the heading right beside it.
+    // The head carries the one control that is about the pane rather than about what is in
+    // it: the same items, arranged two ways. A radio group, so "one of these two" is the
+    // platform's semantics and the arrow keys work without a re-implementation.
+    var viewToggle = App.ui.radioGroup({
+      name: 'pane-view',
+      value: list ? 'list' : 'tiles',
+      className: 'pane-head__views',
+      options: [
+        { value: 'tiles', label: 'Tiles', icon: 'grid', title: 'Tiles: roomy cards' },
+        { value: 'list', label: 'List', icon: 'list', title: 'List: one compact row per item' },
+      ],
+      onChange: function (value) { if (ctx.onSetPaneView) ctx.onSetPaneView(value); },
+    });
     frag.appendChild(el('div', { class: 'pane-head' }, [
       el('h2', { class: 'pane-head__title', text: heading }),
       el('p', { class: 'pane-head__sub', text: subtitle }),
+      viewToggle,
     ]));
 
     // Every command here is also in the right-click menu for the same surface, so both
@@ -1006,10 +1021,16 @@ window.NoteApp = window.NoteApp || {};
       ]));
     }
 
+    // One grid per section, in whichever arrangement the pane is in. The two arrangements
+    // are one class apart because the markup is identical either way; see .card-grid--list.
+    function cardGrid() {
+      return el('div', { class: 'card-grid' + (list ? ' card-grid--list' : '') });
+    }
+
     // Subfolders are listed here too, so a selected folder is navigable without the sidebar.
     if (ctx.subfolders && ctx.subfolders.length) {
       frag.appendChild(paneSection('Subfolders', ctx.subfolders.length));
-      var grid = el('div', { class: 'card-grid' });
+      var grid = cardGrid();
       ctx.subfolders.forEach(function (folder) {
         grid.appendChild(el('button', {
           class: 'card card--folder',
@@ -1025,7 +1046,7 @@ window.NoteApp = window.NoteApp || {};
 
     if (ctx.notes.length) {
       frag.appendChild(paneSection('Notes', ctx.notes.length));
-      var noteCards = el('div', { class: 'card-grid' });
+      var noteCards = cardGrid();
       var bulk = ctx.bulkSelected || [];
       ctx.notes.forEach(function (note) {
         // No body snippet here: list queries deliberately omit the content column
@@ -1069,7 +1090,7 @@ window.NoteApp = window.NoteApp || {};
 
     if (ctx.files.length) {
       frag.appendChild(paneSection('Files', ctx.files.length));
-      var fileCards = el('div', { class: 'card-grid' });
+      var fileCards = cardGrid();
       ctx.files.forEach(function (file) {
         fileCards.appendChild(el('button', {
           class: 'card card--file' + (file.id === ctx.activeFileId ? ' is-active' : ''),
@@ -1115,6 +1136,21 @@ window.NoteApp = window.NoteApp || {};
 
     host.textContent = '';
     host.appendChild(frag);
+  }
+
+  /**
+   * Rearrange the folder pane without re-rendering it.
+   *
+   * Tiles and list are one class on the grids and the markup is otherwise identical, so
+   * nothing has to be rebuilt to switch. That is also why this is not a render: a repaint
+   * would replace the radio the reader just pressed and drop focus on <body>, which a control
+   * that only rearranges what is already on screen has no reason to do.
+   */
+  function applyPaneView(host, view) {
+    if (!host) return;
+    var list = view === 'list';
+    var grids = host.querySelectorAll('.card-grid');
+    for (var i = 0; i < grids.length; i++) grids[i].classList.toggle('card-grid--list', list);
   }
 
   /**
@@ -2676,6 +2712,7 @@ App.ui = Object.assign(App.ui || {}, {
     renderDejavuChip: renderDejavuChip,
     renderLinkSuggest: renderLinkSuggest,
     renderFolderView: renderFolderView,
+    applyPaneView: applyPaneView,
     renderTasks: renderTasks,
     renderTopbarViews: renderTopbarViews,
     renderEditor: renderEditor,
