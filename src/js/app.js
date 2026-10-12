@@ -1827,49 +1827,6 @@ window.NoteApp = window.NoteApp || {};
     });
   }
 
-  function exportBulkNotes(ids) {
-    var parts = [];
-    var locked = 0;
-    var damaged = 0;
-    var privateSkipped = 0;
-    (ids || []).forEach(function (id) {
-      var note = App.db.getNote(id);
-      if (!note) return;
-      if (note.locked) { locked++; return; }
-      if (note.damaged) { damaged++; return; }
-      if (note.is_private) { privateSkipped++; return; }
-      var title = note.title && note.title.trim() ? note.title : 'Untitled note';
-      parts.push('## ' + title + '\n\n' + util.noteToPlainText(note.content || '').trim());
-    });
-    if (!parts.length) {
-      var why = locked ? 'unlock the notebook first'
-        : damaged ? 'the selected notes could not be read'
-          : privateSkipped ? 'the selected notes are marked private'
-            : '';
-      util.toast(why ? 'Nothing to export \u2014 ' + why + '.' : 'Nothing to export.', 'info');
-      return;
-    }
-    var combined = parts.join('\n\n---\n\n') + '\n';
-    try {
-      var blob = new Blob([combined], { type: 'text/markdown' });
-      var stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      var url = URL.createObjectURL(blob);
-      var link = el('a', { href: url, download: 'notes-export-' + stamp + '.md' });
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
-      var skips = [];
-      if (locked) skips.push(locked + ' locked');
-      if (damaged) skips.push(damaged + ' unreadable');
-      if (privateSkipped) skips.push(privateSkipped + ' private');
-      util.toast('Exported ' + parts.length + (parts.length === 1 ? ' note' : ' notes')
-        + (skips.length ? ' (' + skips.join(', ') + ' skipped).' : '.'), 'success');
-    } catch (err) {
-      util.toast('Export failed: ' + err.message, 'error');
-    }
-  }
-
   function renameNote(id) {
     var note = App.db.getNote(id);
     if (!note) return;
@@ -3589,7 +3546,6 @@ window.NoteApp = window.NoteApp || {};
     'new-subfolder': function () { newFolder(state.selection.type === 'folder' ? state.selection.id : null); },
     'upload-file': function () { dom.fileInput.click(); },
     'bulk-move': function () { if (state.bulkSelected.length) openMovePanel('note', state.bulkSelected.slice()); },
-    'bulk-export': function () { if (state.bulkSelected.length) exportBulkNotes(state.bulkSelected.slice()); },
     'bulk-delete': function () { if (state.bulkSelected.length) deleteBulkNotes(state.bulkSelected.slice()); },
     'bulk-clear': function () { clearBulkSelection(); render(); },
     'rename-note': function () { if (state.activeNoteId) renameNote(state.activeNoteId); },

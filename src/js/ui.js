@@ -967,7 +967,6 @@ window.NoteApp = window.NoteApp || {};
         el('span', { class: 'bulk-bar__rule', 'aria-hidden': 'true' }),
         el('div', { class: 'bulk-bar__actions' }, [
           el('button', { class: 'btn btn--sm btn--primary', type: 'button', dataset: { action: 'bulk-move' } }, ['Move…']),
-          el('button', { class: 'btn btn--sm btn--ghost', type: 'button', dataset: { action: 'bulk-export' } }, ['Export .md']),
           el('button', { class: 'btn btn--sm btn--danger-ghost', type: 'button', dataset: { action: 'bulk-delete' } }, ['Delete…']),
         ]),
       ]));
