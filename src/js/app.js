@@ -3715,6 +3715,107 @@ window.NoteApp = window.NoteApp || {};
     ACTIONS['toggle-folder'](twisty.getAttribute('data-id'));
   }
 
+  var marqueeDrag = null;
+  var suppressContextMenu = false;
+
+  function marqueeAllows(target) {
+    if (!dom.main || !target || !dom.main.contains(target)) return false;
+    if (target.closest && target.closest('input, textarea, select, [contenteditable="true"], .bulk-bar, .pane-head, .pane-actions, .card-list__head')) return false;
+    var control = target.closest ? target.closest('button, a') : null;
+    if (control && !control.closest('.card-grid')) return false;
+    if (target === dom.main) return true;
+    return !!(target.closest && (target.closest('.pane-section') || target.closest('.card-grid')));
+  }
+
+  function onPanePointerDown(event) {
+    if (event.button !== 2 || marqueeDrag) return;
+    if (!marqueeAllows(event.target)) return;
+    marqueeDrag = {
+      x0: event.clientX, y0: event.clientY, x1: event.clientX, y1: event.clientY,
+      add: !!(event.ctrlKey || event.metaKey),
+      base: state.bulkSelected.slice(),
+      baseKinds: Object.assign({}, state.bulkKinds),
+      active: false,
+      band: null,
+      ids: [],
+    };
+  }
+
+  function marqueeBox() {
+    return {
+      left: Math.min(marqueeDrag.x0, marqueeDrag.x1),
+      top: Math.min(marqueeDrag.y0, marqueeDrag.y1),
+      right: Math.max(marqueeDrag.x0, marqueeDrag.x1),
+      bottom: Math.max(marqueeDrag.y0, marqueeDrag.y1),
+    };
+  }
+
+  function marqueeApply() {
+    var box = marqueeBox();
+    var selected = marqueeDrag.add ? marqueeDrag.base.slice() : [];
+    var kinds = marqueeDrag.add ? Object.assign({}, marqueeDrag.baseKinds) : {};
+    var nodes = dom.main.querySelectorAll('.card[data-id]');
+    Array.prototype.forEach.call(nodes, function (node) {
+      var rect = node.getBoundingClientRect();
+      var hit = rect.left < box.right && rect.right > box.left && rect.top < box.bottom && rect.bottom > box.top;
+      var id = String(node.getAttribute('data-id'));
+      if (hit && selected.indexOf(id) === -1) selected.push(id);
+      if (hit) kinds[id] = paneCardKind(node);
+      var mark = node.parentNode && node.parentNode.classList && node.parentNode.classList.contains('card-wrap')
+        ? node.parentNode
+        : node;
+      mark.classList.toggle('is-selected', hit || (marqueeDrag.add && marqueeDrag.base.indexOf(id) !== -1));
+    });
+    marqueeDrag.ids = selected;
+    state.bulkSelected = selected;
+    state.bulkKinds = kinds;
+  }
+
+  function onDocumentMouseMove(event) {
+    if (!marqueeDrag) return;
+    marqueeDrag.x1 = event.clientX;
+    marqueeDrag.y1 = event.clientY;
+    if (!marqueeDrag.active) {
+      if (Math.abs(marqueeDrag.x1 - marqueeDrag.x0) < 4 && Math.abs(marqueeDrag.y1 - marqueeDrag.y0) < 4) return;
+      if (!(event.buttons & 2)) {
+        marqueeDrag = null;
+        return;
+      }
+      marqueeDrag.active = true;
+      document.body.classList.add('is-marquee');
+      marqueeDrag.band = document.createElement('div');
+      marqueeDrag.band.className = 'marquee';
+      marqueeDrag.band.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(marqueeDrag.band);
+    }
+    event.preventDefault();
+    var box = marqueeBox();
+    marqueeDrag.band.style.left = box.left + 'px';
+    marqueeDrag.band.style.top = box.top + 'px';
+    marqueeDrag.band.style.width = (box.right - box.left) + 'px';
+    marqueeDrag.band.style.height = (box.bottom - box.top) + 'px';
+    marqueeApply();
+  }
+
+  function endMarquee() {
+    var drag = marqueeDrag;
+    marqueeDrag = null;
+    if (!drag) return false;
+    if (drag.band && drag.band.parentNode) drag.band.parentNode.removeChild(drag.band);
+    document.body.classList.remove('is-marquee');
+    if (!drag.active) return false;
+    suppressContextMenu = true;
+    if (state.bulkSelected.length) state.bulkAnchor = state.bulkSelected[state.bulkSelected.length - 1];
+    render();
+    return true;
+  }
+
+  function onDocumentMouseUp(event) {
+    if (!marqueeDrag) return;
+    if (event.button !== 2 && !marqueeDrag.active) return;
+    endMarquee();
+  }
+
   function paneCardFrom(event) {
     if (!event.target || !event.target.closest) return null;
     var card = event.target.closest('.card--folder, .card--note, .card--file');
@@ -3813,6 +3914,12 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function onPaneItemContextMenu(event) {
+    if (suppressContextMenu) {
+      suppressContextMenu = false;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
     if (!(event.ctrlKey || event.metaKey || event.shiftKey)) return;
     var card = paneCardFrom(event);
     if (!card) return;
@@ -4259,6 +4366,13 @@ window.NoteApp = window.NoteApp || {};
     document.addEventListener('contextmenu', onPaneItemContextMenu, true);
     dom.main.addEventListener('click', onPaneItemClickEvent);
     dom.main.addEventListener('dblclick', onPaneItemDblClick);
+    document.addEventListener('mousedown', onPanePointerDown);
+    document.addEventListener('mousemove', onDocumentMouseMove);
+    document.addEventListener('mouseup', onDocumentMouseUp);
+    window.addEventListener('blur', endMarquee);
+    document.addEventListener('selectstart', function (event) {
+      if (marqueeDrag && marqueeDrag.active) event.preventDefault();
+    }, true);
 
     document.addEventListener('keydown', function (event) {
       if ((event.key === 'Enter' || event.key === ' ') && !(event.ctrlKey || event.metaKey || event.altKey)) {

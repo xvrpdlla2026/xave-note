@@ -1190,6 +1190,21 @@ svg.tree__glyph--note { font-size: 14.5px; }
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-ring);
 }
+
+.marquee {
+  position: fixed;
+  z-index: 55;
+  pointer-events: none;
+  border: 1px solid var(--accent);
+  background: var(--accent-ring);
+  border-radius: 2px;
+}
+
+body.is-marquee,
+body.is-marquee * {
+  user-select: none;
+  -webkit-user-select: none;
+}
 .bulk-bar {
   position: sticky;
   bottom: 12px;
