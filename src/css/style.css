@@ -1342,11 +1342,9 @@ svg.tree__glyph--note { font-size: 14.5px; }
 .card-grid--list .card-list__head {
   display: flex;
   align-items: center;
-  gap: var(--check-gap);
   margin-bottom: 2px;
   border-bottom: 1px solid var(--border);
 }
-.card-grid--list .card-list__spacer { flex: 0 0 var(--check-col); }
 .card-grid--list .card-list__head .card { flex: 1 1 auto; }
 .card-list__cell {
   min-width: 0;
