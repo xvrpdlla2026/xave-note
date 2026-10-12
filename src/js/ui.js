@@ -872,10 +872,11 @@ window.NoteApp = window.NoteApp || {};
         }, [
           el('span', { class: 'card__glyph' }, [App.ui.icon('folder')]),
           el('span', { class: 'card__title', text: folder.name }),
-          el('span', {
-            class: 'card__meta card__size',
-            text: util.formatBytes((ctx.folderBytes || {})[folder.id] || 0),
-          }),
+          el('span', { class: 'card__meta card__meta--split' }, [
+            el('span', { class: 'card__size', text: util.formatBytes((ctx.folderBytes || {})[folder.id] || 0) }),
+            el('span', { class: 'card__sep', 'aria-hidden': 'true', text: '\u00b7' }),
+            el('span', { class: 'card__when', text: util.formatWhen(folder.created_at) }),
+          ]),
         ]));
       });
       frag.appendChild(grid);
