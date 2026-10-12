@@ -2818,7 +2818,7 @@ window.NoteApp = window.NoteApp || {};
               ? '\u201c' + repeatedName + '\u201d is already attached.'
               : repeated + ' files were already attached.', 'info');
           }
-          if (addedIds.length) selectNewItem('file', addedIds[addedIds.length - 1]);
+          if (addedIds.length) selectNewItems('file', addedIds.filter(Boolean));
           else render();
           renderFooter();
         }
@@ -3955,6 +3955,32 @@ window.NoteApp = window.NoteApp || {};
     focusPaneItem(kind, id, true);
   }
 
+  function selectNewItems(kind, ids) {
+    if (!ids.length) return;
+    state.bulkSelected = ids.slice();
+    state.bulkKinds = {};
+    ids.forEach(function (id) { state.bulkKinds[id] = kind; });
+    state.bulkAnchor = ids[ids.length - 1];
+    focusPaneItem(kind, ids[ids.length - 1], true);
+  }
+
+  function openBulkMenu(x, y) {
+    var count = state.bulkSelected.length;
+    if (count < 2) return false;
+    App.ui.openMenu({
+      x: x,
+      y: y,
+      title: count + ' items selected',
+      items: [
+        { label: 'Move ' + count + ' items\u2026', icon: 'layers', onclick: function () { openMovePanel('items', bulkItems()); } },
+        { sep: true },
+        { label: 'Delete ' + count + ' items\u2026', icon: 'trash', danger: true, shortcut: 'Del', onclick: function () { deleteBulkItems(bulkItems()); } },
+        { label: 'Clear selection', icon: 'close', onclick: function () { clearBulkSelection(); render(); } },
+      ],
+    });
+    return true;
+  }
+
   function onPaneItemClick(card, event) {
     var kind = paneCardKind(card);
     var id = card.getAttribute('data-id');
@@ -4074,6 +4100,13 @@ window.NoteApp = window.NoteApp || {};
         }
         focusPaneItem(paneKind, paneId, !paneHeld);
       }
+      if (openBulkMenu(event.clientX, event.clientY)) return;
+    }
+
+    if (!paneCard && state.bulkSelected.length > 1
+        && dom.main && dom.main.contains(target)
+        && openBulkMenu(event.clientX, event.clientY)) {
+      return;
     }
 
     var trashRow = target.closest ? target.closest('.trash-row[data-trash-id]') : null;
