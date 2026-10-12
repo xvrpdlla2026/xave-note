@@ -776,7 +776,7 @@ window.NoteApp = window.NoteApp || {};
       'aria-label': 'New tab',
       'aria-keyshortcuts': 'Alt+N',
       title: 'New tab (Alt+N)',
-    }, [App.ui.icon('plus', 14)]));
+    }, [App.ui.icon('plus', 20)]));
     host.appendChild(frag);
     try {
       var active = host.querySelector('.tab.is-active');
