@@ -3630,7 +3630,7 @@ window.NoteApp = window.NoteApp || {};
     var kind = paneCardKind(card);
     var id = card.getAttribute('data-id');
     if (!id) return;
-    if (event.detail === 0) { openPaneItem(kind, id); return; }
+    if (event.type === 'click' && event.detail === 0) { openPaneItem(kind, id); return; }
 
     var add = event.ctrlKey || event.metaKey;
     var range = event.shiftKey;
