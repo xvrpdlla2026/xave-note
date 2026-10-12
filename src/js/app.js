@@ -1738,12 +1738,9 @@ window.NoteApp = window.NoteApp || {};
     return App.db.createNote(state.workspaceId, targetFolderId(), 'Untitled note').then(function (note) {
       if (note.folder_id) expandAncestors(note.folder_id);
       state.activeFileId = null;
-      state.activeNoteId = note.id;
-      ensureTab('note', note.id);
-      pushTabHistory('note', note.id);
+      state.activeNoteId = null;
       state.selection = note.folder_id ? { type: 'folder', id: note.folder_id } : state.selection;
-      render();
-      focusEditorTitle();
+      selectNewItem('note', note.id);
     }).catch(function (err) {
       util.toast('Could not create the note: ' + err.message, 'error');
     });
@@ -2230,6 +2227,7 @@ window.NoteApp = window.NoteApp || {};
         state.expanded[folder.id] = true;
         if (parentId) state.expanded[parentId] = true;
         render();
+        selectNewItem('folder', folder.id);
       }).catch(function (err) {
         util.toast('Could not create the folder: ' + err.message, 'error');
       });
@@ -2781,6 +2779,7 @@ window.NoteApp = window.NoteApp || {};
 
     var done = 0;
     var added = 0;
+    var addedIds = [];
     var addedName = '';
     var repeated = 0;
     var repeatedName = '';
@@ -2800,8 +2799,9 @@ window.NoteApp = window.NoteApp || {};
             file.name,
             file.type || guessMime(file.name),
             file
-          ).then(function () {
+          ).then(function (row) {
             added++;
+            addedIds.push(row && row.id);
             if (!addedName) addedName = file.name;
           });
         });
@@ -2818,7 +2818,8 @@ window.NoteApp = window.NoteApp || {};
               ? '\u201c' + repeatedName + '\u201d is already attached.'
               : repeated + ' files were already attached.', 'info');
           }
-          render();
+          if (addedIds.length) selectNewItem('file', addedIds[addedIds.length - 1]);
+          else render();
           renderFooter();
         }
       }).catch(function (err) {
@@ -3946,6 +3947,14 @@ window.NoteApp = window.NoteApp || {};
     render();
   }
 
+  function selectNewItem(kind, id) {
+    state.bulkSelected = [id];
+    state.bulkKinds = {};
+    state.bulkAnchor = id;
+    syncBulkKinds(id, kind);
+    focusPaneItem(kind, id, true);
+  }
+
   function onPaneItemClick(card, event) {
     var kind = paneCardKind(card);
     var id = card.getAttribute('data-id');
@@ -4050,6 +4059,22 @@ window.NoteApp = window.NoteApp || {};
 
   function contextMenuFor(event) {
     var target = event.target;
+
+    var paneCard = paneCardFrom(event);
+    if (paneCard) {
+      var paneKind = paneCardKind(paneCard);
+      var paneId = paneCard.getAttribute('data-id');
+      if (paneId) {
+        var paneHeld = state.bulkSelected.some(function (x) { return String(x) === String(paneId); });
+        if (!paneHeld) {
+          state.bulkSelected = [paneId];
+          state.bulkKinds = {};
+          state.bulkAnchor = paneId;
+          syncBulkKinds(paneId, paneKind);
+        }
+        focusPaneItem(paneKind, paneId, !paneHeld);
+      }
+    }
 
     var trashRow = target.closest ? target.closest('.trash-row[data-trash-id]') : null;
     if (trashRow) {
@@ -4350,12 +4375,9 @@ window.NoteApp = window.NoteApp || {};
       if (note.folder_id) expandAncestors(note.folder_id);
       state.view = 'notes';
       state.activeFileId = null;
-      state.activeNoteId = note.id;
-      ensureTab('note', note.id);
-      pushTabHistory('note', note.id);
+      state.activeNoteId = null;
       state.selection = note.folder_id ? { type: 'folder', id: note.folder_id } : state.selection;
-      render();
-      focusEditorTitle();
+      selectNewItem('note', note.id);
     }).catch(function (err) {
       util.toast('Could not create the note: ' + err.message, 'error');
     });
