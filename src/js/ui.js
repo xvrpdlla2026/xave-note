@@ -786,16 +786,6 @@ window.NoteApp = window.NoteApp || {};
     } catch (e) {  }
   }
 
-  function iconAction(action, icon, label, extra) {
-    return el('button', {
-      class: 'btn btn--ghost btn--icon-only' + (extra ? ' ' + extra : ''),
-      type: 'button',
-      title: label,
-      'aria-label': label,
-      dataset: { action: action },
-    }, [App.ui.icon(icon, 15)]);
-  }
-
   function renderFolderView(host, ctx) {
     var frag = document.createDocumentFragment();
     var list = ctx.paneView === 'list';
@@ -803,6 +793,10 @@ window.NoteApp = window.NoteApp || {};
     var subtitle = ctx.kind === 'all'
       ? 'Everything in ' + ctx.workspaceName
       : (ctx.path && ctx.path.indexOf(' > ') !== -1 ? ctx.path : 'Folder');
+    if (ctx.kind !== 'all') {
+      var itemCount = (ctx.subfolders || []).length + (ctx.notes || []).length + (ctx.files || []).length;
+      subtitle += ' \u00b7 ' + itemCount + (itemCount === 1 ? ' item' : ' items');
+    }
 
     var viewToggle = App.ui.radioGroup({
       name: 'pane-view',
@@ -831,11 +825,14 @@ window.NoteApp = window.NoteApp || {};
         el('button', { class: 'btn btn--ghost', type: 'button', dataset: { action: 'upload-file' } },
           [App.ui.icon('upload', 14), 'Upload file']),
         el('div', { class: 'pane-actions__spacer' }),
-        el('div', { class: 'pane-actions__group' }, [
-          iconAction('rename-folder', 'pencil', 'Rename this folder'),
-          iconAction('move-folder', 'layers', 'Move this folder to another workspace'),
-          iconAction('delete-folder', 'trash', 'Delete this folder and its contents', 'btn--danger-ghost'),
-        ]),
+        el('button', {
+          class: 'btn btn--ghost btn--icon-only',
+          type: 'button',
+          title: 'More folder actions',
+          'aria-label': 'More folder actions',
+          'aria-haspopup': 'menu',
+          dataset: { action: 'folder-menu' },
+        }, [App.ui.icon('more', 16)]),
       ]);
       frag.appendChild(actions);
     } else {

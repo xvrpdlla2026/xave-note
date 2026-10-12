@@ -3745,6 +3745,12 @@ window.NoteApp = window.NoteApp || {};
     'rename-folder': function () { if (state.selection.type === 'folder') renameFolder(state.selection.id); },
     'move-folder': function () { if (state.selection.type === 'folder') moveFolder(state.selection.id); },
     'delete-folder': function () { if (state.selection.type === 'folder') deleteFolder(state.selection.id); },
+    'folder-menu': function (id, node) {
+      var folderId = state.selection.type === 'folder' ? state.selection.id : id;
+      if (!folderId) return;
+      var rect = node && node.getBoundingClientRect ? node.getBoundingClientRect() : null;
+      openFolderMenu(folderId, rect ? Math.max(12, rect.right - 232) : 12, rect ? rect.bottom + 6 : 12);
+    },
     'download-file': function (id) { downloadFile(id); },
     'open-file-tab': function (id) { openFileInTab(id); },
     'rename-file': function (id) { renameFile(id); },
@@ -3783,7 +3789,7 @@ window.NoteApp = window.NoteApp || {};
     var handler = ACTIONS[action];
     if (!handler) return;
     event.preventDefault();
-    handler(node.getAttribute('data-id'));
+    handler(node.getAttribute('data-id'), node);
   }
 
   function onTreePointerDown(event) {
@@ -4029,6 +4035,19 @@ window.NoteApp = window.NoteApp || {};
     document.body.removeChild(node);
   }
 
+  function openFolderMenu(folderId, x, y) {
+    var titleNode = dom.main ? dom.main.querySelector('.pane-head__title') : null;
+    var label = (titleNode && titleNode.textContent) || 'This folder';
+    App.ui.menuOpen({
+      x: x,
+      y: y,
+      title: label,
+      entry: { type: 'folder', id: folderId, label: label },
+      reorder: reorderFor('folder', folderId),
+      on: function (action) { return function () { invokeAction(action, folderId); }; },
+    });
+  }
+
   function contextMenuFor(event) {
     var target = event.target;
 
@@ -4204,6 +4223,11 @@ window.NoteApp = window.NoteApp || {};
           return function () { invokeAction(action, null); };
         },
       });
+      return;
+    }
+
+    if (state.selection.type === 'folder' && dom.main && dom.main.contains(target)) {
+      openFolderMenu(state.selection.id, event.clientX, event.clientY);
       return;
     }
 
