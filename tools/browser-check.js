@@ -20,6 +20,7 @@
  *   --reload                    re-navigate in the same session and eval again
  *   --restart                   close the browser, relaunch on the same profile, eval again
  *   --keep-profile              do not delete the profile afterwards (for inspection)
+ *   --size=1280x820             device metrics for the run (also used by --shot)
  *   --shot=<file.png>           write a screenshot after the eval runs
  *   --shot-clip=<selector>      clip that screenshot to one element (plus a 10px margin)
  */
@@ -48,6 +49,8 @@ const exportPath = opt('export-dump', '');
 const keepProfile = argv.includes('--keep-profile');
 const shotPath = opt('shot', '');
 const shotClip = opt('shot-clip', '');
+const sizeOpt = opt('size', '');
+const viewport = /^\d+x\d+$/.test(sizeOpt) ? sizeOpt.split('x').map(Number) : [1280, 820];
 const throwawayProfile = path.join(os.tmpdir(), 'dsh-cdp-profile-' + process.pid);
 const profileDir = opt('profile', throwawayProfile);
 
@@ -344,6 +347,11 @@ async function evaluate(cdp, expr) {
         console.log(JSON.stringify(report, null, 1));
       }
 
+      await cdp.send('Emulation.setDeviceMetricsOverride', {
+        width: viewport[0], height: viewport[1], deviceScaleFactor: 2, mobile: false,
+      });
+      await sleep(400);
+
       const res = await evaluate(cdp, evalExpr);
       printLogs();
       console.log('--- eval result ---');
@@ -356,7 +364,7 @@ async function evaluate(cdp, expr) {
 
       if (shotPath) {
         await cdp.send('Emulation.setDeviceMetricsOverride', {
-          width: 1280, height: 820, deviceScaleFactor: 2, mobile: false,
+          width: viewport[0], height: viewport[1], deviceScaleFactor: 2, mobile: false,
         });
         await sleep(300);
         let clip;

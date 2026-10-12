@@ -1019,6 +1019,85 @@ window.NoteApp = window.NoteApp || {};
     App.ui.applyPaneView(dom.main, next);
   }
 
+  var SIDEBAR_W_PREF = 'sidebarWidth';
+  var SIDEBAR_W_DEFAULT = 296;
+  var SIDEBAR_W_MIN = 220;
+  var SIDEBAR_W_MAX = 560;
+
+  function sidebarWidthLimit() {
+    return Math.max(SIDEBAR_W_MIN + 60, Math.min(SIDEBAR_W_MAX, window.innerWidth - 420));
+  }
+
+  function setSidebarWidth(px) {
+    var width = Math.round(Math.max(SIDEBAR_W_MIN, Math.min(sidebarWidthLimit(), px)));
+    document.documentElement.style.setProperty('--sidebar-w', width + 'px');
+    if (dom.splitter) {
+      dom.splitter.setAttribute('aria-valuenow', String(width));
+      dom.splitter.setAttribute('aria-valuemax', String(sidebarWidthLimit()));
+    }
+    return width;
+  }
+
+  function storedSidebarWidth() {
+    var saved = Number(App.prefs.get(SIDEBAR_W_PREF, SIDEBAR_W_DEFAULT));
+    return isFinite(saved) && saved > 0 ? saved : SIDEBAR_W_DEFAULT;
+  }
+
+  function sidebarWidthNow() {
+    return dom.sidebar ? dom.sidebar.getBoundingClientRect().width : storedSidebarWidth();
+  }
+
+  function applySidebarWidth() {
+    return setSidebarWidth(storedSidebarWidth());
+  }
+
+  function commitSidebarWidth(px) {
+    var width = setSidebarWidth(typeof px === 'number' ? px : sidebarWidthNow());
+    App.prefs.set(SIDEBAR_W_PREF, width);
+    return width;
+  }
+
+  function wireSplitter() {
+    var splitter = dom.splitter;
+    if (!splitter) return;
+    splitter.addEventListener('pointerdown', function (event) {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      var startX = event.clientX;
+      var startWidth = sidebarWidthNow();
+      splitter.classList.add('is-dragging');
+      document.body.classList.add('is-resizing');
+      function move(moveEvent) {
+        setSidebarWidth(startWidth + moveEvent.clientX - startX);
+      }
+      function stop() {
+        splitter.classList.remove('is-dragging');
+        document.body.classList.remove('is-resizing');
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', stop);
+        window.removeEventListener('pointercancel', stop);
+        commitSidebarWidth();
+      }
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', stop);
+      window.addEventListener('pointercancel', stop);
+    });
+    splitter.addEventListener('dblclick', function () {
+      commitSidebarWidth(SIDEBAR_W_DEFAULT);
+    });
+    splitter.addEventListener('keydown', function (event) {
+      if (event.key === 'ArrowLeft') commitSidebarWidth(sidebarWidthNow() - 12);
+      else if (event.key === 'ArrowRight') commitSidebarWidth(sidebarWidthNow() + 12);
+      else if (event.key === 'Home' || event.key === 'Enter') commitSidebarWidth(SIDEBAR_W_DEFAULT);
+      else return;
+      event.preventDefault();
+    });
+    window.addEventListener('resize', function () {
+      if (window.innerWidth <= 820) return;
+      applySidebarWidth();
+    });
+  }
+
   function setSort(key, direction) {
     if (SORT_PICKER.indexOf(key) === -1) return;
     state.sort = {
@@ -4892,6 +4971,8 @@ window.NoteApp = window.NoteApp || {};
   function cacheDom() {
     dom.workspaceSelect = document.getElementById('workspace-select');
     dom.layout = document.querySelector('.layout');
+    dom.sidebar = document.getElementById('sidebar');
+    dom.splitter = document.getElementById('sidebar-splitter');
     dom.tree = document.getElementById('tree');
     dom.tabs = document.getElementById('tabs');
     dom.main = document.getElementById('main');
@@ -5186,8 +5267,10 @@ window.NoteApp = window.NoteApp || {};
     bootstrapIcons();
     applyTheme(App.prefs.get('theme', window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
     applyPalette(App.prefs.get('palette', 'indigo'));
+    applySidebarWidth();
 
     wireEvents();
+    wireSplitter();
     applySort();
     paintSortButton();
     applyPaneView();
