@@ -1379,7 +1379,7 @@ body.is-marquee * {
 .card-grid--list .card-list__head {
   display: flex;
   align-items: center;
-  margin-bottom: 2px;
+  margin-bottom: 12px;
   border-bottom: 1px solid var(--border);
 }
 .card-grid--list .card-list__head .card { flex: 1 1 auto; }
