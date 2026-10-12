@@ -18,6 +18,7 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const pwa = require('./pwa'); // manifest, icons and the service worker
 
 const ROOT = path.join(__dirname, '..');
 const SRC = path.join(ROOT, 'src');
@@ -29,7 +30,7 @@ const SQLJS_VERSION = '1.10.3';
 const CDN = `https://cdnjs.cloudflare.com/ajax/libs/sql.js/${SQLJS_VERSION}`;
 
 /** Script order matters: each file attaches to window.NoteApp in dependency order. */
-const SCRIPTS = ['js/util.js', 'js/storage.js', 'js/crypto.js', 'js/db.js', 'js/components.js', 'js/ui.js', 'js/app.js'];
+const SCRIPTS = ['js/util.js', 'js/trigram.js', 'js/storage.js', 'js/crypto.js', 'js/db.js', 'js/components.js', 'js/ui.js', 'js/spawner.js', 'js/app.js'];
 
 const read = (p) => fs.readFileSync(p, 'utf8');
 
@@ -83,7 +84,7 @@ function build() {
     '<!--',
     '  Local-first note taking app — single-file build.',
     '  GENERATED FILE: edit the sources in src/ and run `node tools/build.js`.',
-    '  Bundle contents: style.css + js/{util,storage,db,ui,app}.js + vendored sql.js engine.',
+    '  Bundle contents: style.css + js/{util,trigram,storage,crypto,db,components,ui,spawner,app}.js + vendored sql.js engine.',
     '-->',
     html
       .replace('/*__CSS__*/', () => css)
@@ -97,11 +98,16 @@ function build() {
   for (const marker of ['__CSS__', '__VENDOR__', '__WASM__', '__SCRIPTS__']) {
     if (out.includes(marker)) throw new Error(`placeholder ${marker} was not replaced`);
   }
-  fs.writeFileSync(OUT, out);
+  const bundle = out.replace('__BUILD__', new Date().toLocaleString('sv-SE').slice(0, 16));
+  fs.writeFileSync(OUT, bundle);
+  // The installable shell is emitted from the finished page, so the worker's cache name
+  // changes exactly when the page does and no version number has to be maintained.
+  const installable = pwa.emit(bundle);
   console.log(
     `built ${path.relative(ROOT, OUT)} — ${(out.length / 1024 / 1024).toFixed(2)} MB ` +
       `(sqlite wasm ${vendored.wasmKB} KB, inlined as base64)`
   );
+  console.log(`installable shell (build ${installable.version}): ${installable.files.join(', ')}`);
 }
 
 /** Read the vendored engine and materialise the base64 data-URI module. */

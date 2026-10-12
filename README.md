@@ -380,6 +380,8 @@ both migrations in order.
 - Attachments are read fully into memory to store, preview, or download. There is no streaming.
 - Every keystroke burst writes a full snapshot. Debouncing is what keeps this cheap — do not
   drop it below ~250 ms.
+- Spawner reads notes and plain text attachments. PDF, DOCX, and image OCR are not indexed
+  yet, and are counted as skipped in its status line.
 
 **Browser quota and durability**
 
@@ -411,9 +413,19 @@ both migrations in order.
 
 **Feature limits (by design, not oversight)**
 
-- The editor is a textarea, not a WYSIWYG — plain text only, with Tab-insert indentation.
+- The editor is a rich surface (contenteditable): bold, italic, yellow highlight, bullet   lists, checkboxes and clear-formatting, with Tab-insert indentation. Bodies store HTML; notes written before formatting existed render as plain text, and card snippets, search rows, word counts and clipboard copies all read the plain text underneath.
+- Notes link to each other with `[[note title]]`, rendered as pills: typing `[[` offers
+  completions, clicking (or Enter on) a pill opens its note, links and backlinks list
+  under the editor, a link with no note behind it offers to create one, and renaming a
+  note rewrites the links that named it. A link is removed from its chip's ×, from the
+  pill's right-click menu, or with Backspace over the pill — the linked note itself is
+  never touched. Links resolve by title, so they survive everything except the rename
+  of an exact-spelling match made while locked.
 - Search is a SQL `LIKE` scan over titles, bodies and file names. Fine for thousands of notes;
   there is no full-text index (SQLite's FTS5 is not compiled into the stock sql.js build).
+- Open tabs pin (compact, survive bulk closes), reorder by drag, jump back with `Alt+Q`,
+  and reopen after closing via the strip menu or `Alt+Shift+T`. `Ctrl+Tab` belongs to the
+  browser and never reaches the page, so `Alt+Q` is the substitute.
 - Search, and the sidebar, are scoped to the current workspace. There is no cross-workspace view.
 - Deleting a folder deletes its whole subtree, after a confirmation that counts what will go.
 - Delete is a **soft delete**: the row is stamped with `deleted_at` and disappears from every
@@ -427,6 +439,45 @@ both migrations in order.
   and the last snapshot written wins. Use one tab.
 
 ---
+
+## Spawner: a private chat
+
+Spawner is a third view beside the notebook and the task list: a conversation with a local
+model where the subject is what you have written here.
+
+**What it reads.** Every note in the open workspace, plus attachments that are plain text
+(.txt, .md, .csv, .json, source files). Titles alone are indexed too, so a question like
+"what do I have about the Kestrel account" is answerable from an otherwise empty note. PDF,
+DOCX, and image OCR are not read yet: those attachments are counted as skipped in the status
+line rather than quietly ignored.
+
+**How an answer is built.** Keywords in the question are scored against every passage with a
+cut down BM25 (term frequency against document frequency, corrected for length). The best
+passages, up to about 7000 characters, go out with the question and a short instruction to
+answer from those excerpts and name the notes it used. Nothing else is sent, and nothing
+leaves the machine: the request goes to Ollama on 127.0.0.1.
+
+**Opening it.** Use the address your notebook already lives at. If that is a double
+clicked index.html, Spawner works there too, but only when the model server was started by
+start-chat.ps1 or Start-Local-AI.cmd: a file: page sends "Origin: null", Ollama refuses that
+origin unless it is told to allow any, and those launchers set OLLAMA_ORIGINS='*' for exactly
+this reason. The cost is that any page in a browser tab can then reach the model. It can reach
+the model only, never the notebook.
+
+The tighter option is to serve this folder (node tools/serve.js) and use the address it
+prints, because then nothing had to be widened. Note what that changes: IndexedDB is scoped to
+the address, so the served copy starts as an empty notebook. Use Settings, "Export .db file"
+first if the two are meant to hold the same notes.
+
+**Cost.** The same qwen3:4b-instruct-2507-q4_K_M, on this machine, at roughly 8 tokens a
+second. A question that reads a few notes takes about half a minute, most of it spent reading
+the excerpts. The window is 8192 tokens, the same one the chat page asks for, because asking
+for a different num_ctx makes Ollama reload the model.
+
+**In the pane.** Scope (everything in the workspace, or only the open note), the model name,
+and the server address. The last two are remembered per browser. "Save as note" writes the
+whole conversation back into the notebook, where it becomes something the next question can
+find.
 
 ## Testing
 

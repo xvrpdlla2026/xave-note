@@ -47,6 +47,12 @@
   --success: #1c7a4d;
   --warning: #8a5a00;
 
+  /* Highlight marker: paper-yellow with dark ink, identical in both themes — a
+     highlight reads as a marker stroke, not as the palette, so it does not follow
+     the accent. Declared once because both modes wear the same yellow. */
+  --mark: #ffe14d;
+  --mark-ink: #1a1d23;
+
   --shadow-sm: 0 1px 2px rgba(23, 28, 44, 0.05);
   --shadow-md: 0 8px 24px -8px rgba(23, 28, 44, 0.18);
   --shadow-lg: 0 32px 64px -24px rgba(23, 28, 44, 0.32);
@@ -524,11 +530,123 @@ input, textarea, select { font: inherit; }
   flex: 1 1 auto;
   display: grid;
   grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
   /* Positioning context for the workspace trash control, which takes the bottom-right
      corner of the second column — that column *is* #main. */
   position: relative;
 }
+
+/* The tab strip lives in the second column's top row; the sidebar spans both rows
+   so its full height is unchanged. #main is the bottom row of that column. */
+.sidebar { grid-row: 1 / 3; grid-column: 1; }
+.tabs { grid-row: 1; grid-column: 2; }
+.main { grid-row: 2; grid-column: 2; }
+
+/* ------------------------------------------------------------------ tabs
+   Open notes/files above the main pane: one row, horizontal scroll, no wrap.
+   Inactive tabs are quiet raised cards; the active tab carries the filled pill
+   plus the same 2px accent underline the tree uses, so "what is in front" reads
+   identically on both surfaces. The strip is hidden (is-hidden) when empty or
+   while the task list is in front. */
+.tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 10px 16px 0;
+  background: var(--bg-canvas);
+  border-bottom: 1px solid var(--border);
+  scrollbar-gutter: stable;
+}
+.tabs.is-hidden { display: none; }
+.tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 210px;
+  height: 32px;
+  padding: 0 4px 0 10px;
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: var(--bg-raised);
+  color: var(--text-muted);
+  font-size: 12.5px;
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--fast), color var(--fast), border-color var(--fast);
+}
+.tab:hover { background: var(--bg-hover); color: var(--text); }
+.tab.is-active {
+  background: var(--bg-raised);
+  color: var(--text);
+  border-color: var(--border-strong);
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+/* Drag state: the held tab goes quiet, and a 2px insertion line marks the seat it
+   would land in. The active tab keeps its own top accent too, so the two signals
+   never cover each other. Inset shadows move no layout, so the strip never jumps. */
+.tab.is-dragging { opacity: 0.45; }
+.tab.is-drop-before { box-shadow: inset 2px 0 0 var(--accent); }
+.tab.is-drop-after { box-shadow: inset -2px 0 0 var(--accent); }
+.tab.is-active.is-drop-before { box-shadow: inset 2px 0 0 var(--accent), inset 0 2px 0 var(--accent); }
+.tab.is-active.is-drop-after { box-shadow: inset -2px 0 0 var(--accent), inset 0 2px 0 var(--accent); }
+.tab.is-active .tab__label { font-weight: 620; }
+.tab.is-active .tab__glyph { color: var(--accent); }
+/* Pinned tabs are icon-only: the glyph and the tooltip carry the name, so the
+   strip's regulars take a fraction of the room. No close button on a pinned tab —
+   unpin (or Close from the menu) to remove one. */
+.tab.is-pinned { max-width: 42px; padding: 0 4px; justify-content: center; }
+.tab.is-pinned .tab__label,
+.tab.is-pinned .tab__close,
+.tab.is-pinned .tab__dot { display: none; }
+.tab__glyph {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--text-faint);
+}
+.tab__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tab__dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+.tab__close {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-faint);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.tab__close:hover { background: var(--bg-hover); color: var(--text); }
 
 /* -------------------------------------------------------------- sidebar */
 .sidebar {
@@ -550,20 +668,22 @@ input, textarea, select { font: inherit; }
 .workspace-select-host { flex: 1 1 auto; min-width: 0; }
 .workspace-select-host .select { display: block; }
 
-.workspace-tools { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
+.workspace-tools { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; margin-top: 6px; }
 .dot { color: var(--text-faint); font-size: 11px; }
 
 /* Small icon+label buttons for the workspace actions under the switcher. */
 .mini-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 5px;
   height: 26px;
+  width: 100%;
   padding: 0 8px;
   border: 0;
   border-radius: var(--radius-sm);
-  background: none;
-  color: var(--text-muted);
+  background: var(--bg-hover);
+  color: var(--text);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
@@ -571,6 +691,7 @@ input, textarea, select { font: inherit; }
 }
 .mini-btn .icon { font-size: 13.5px; }
 .mini-btn:hover { background: var(--bg-hover); color: var(--text); }
+.mini-btn--danger { background: var(--danger-soft); color: var(--danger); }
 .mini-btn--danger:hover { background: var(--danger-soft); color: var(--danger); }
 
 /* Tree region. The label sits outside #tree so it never scrolls with the rows. */
@@ -737,15 +858,19 @@ input, textarea, select { font: inherit; }
    first folder's own group gap is not applied under the root (ui.js drops the opening gap
    for the first top-level row). */
 .tree__row--root { margin-bottom: var(--tree-break); }
+/* Breathing room after the folder group: the row the loose section opens after, or
+   the tree's final row when nothing follows it. One tunable number for the gap. It is
+   deliberately NOT on the last folder row or the last note row: on an expanded folder
+   that would gap the group from the inside — between a folder and its first child, or
+   between a note and the file rows after it — instead of after the group as a whole.
+   The loose section always opens with --loose-start on its first row, so :has(+ ...)
+   reliably finds the group's final row whatever kind of row it is. */
+#tree > .tree__row:has(+ .tree__row--loose-start) { margin-bottom: 16px; }
+#tree > .tree__row:last-child { margin-bottom: 16px; }
+/* An expanded-but-empty final folder ends in its placeholder rather than a row. */
+#tree > .tree__empty:last-child { margin-bottom: 16px; }
 
 .tree__row:hover { background: var(--bg-hover); }
-
-/* Hovering a row highlights its whole subtree as one block (the tree flows depth-first,
-   so everything more indented than the hovered row before the next shallower row is its
-   descendant), while the hovered row itself stays the strongest tone. */
-.tree__row--folder:hover ~ .tree__row--nested {
-  background: color-mix(in srgb, var(--bg-hover) 55%, transparent);
-}
 
 /* Selection: the filled pill plus a 2px accent bar just inside the row's leading edge,
    sitting in the lane reserved to the left of the chevron. Weight and an accent-tinted
@@ -804,7 +929,6 @@ input, textarea, select { font: inherit; }
 /* A row's own hairline is hidden by its filled background, which is what keeps a rail
    from ever crossing a selected row. */
 .tree__row--nested:hover::after { opacity: 0.5; }
-.tree__row--folder:hover ~ .tree__row--nested::after { opacity: 0.55; }
 
 .tree__row--folder .tree__label { font-weight: 520; }
 
@@ -851,6 +975,12 @@ svg.tree__glyph--note { font-size: 14.5px; }
   letter-spacing: 0.03em;
   text-indent: 0.03em;
 }
+/* Air between the pill and the filename. It lives on the label, not the pill: the
+   pill hugs the leading edge of a fixed 20px track while overflowing it (it is 24px
+   wide), so its own margin would dissolve into that track instead of moving anything.
+   A filled mark needs more daylight than the outline icons' 4px cluster gap, or the
+   sticker reads glued to the name beside it. */
+.tree__row--file .tree__label { margin-left: 8px; }
 .tree__row:hover .tree__glyph--file { background: var(--bg-active); color: var(--accent); }
 
 /* Twisty: a 16px hit target matching --twisty-w, no layout shift on toggle. The chevron
@@ -1048,13 +1178,13 @@ svg.tree__glyph--note { font-size: 14.5px; }
   background: var(--bg);
 }
 
-.rail-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
+.rail-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 /* The floor's closing line: the storage readout on its own. The trash used to close this
    line; it now closes the corner of the workspace area, which is the surface it acts on. */
 
 /* Rail-scale buttons: pygmy variants of .btn, sized to the row height of the tree
    above them so the block reads as part of the same surface. */
-.btn--rail { height: 30px; padding: 0 9px; font-size: 12px; gap: 6px; }
+.btn--rail { height: 30px; padding: 0 7px; font-size: 12px; gap: 5px; }
 .btn--rail .icon { font-size: 13.5px; opacity: 0.9; }
 .btn--rail.btn--primary .icon { opacity: 1; }
 
@@ -1268,6 +1398,55 @@ svg.tree__glyph--note { font-size: 14.5px; }
   gap: 10px;
 }
 
+/* Bulk-select wrapper: the card stays a real <button> inside, the checkbox is an
+   overlay on the wrapper's corner that never bubbles into the card. */
+.card-wrap { position: relative; }
+.card-wrap .card { width: 100%; }
+.card-wrap.is-selected .card {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+.card__check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-sm);
+}
+/* The bulk action bar: sticky to the pane's bottom so it never scrolls away from
+   the cards it acts on. Same hierarchy language as pane-actions — one filled
+   action, destructive quiet — on the panel__foot surface. */
+.bulk-bar {
+  position: sticky;
+  bottom: 8px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-md);
+}
+.bulk-bar__count {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The floating trash control owns the pane's bottom-right corner, and the bar is
+   pinned to that same edge as it scrolls. The bar gives the corner up rather than
+   letting the two overlap — the same reservation the editor toolbar makes. */
+.layout:has(> .trash-fab:not([hidden])) .bulk-bar { padding-right: 62px; }
+
 .card {
   display: flex;
   flex-direction: column;
@@ -1360,11 +1539,131 @@ svg.tree__glyph--note { font-size: 14.5px; }
 .editor__title:focus { outline: none; border-bottom-color: var(--accent); }
 .editor__title::placeholder { color: var(--text-faint); }
 
+/* The format bar: one quiet row between the title and the body. Buttons are text
+   tokens (B, I, H, list, checkbox, clear) rather than stroked glyphs, because at
+   12px a letter is legible where a 1.6-stroke path would be a smudge. */
+.fmt-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin: 10px 0 2px;
+}
+.fmt-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background var(--fast), color var(--fast);
+}
+.fmt-btn:hover { background: var(--bg-hover); color: var(--text); }
+/* Deja-vu: silent, chrome-free surface.
+   The Deja-vu chip is one quiet
+   row under the title: a label plus the same link-chip language the Links block
+   already speaks. */
+.dejavu {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.fmt-btn--b { font-weight: 800; }
+.fmt-btn--i { font-style: italic; }
+/* The highlight button wears the yellow it applies. */
+.fmt-btn--h {
+  background: var(--mark);
+  color: var(--mark-ink);
+  border-radius: var(--radius-xs);
+  font-weight: 800;
+}
+.fmt-btn--h:hover { background: var(--mark); color: var(--mark-ink); filter: brightness(0.96); }
+/* Clear-formatting reads as "take the styling off the A". */
+.fmt-btn--clear { text-decoration: line-through; }
+
+/* Template picker: command-palette rows, not buttons. Borderless rows with hover
+   fill speak the same language as the menus; the check marks the previewed row. */
+.template-filter {
+  width: 100%;
+  height: 34px;
+  padding: 0 12px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  color: var(--text);
+  font-size: 13px;
+}
+.template-filter:focus { outline: none; border-color: var(--accent); background: var(--bg-raised); box-shadow: 0 0 0 3px var(--accent-ring); }
+.template-filter::placeholder { color: var(--text-faint); }
+.template-list { max-height: 264px; overflow-y: auto; }
+.tpl-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--radius-sm);
+  transition: background var(--fast);
+}
+.tpl-row + .tpl-row { margin-top: 1px; }
+.tpl-row:hover { background: var(--bg-hover); }
+.tpl-row.is-selected { background: var(--bg-active); }
+.tpl-row__pick {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 5px 9px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.tpl-row__check { flex: 0 0 auto; width: 14px; color: transparent; font-size: 13px; }
+.tpl-row.is-selected .tpl-row__check { color: var(--accent); }
+.tpl-row.is-selected .tpl-row__label { font-weight: 620; }
+.tpl-row__label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tpl-row__delete {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity var(--fast), background var(--fast), color var(--fast);
+}
+.tpl-row:hover .tpl-row__delete, .tpl-row__delete:focus-visible { opacity: 1; }
+.tpl-row__delete:hover { background: var(--danger-soft); color: var(--danger); }
+/* Preview pane under the list: the template body as it will land in the note. */
+.template-preview { border-top: 1px solid var(--border); margin-top: 10px; padding-top: 10px; }
+.template-preview__title { font-size: 13px; font-weight: 650; margin-bottom: 6px; }
+.template-preview__body { max-height: 220px; overflow-y: auto; margin-bottom: 10px; }
+
 .editor__body {
   width: 100%;
   flex: 1 1 auto;
-  min-height: 0;
-  margin-top: 18px;
+  min-height: 120px;
+  margin-top: 12px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -1372,13 +1671,195 @@ svg.tree__glyph--note { font-size: 14.5px; }
   font-family: var(--font);
   font-size: 16px;
   line-height: 1.72;
-  resize: none;
+  overflow-wrap: break-word;
+  /* Tabs and pasted line breaks render instead of collapsing away. */
+  white-space: pre-wrap;
   /* The note scrolls inside its own box: the pane has already given the editor exactly the
-     height it has, so a growing textarea would only push the footer off the bottom. */
+     height it has, so a growing body would only push the footer off the bottom. */
   overflow-y: auto;
 }
 .editor__body:focus { outline: none; }
-.editor__body::placeholder { color: var(--text-faint); }
+/* A div has no placeholder attribute: the prompt renders while the body is empty. */
+.editor__body[data-placeholder]:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-faint);
+  pointer-events: none;
+}
+
+/* Highlights are paper-yellow with dark ink in both themes — a deliberate exception
+   to the palette, because a highlight has to read as a marker stroke, not as the
+   accent. Body text keeps its own colour underneath in light mode; in dark mode the
+   ink stays dark so the stroke stays legible. */
+mark {
+  background: var(--mark);
+  color: var(--mark-ink);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* Checkbox rows: a real checkbox (keyboard-togglable, announced) plus a text span.
+   The box is decorative-adjacent — tabindex -1 keeps Tab moving through prose, and
+   Space on the focused row still toggles because the click lands on the box. */
+.task-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 4px 0;
+}
+.task-row input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  margin-top: 5px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.task-row span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* -------------------------------------------------------- wiki pills
+   Links read as pills, not brackets: an accent-tinted chip inline with the prose,
+   atomic under the caret (one Backspace removes it whole) and a door on press —
+   clicking, Enter or Space follows it instead of editing inside. A pill with no
+   note behind it wears the same dashed language as the missing chips below. */
+.wikilink {
+  display: inline-block;
+  padding: 0 9px;
+  margin: 0 1px;
+  border-radius: 999px;
+  background: var(--bg-active);
+  color: var(--accent);
+  font-size: 0.92em;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--fast);
+}
+.wikilink:hover { background: var(--bg-hover); text-decoration: underline; }
+.wikilink:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* The hover remove: a fixed 16px box that grows out of nothing, so pills keep
+   their measure until hovered and the line never reflows around it otherwise.
+   Missing pills dim the × with them rather than hiding a way out. */
+.wikilink__x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 0;
+  overflow: hidden;
+  opacity: 0;
+  color: var(--text-faint);
+  font-size: 12px;
+  font-weight: 400;
+  cursor: pointer;
+  transition: width var(--fast), opacity var(--fast), color var(--fast);
+}
+.wikilink:hover .wikilink__x { width: 16px; opacity: 1; }
+.wikilink__x:hover { color: var(--danger); }
+.wikilink.is-missing .wikilink__x { color: var(--text-faint); }
+.wikilink.is-missing {
+  background: none;
+  border: 1px dashed var(--border-strong);
+  color: var(--text-muted);
+  font-weight: 550;
+}
+.wikilink.is-missing:hover { color: var(--accent); border-color: var(--accent); }
+
+/* -------------------------------------------------------- wiki links
+   The graph under the editor: outgoing [[links]] and backlinks. Chips speak the
+   breadcrumb's language (accent text that navigates); a link with no note behind
+   it wears a dashed underline and a leading plus instead. Absent entirely when
+   the note links nowhere and nothing links back. */
+.links { margin-top: 22px; }
+.links__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 14px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.links__row { display: flex; flex-wrap: wrap; gap: 6px; }
+.link-chip {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-raised);
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: background var(--fast), border-color var(--fast);
+}
+.link-chip:hover { background: var(--bg-hover); border-color: var(--border-strong); }
+.link-chip--missing {
+  border-style: dashed;
+  color: var(--text-muted);
+}
+.link-chip--missing:hover { color: var(--accent); }
+/* An outgoing chip with its own remove control: the pair reads as one unit, and
+   the × stays quiet until hovered, in the icon-danger language. Backlink chips
+   belong to other notes and carry no remove — opening one is the way to edit it. */
+.link-chip-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.link-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-faint);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--fast), color var(--fast);
+}
+.link-x:hover { background: var(--danger-soft); color: var(--danger); }
+
+/* The [[ completion card: floats at the caret, in the menu's own clothes. */
+.link-suggest {
+  min-width: 220px;
+  max-width: 320px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-md);
+}
+.link-suggest__empty { padding: 8px 10px; font-size: 12.5px; color: var(--text-faint); }
+.link-suggest__item {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  text-align: left;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+.link-suggest__item:hover { background: var(--bg-hover); }
+.link-suggest__item.is-active { background: var(--bg-active); }
+.link-suggest__title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* Editor footer: the last row of the editor, never over the note. Save state stays visible
    without being pinned because the note body scrolls inside the box above it. */
@@ -1728,6 +2209,7 @@ dialog:not([open]) { display: none; }
   line-height: 1.6;
   color: var(--text-muted);
   max-width: 58ch;
+  margin-bottom: 6px;
 }
 .dialog__message strong { color: var(--text); font-weight: 620; }
 
@@ -2060,6 +2542,16 @@ dialog:not([open]) { display: none; }
 }
 .select__option[aria-selected="true"] .select__option-check { opacity: 1; }
 
+/* ------------------------------------------- selects inside dialogs
+   Micro (saas-ui-skills): a destination picker must read as the dialog's own field,
+   not as a foreign control. The trigger borrows the field-input surface (strong
+   border, no shadow), and the open list spans the trigger's full width instead of
+   capping at 320px — the cap is what left the list narrower than its trigger and
+   floating detached from the dialog's column. Scoped to .dialog__body so rail and
+   pane selects keep their own surfaces. */
+.dialog__body .select__trigger { border-color: var(--border-strong); box-shadow: none; }
+.dialog__body .select__list { left: 0; right: 0; max-width: none; }
+
 /* ------------------------------------------- workspace switcher (compact) */
 /* A select with a leading glyph and a transparent, borderless trigger, for the
    rail header where a boxed control would compete with the tree. */
@@ -2076,6 +2568,67 @@ dialog:not([open]) { display: none; }
   box-shadow: 0 0 0 3px var(--accent-ring);
 }
 .select__lead { flex: 0 0 auto; color: var(--text-faint); font-size: 15px; }
+
+/* ------------------------------------------- workspace picker (trash-panel kin)
+   Macro (taste-skill): the picker reuses the trash panel's own bands — head, tools,
+   list, foot — so it reads as the same surface at a glance. No new panel chrome.
+   Micro (saas-ui-skills): the rail trigger keeps the old select affordance, the rows
+   are real buttons with listbox semantics, and every state is a token, never a literal. */
+.workspace-select-host .ws-trigger {
+  padding-left: 8px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+.workspace-select-host .ws-trigger:hover { background: var(--bg-hover); }
+.ws-trigger__count {
+  flex: 0 0 auto;
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--bg-sunken);
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  text-align: center;
+}
+.ws-trigger:hover .ws-trigger__count { background: var(--bg-active); color: var(--accent); }
+
+.ws-tools__hint { flex: 0 0 auto; font-size: 12.5px; color: var(--text-muted); }
+
+.ws-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  padding: 7px 10px 7px 6px;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--fast);
+}
+.ws-row + .ws-row { margin-top: 1px; }
+.ws-row:hover { background: var(--bg-hover); }
+.ws-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Current workspace carries the same accent fill + 2px leading bar as tree and trash. */
+.ws-row.is-selected { background: var(--bg-active); }
+.ws-row.is-selected::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 8px; bottom: 8px;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+.ws-row.is-selected .trash-row__glyph { background: var(--bg-raised); color: var(--accent); }
+.ws-row.is-selected .trash-row__name { font-weight: 620; }
+.ws-row__check { flex: 0 0 auto; color: var(--accent); font-size: 14px; }
 
 /* ---------------------------------------------------------------- toasts */
 /* A notification, not a panel: one plain line of text, centred at the top of the work area,
@@ -2172,7 +2725,10 @@ dialog:not([open]) { display: none; }
 
 /* ------------------------------------------------------------- narrow view */
 @media (max-width: 820px) {
+  /* The control only exists while the canvas is in front: on the tree there is nothing
+     to go back to, so the arrow is not shown there at all. */
   .nav-toggle { display: inline-flex; }
+  body:has(.layout.is-mobile-list) .nav-toggle { display: none; }
   .topbar { gap: 10px; padding: 0 10px; }
   .topbar__brand { min-width: 0; }
   .topbar__name { display: none; }
@@ -2183,21 +2739,26 @@ dialog:not([open]) { display: none; }
      reading a note does not throw the reader back to the list. */
   .layout {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
   }
+  /* The base grid places the tab strip and the canvas on column 2. Collapsing the
+     template to one column without re-homing them manufactures an implicit second
+     track, which pushes the canvas into it — a blank gutter exactly as wide as the
+     sidebar used to be, from ~455px up to the 820px breakpoint. (The sidebar is
+     already on column 1 and spanning both rows, so it needs no restating.) */
+  .layout > .tabs,
+  .layout > .main { grid-column: 1; }
   .layout.is-mobile-list .main { display: none; }
+  .layout.is-mobile-list .tabs { display: none; }
   .layout.is-mobile-list .sidebar { border-right: 0; }
   .layout:not(.is-mobile-list) .sidebar { display: none; }
+  .tabs { padding: 8px 10px 0; }
 
   .tree__row { min-height: 38px; }
   .tree__label { font-size: 14px; }
-  .sidebar__footer { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
 
   /* The corner control tightens into the viewport's corner at narrow widths, and
-     whichever pane is on screen gives it that corner: in list mode #main is
-     display:none, so the rail's footer grows by the control's height and the storage
-     readout keeps its line clear; in the editor the footer reserves the corner
-     (that rule is stated once with .editor__toolbar and is not repeated here). */
+     whichever pane is on screen gives it that corner. */
   .trash-fab {
     /* 20px, not 16: #main reserves a stable scrollbar gutter of up to 17px, and the
        control must not end up over the pane's scrollbar. */
@@ -2207,8 +2768,17 @@ dialog:not([open]) { display: none; }
     height: 48px;
     font-size: 20px;
   }
+
+  /* The corner control and the closing line share the bottom of the rail: the readout
+     keeps the left of that line and the trash control the right. The footer used to
+     reserve a block of empty height beneath the line to keep clear of it, which read as
+     a hole at the bottom of the sidebar. */
   .layout.is-mobile-list .sidebar__footer {
-    padding-bottom: calc(76px + env(safe-area-inset-bottom));
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+  .layout.is-mobile-list .rail-storage {
+    min-height: 54px;
+    padding-right: 68px;
   }
 
   .main { padding: 18px 16px 64px; }
@@ -2231,6 +2801,10 @@ dialog:not([open]) { display: none; }
 
   .card-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
   .pane-head__title { font-size: 18px; }
+
+  /* The bar carries a count plus four actions; unwrapped it cannot fit a phone and
+     would push the pane into horizontal scroll instead of staying inside it. */
+  .bulk-bar { flex-wrap: wrap; }
 
   .menu { min-width: 216px; }
   .menu__item { min-height: 40px; }
@@ -2396,7 +2970,7 @@ dialog:not([open]) { display: none; }
 .search-field input::placeholder { color: var(--text-faint); }
 .search-field input::-webkit-search-cancel-button { -webkit-appearance: none; }
 
-.panel__list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 var(--panel-pad) 24px; }
+.panel__list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 20px var(--panel-pad) 24px; }
 
 /* Group heading. Sticky, because a 60-row list is scannable only if you can see
    which section you are in — and it paints its own background so rows scroll
@@ -2593,7 +3167,7 @@ dialog:not([open]) { display: none; }
   .panel__tools { flex-wrap: wrap; gap: 8px; }
   .panel__sep { display: none; }
   .search-field { width: 100%; order: 3; }
-  .panel__list { padding: 0 var(--panel-pad) 20px; }
+  .panel__list { padding: 20px var(--panel-pad) 20px; }
   .panel__foot { flex-wrap: wrap; padding: 10px var(--panel-pad) max(10px, env(safe-area-inset-bottom)); }
   .panel__count { flex: 1 0 100%; }
   .panel__foot .btn { flex: 1 1 auto; }
@@ -2867,14 +3441,6 @@ dialog:not([open]) { display: none; }
 }
 .menu__sep { height: 1px; margin: 4px 6px; background: var(--border); }
 
-/* A drop target that highlights has to keep the cursor honest: the tree row and
-   the card both become drop targets while a file is being dragged. */
-.tree__row.is-drop-target,
-.card.is-drop-target {
-  background: var(--bg-active);
-  box-shadow: inset 0 0 0 1px var(--accent);
-}
-
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
   .upload-status::after { animation: none; background: var(--accent); }
@@ -3133,4 +3699,118 @@ dialog:not([open]) { display: none; }
   .upload-status::after { animation: none; background: var(--accent); }
   .tree__twisty { transition: none; }
   .menu { animation: none; }
+}
+
+/* ============================ spawner ============================ */
+/* The view that talks to the local model. A column: heading, one row of controls, the
+   transcript, and the composer, so the transcript is the only part that scrolls. */
+.spawner { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--bg-canvas); color: var(--text); }
+.spawner__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 24px 12px; border-bottom: 1px solid var(--border); }
+.spawner__title { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+.spawner__sub { margin: 4px 0 0; font-size: 12.5px; color: var(--text-muted); max-width: 58ch; }
+.spawner__actions { display: flex; gap: 8px; flex: 0 0 auto; }
+.spawner__btn { appearance: none; border: 1px solid var(--border-strong); background: var(--bg-raised); color: var(--text); font: inherit; font-size: 12.5px; padding: 6px 11px; border-radius: 7px; cursor: pointer; }
+.spawner__btn:hover:not(:disabled) { background: var(--bg-hover); }
+.spawner__btn:disabled { opacity: 0.5; cursor: default; }
+.spawner__btn--stop { border-color: var(--danger); color: var(--danger); }
+.spawner__bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 10px 24px; border-bottom: 1px solid var(--border); background: var(--bg); }
+.spawner__status { font-size: 12px; color: var(--text-muted); }
+.spawner__status.is-error { color: var(--danger); }
+.spawner__field { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.04em; }
+.spawner__select, .spawner__input-text { font: inherit; font-size: 12.5px; color: var(--text); background: var(--bg-raised); border: 1px solid var(--border-strong); border-radius: 6px; padding: 4px 7px; text-transform: none; letter-spacing: normal; }
+.spawner__input-text { width: 24ch; }
+.spawner__notice { margin: 0; padding: 8px 24px; font-size: 12.5px; color: var(--text-muted); background: var(--accent-soft); border-bottom: 1px solid var(--border); }
+.spawner__scroll { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 18px 24px; }
+.spawner__list { display: flex; flex-direction: column; gap: 14px; max-width: 78ch; }
+.spawner__msg { display: flex; flex-direction: column; gap: 5px; }
+.spawner__msg.is-user { align-items: flex-end; }
+.spawner__role { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-faint); }
+.spawner__bubble { background: var(--bg-raised); border: 1px solid var(--border); border-radius: 10px; padding: 10px 13px; max-width: 100%; }
+.spawner__msg.is-user .spawner__bubble { background: var(--accent-soft); border-color: transparent; }
+.spawner__text { margin: 0; font-size: 13.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.spawner__cites { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.spawner__cite { font-size: 11.5px; padding: 2px 8px; border-radius: 999px; background: var(--bg-sunken); color: var(--text-muted); border: 1px solid var(--border); }
+.spawner__stats { margin: 8px 0 0; font-size: 11.5px; color: var(--text-faint); font-family: var(--mono); }
+.spawner__error { margin: 8px 0 0; font-size: 12px; color: var(--danger); }
+.spawner__empty { max-width: 72ch; color: var(--text-muted); }
+.spawner__empty-lead { margin: 0 0 14px; font-size: 13px; }
+.spawner__examples { display: flex; flex-direction: column; gap: 7px; align-items: flex-start; }
+.spawner__example { appearance: none; font: inherit; font-size: 12.5px; text-align: left; padding: 7px 11px; border-radius: 8px; border: 1px dashed var(--border-strong); background: transparent; color: var(--text-muted); cursor: pointer; }
+.spawner__example:hover { background: var(--bg-hover); color: var(--text); }
+.spawner__composer { display: flex; align-items: flex-end; gap: 10px; padding: 12px 24px 16px; border-top: 1px solid var(--border); background: var(--bg-canvas); }
+.spawner__ask { flex: 1 1 auto; min-height: 38px; max-height: 180px; resize: vertical; font: inherit; font-size: 13.5px; line-height: 1.5; padding: 9px 11px; border-radius: 9px; border: 1px solid var(--border-strong); background: var(--bg-raised); color: var(--text); }
+.spawner__ask:focus { outline: 2px solid var(--accent-ring); outline-offset: -1px; border-color: var(--accent); }
+.spawner__composer-actions { display: flex; gap: 8px; }
+.spawner__send { appearance: none; font: inherit; font-size: 13px; font-weight: 550; padding: 9px 15px; border-radius: 8px; border: 1px solid transparent; background: var(--accent); color: var(--text-inverse); cursor: pointer; }
+.spawner__send:hover:not(:disabled) { background: var(--accent-hover); }
+.spawner__send:disabled { opacity: 0.5; cursor: default; }
+
+.spawner__scope-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+
+.spawner__seg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.spawner__seg-btn {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  background: var(--bg-raised);
+  color: var(--text-muted);
+  border: 0;
+  border-right: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.spawner__seg-btn:last-child { border-right: 0; }
+.spawner__seg-btn:hover { background: var(--bg-hover); color: var(--text); }
+.spawner__seg-btn.is-active { background: var(--accent-soft); color: var(--text); }
+
+/* ------------------------------------------------------------------- note pictures
+   A pasted picture is an atomic pill like a link: it holds the caret's place, cannot be
+   typed into, and is sized to the body rather than to its own pixels, so a screenshot
+   cannot push the text off the screen. */
+.note-img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 10px 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-sunken);
+}
+/* A file that has been deleted, or bytes the vault will not hand over: a labelled box
+   rather than the browser's broken-image glyph, which says nothing about why. */
+.note-img.is-missing {
+  min-height: 76px;
+  min-width: 160px;
+  padding: 26px 14px;
+  border-style: dashed;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+/* A reminder or a repeat rule is a fact about a task rather than a state of it, so the
+   chips keep the muted tone the project chip uses; a reminder already given is history
+   and fades further. */
+.task-chip--reminder { color: var(--text-muted); }
+.task-chip--reminder.is-fired { color: var(--text-faint); }
+
+/* One line of guidance under the task form's controls: what a reminder is measured from,
+   and what this browser will do with it. */
+.task-form__hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
 }

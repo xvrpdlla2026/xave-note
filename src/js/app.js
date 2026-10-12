@@ -17,6 +17,16 @@ window.NoteApp = window.NoteApp || {};
     selection: { type: 'all', id: null }, // 'all' | 'folder'
     activeNoteId: null,
     activeFileId: null,
+
+    dejavu: null,                         // { noteId, matches: [{id,title}] } while a chip is up
+    // Open tabs: [{ kind: 'note'|'file', id, pinned }]. The active note/file is what
+    // the pane shows; `tabs` is which of them stay one click away. Selecting a folder
+    // clears the active item (folder view) but keeps the tabs, so the strip survives
+    // browsing. Pinned tabs cluster at the strip's start and survive bulk closes.
+    tabs: [],
+    tabFocus: false,                     // focus the active tab after this render
+    tabHistory: [],                      // 'kind:id' refs, most recent last (Alt+Q)
+    closedTabs: [],                      // 'kind:id' refs closed this session, for reopen
     expanded: {},                          // folderId -> true
     // The live sort, adopted from the stored preference by applySort() before the first
     // render. Every list in the app reads this one object, which is what keeps the tree,
@@ -41,6 +51,12 @@ window.NoteApp = window.NoteApp || {};
     // selection survives the repaint that follows every restore or purge.
     trashOpen: false,
     trashSelected: [],
+    // Bulk selection for the main-pane card grid: plain note ids (single
+    // workspace, notes only), surviving repaint the same way. bulkScope records
+    // where the selection was made; a scope change invalidates it.
+    bulkSelected: [],
+    bulkScope: null,
+    bulkFocusId: null,                     // hand focus back to a checkbox after its tick
     trashView: 'all',                      // 'all' | 'folder' | 'note' | 'file'
     trashTerm: '',
     estimate: null,                        // navigator.storage.estimate(), from Settings
@@ -50,6 +66,999 @@ window.NoteApp = window.NoteApp || {};
   var uploadQueue = Promise.resolve(); // serialises uploads so each one persists in turn
   var currentPreviewUrl = null;        // object URL for the open image preview
   var trashPanel = null;               // the dialog element currently showing the trash
+  var wsPickerPanel = null;            // the dialog element currently showing the workspace picker
+  var movePanel = null;                // the dialog element currently showing the move picker
+
+  // ---------------------------------------------------------------- open tabs
+  /**
+   * Open tabs above the main pane: every note/file the reader has open, with exactly
+   * one of them in front (state.activeNoteId / state.activeFileId). Helpers only —
+   * rendering is ui.renderTabs, persistence rides inside savePlace()/restorePlace().
+   */
+  var MAX_TABS = 20;
+
+  /** Split an `activate-tab` / `close-tab` data-id (`note:<id>` / `file:<id>`). */
+  function parseTabRef(ref) {
+    var s = String(ref || '');
+    var cut = s.indexOf(':');
+    if (cut === -1) return null;
+    var kind = s.slice(0, cut);
+    var id = s.slice(cut + 1);
+    if ((kind !== 'note' && kind !== 'file') || !id) return null;
+    return { kind: kind, id: id };
+  }
+
+  function tabIndexOf(kind, id) {
+    for (var i = 0; i < state.tabs.length; i++) {
+      if (state.tabs[i].kind === kind && String(state.tabs[i].id) === String(id)) return i;
+    }
+    return -1;
+  }
+
+  /** The live record behind a tab, or null when it is gone (deleted, trashed, purged). */
+  function tabRecord(kind, id) {
+    try {
+      if (kind === 'note') {
+        var note = App.db.getNote(id);
+        return note && note.workspace_id === state.workspaceId ? note : null;
+      }
+      var meta = App.db.getFileMeta(id);
+      return meta && meta.workspace_id === state.workspaceId ? meta : null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  /** Keep a tab for this item. Oldest non-active tab gives way past MAX_TABS. */
+  function ensureTab(kind, id) {
+    if (!kind || !id) return;
+    if (tabIndexOf(kind, id) !== -1) return;
+    while (state.tabs.length >= MAX_TABS) {
+      var activeKey = state.activeNoteId ? 'note:' + state.activeNoteId
+        : state.activeFileId ? 'file:' + state.activeFileId : null;
+      var dropAt = -1;
+      for (var i = 0; i < state.tabs.length; i++) {
+        // Pinned tabs are never the automatic sacrifice for a newcomer.
+        if (state.tabs[i].pinned) continue;
+        if (state.tabs[i].kind + ':' + state.tabs[i].id !== activeKey) { dropAt = i; break; }
+      }
+      if (dropAt === -1) break;
+      state.tabs.splice(dropAt, 1);
+    }
+    state.tabs.push({ kind: kind, id: id, pinned: false });
+    settlePinned();
+  }
+
+  /**
+   * Pinned tabs lead the strip, in a stable partition: relative order inside each
+   * group never changes, so a settle never surprises — a dragged tab lands beside
+   * its target, and only crosses the pin boundary when pinned itself.
+   */
+  function settlePinned() {
+    var pinned = state.tabs.filter(function (t) { return t.pinned; });
+    if (!pinned.length) return;
+    var rest = state.tabs.filter(function (t) { return !t.pinned; });
+    state.tabs = pinned.concat(rest);
+  }
+
+  /** Pin or unpin one open tab. Pinned tabs are compact and survive bulk closes. */
+  function setTabPinned(ref, pinned) {
+    var parsed = parseTabRef(ref);
+    if (!parsed) return false;
+    var at = tabIndexOf(parsed.kind, parsed.id);
+    if (at === -1) return false;
+    state.tabs[at].pinned = !!pinned;
+    settlePinned();
+    render();
+    focusTabRef(ref);
+    return true;
+  }
+
+  /** Remember an activation for Alt+Q. Deduped, most recent last, capped. */
+  function pushTabHistory(kind, id) {
+    if (!kind || !id) return;
+    var key = kind + ':' + id;
+    state.tabHistory = state.tabHistory.filter(function (k) { return k !== key; });
+    state.tabHistory.push(key);
+    if (state.tabHistory.length > 40) state.tabHistory = state.tabHistory.slice(-40);
+  }
+
+  /** Jump to the most recently active tab that is not the one in front. */
+  function jumpToPreviousTab() {
+    var current = state.activeNoteId ? 'note:' + state.activeNoteId
+      : state.activeFileId ? 'file:' + state.activeFileId : null;
+    for (var i = state.tabHistory.length - 1; i >= 0; i--) {
+      if (state.tabHistory[i] === current) continue;
+      var parsed = parseTabRef(state.tabHistory[i]);
+      if (parsed && tabRecord(parsed.kind, parsed.id)) {
+        activateTab(parsed.kind, parsed.id);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Remember a close for reopen. Newest last, capped, workspace-agnostic. */
+  function pushClosedTab(kind, id) {
+    if (!kind || !id) return;
+    var key = kind + ':' + id;
+    state.closedTabs = state.closedTabs.filter(function (k) { return k !== key; });
+    state.closedTabs.push(key);
+    if (state.closedTabs.length > 10) state.closedTabs = state.closedTabs.slice(-10);
+  }
+
+  /** Reopen the most recently closed tab that still exists. */
+  function reopenClosedTab() {
+    while (state.closedTabs.length) {
+      var parsed = parseTabRef(state.closedTabs.pop());
+      if (!parsed) continue;
+      var record = tabRecord(parsed.kind, parsed.id);
+      if (!record) continue;
+      if (record.workspace_id !== state.workspaceId) adoptWorkspaceOf(record.workspace_id);
+      ensureTab(parsed.kind, parsed.id);
+      activateTab(parsed.kind, parsed.id);
+      return true;
+    }
+    util.toast('Nothing to reopen.', 'info');
+    return false;
+  }
+
+  /** Title of the most recently closed tab, for the strip menu's label. */
+  function lastClosedTitle() {
+    for (var i = state.closedTabs.length - 1; i >= 0; i--) {
+      var parsed = parseTabRef(state.closedTabs[i]);
+      var record = parsed && tabRecord(parsed.kind, parsed.id);
+      if (!record) continue;
+      return parsed.kind === 'note'
+        ? (record.title && record.title.trim() ? record.title : 'Untitled note')
+        : record.filename;
+    }
+    return null;
+  }
+
+  /** Drop tabs whose record is gone or lives in another workspace. No render here. */
+  function pruneTabs() {
+    state.tabs = state.tabs.filter(function (t) { return !!tabRecord(t.kind, t.id); });
+    // One tab per item: a stale double (same id twice) collapses to its first seat.
+    var seen = {};
+    state.tabs = state.tabs.filter(function (t) {
+      var key = t.kind + ':' + t.id;
+      if (seen[key]) return false;
+      seen[key] = true;
+      return true;
+    });
+  }
+
+  /** Plain descriptors for ui.renderTabs: titles resolved here, never in ui.js. */
+  function tabsViewModel() {
+    pruneTabs();
+    // Safety net for legacy setters: the item in front always has a tab.
+    if (state.activeNoteId && tabIndexOf('note', state.activeNoteId) === -1
+        && tabRecord('note', state.activeNoteId)) {
+      ensureTab('note', state.activeNoteId);
+    }
+    if (state.activeFileId && tabIndexOf('file', state.activeFileId) === -1
+        && tabRecord('file', state.activeFileId)) {
+      ensureTab('file', state.activeFileId);
+    }
+    return state.tabs.map(function (t) {
+      var record = tabRecord(t.kind, t.id);
+      if (!record) return null;
+      var isActive = t.kind === 'note'
+        ? String(t.id) === String(state.activeNoteId)
+        : String(t.id) === String(state.activeFileId);
+      return {
+        kind: t.kind,
+        id: t.id,
+        pinned: !!t.pinned,
+        title: t.kind === 'note'
+          ? (record.title && record.title.trim() ? record.title : 'Untitled note')
+          : record.filename,
+        glyph: t.kind === 'file' ? util.fileGlyph(record.filename, record.mime_type) : null,
+        dirty: isActive && t.kind === 'note' && !!state.editorDirty,
+        active: isActive,
+      };
+    }).filter(Boolean);
+  }
+
+  function focusActiveTab() {
+    var active = dom.tabs && dom.tabs.querySelector('.tab.is-active');
+    if (active) active.focus();
+  }
+
+  /**
+   * Bring one open (or openable) item to the front. Creating the tab when it is
+   * missing is what lets tree clicks, search hits and tab clicks share one path.
+   */
+  function activateTab(kind, id, opts) {
+    var record = tabRecord(kind, id);
+    if (!record) { pruneTabs(); render(); return; }
+    flushPendingSave();
+    if (record.workspace_id !== state.workspaceId) adoptWorkspaceOf(record.workspace_id);
+    followSelection(record.folder_id || null);
+    state.view = 'notes';
+    if (kind === 'note') { state.activeNoteId = id; state.activeFileId = null; }
+    else { state.activeFileId = id; state.activeNoteId = null; }
+    if (record.folder_id) expandAncestors(record.folder_id);
+    ensureTab(kind, id);
+    pushTabHistory(kind, id);
+    if (!opts || opts.focus !== false) state.tabFocus = true;
+    render();
+  }
+
+  /** Close one tab. Closing what is in front falls back to a neighbour, else the folder view. */
+  function closeTabRef(ref) {
+    var parsed = parseTabRef(ref);
+    if (!parsed) return;
+    flushPendingSave();
+    var at = tabIndexOf(parsed.kind, parsed.id);
+    if (at === -1) return;
+    var wasActive = (parsed.kind === 'note' && String(state.activeNoteId) === String(parsed.id))
+      || (parsed.kind === 'file' && String(state.activeFileId) === String(parsed.id));
+    pushClosedTab(parsed.kind, parsed.id);
+    state.tabs.splice(at, 1);
+    if (wasActive) {
+      state.activeNoteId = null;
+      state.activeFileId = null;
+      state.currentNote = null;
+      var next = state.tabs[Math.min(at, state.tabs.length - 1)];
+      if (next) {
+        var record = tabRecord(next.kind, next.id);
+        if (record) {
+          followSelection(record.folder_id || null);
+          if (next.kind === 'note') state.activeNoteId = next.id;
+          else state.activeFileId = next.id;
+          if (record.folder_id) expandAncestors(record.folder_id);
+        } else {
+          pruneTabs();
+        }
+      }
+      state.tabFocus = true;
+    }
+    render();
+  }
+
+  function closeOtherTabs(ref) {
+    var parsed = parseTabRef(ref);
+    if (!parsed || tabIndexOf(parsed.kind, parsed.id) === -1) return;
+    flushPendingSave();
+    // Pinned tabs survive a bulk close: they were pinned to stay. Order kept.
+    var keeper = state.tabs[tabIndexOf(parsed.kind, parsed.id)];
+    state.tabs.forEach(function (t) {
+      if (!t.pinned && t !== keeper) pushClosedTab(t.kind, t.id);
+    });
+    state.tabs = state.tabs.filter(function (t) { return t.pinned || t === keeper; });
+    activateTab(parsed.kind, parsed.id);
+  }
+
+  function closeAllTabs() {
+    flushPendingSave();
+    // Pinned tabs survive: closing everything means everything unpinned.
+    state.tabs.forEach(function (t) { if (!t.pinned) pushClosedTab(t.kind, t.id); });
+    state.tabs = state.tabs.filter(function (t) { return t.pinned; });
+    var stillOpen = state.activeNoteId ? tabIndexOf('note', state.activeNoteId) !== -1
+      : state.activeFileId ? tabIndexOf('file', state.activeFileId) !== -1 : false;
+    if (!stillOpen) {
+      // Fall back to the first pinned tab, else the folder view.
+      var first = state.tabs[0];
+      var record = first && tabRecord(first.kind, first.id);
+      state.activeNoteId = record && first.kind === 'note' ? first.id : null;
+      state.activeFileId = record && first.kind === 'file' ? first.id : null;
+      state.currentNote = null;
+      if (record) pushTabHistory(first.kind, first.id);
+    }
+    state.view = 'notes';
+    render();
+  }
+
+  /**
+   * Move one tab one seat left (-1) or right (+1). Order-only: no save flush, no
+   * selection change — the render below persists the order through savePlaceSoon().
+   */
+  function moveTab(ref, delta) {
+    var parsed = parseTabRef(ref);
+    if (!parsed) return false;
+    var at = tabIndexOf(parsed.kind, parsed.id);
+    var to = at + delta;
+    if (at === -1 || to < 0 || to >= state.tabs.length) return false;
+    var moved = state.tabs.splice(at, 1)[0];
+    state.tabs.splice(to, 0, moved);
+    settlePinned();
+    render();
+    focusTabRef(ref);
+    return true;
+  }
+
+  /**
+   * Drop a dragged tab beside another. `before` decides which side of the target
+   * it lands on. A drop onto its own seat is a no-op without a render.
+   */
+  function reorderTabs(dragRef, targetRef, before) {
+    var drag = parseTabRef(dragRef);
+    var target = parseTabRef(targetRef);
+    if (!drag || !target) return false;
+    var from = tabIndexOf(drag.kind, drag.id);
+    if (from === -1) return false;
+    var beforeKeys = state.tabs.map(function (t) { return t.kind + ':' + t.id; }).join('\u0001');
+    var moved = state.tabs.splice(from, 1)[0];
+    var at = tabIndexOf(target.kind, target.id);
+    // Not found (dropped past the last tab): it goes to the end of the strip.
+    if (at === -1) {
+      state.tabs.push(moved);
+    } else {
+      state.tabs.splice(before ? at : at + 1, 0, moved);
+    }
+    settlePinned();
+    // A drop onto its own seat changes nothing: skip the render (and its focus move).
+    var afterKeys = state.tabs.map(function (t) { return t.kind + ':' + t.id; }).join('\u0001');
+    if (afterKeys === beforeKeys) return false;
+    render();
+    focusTabRef(dragRef);
+    return true;
+  }
+
+  /** Send one tab to the end of the strip (dropped past the last tab). */
+  function moveTabToEnd(ref) {
+    var parsed = parseTabRef(ref);
+    if (!parsed) return false;
+    var at = tabIndexOf(parsed.kind, parsed.id);
+    if (at === -1 || at === state.tabs.length - 1) return false;
+    var moved = state.tabs.splice(at, 1)[0];
+    state.tabs.push(moved);
+    settlePinned();
+    render();
+    focusTabRef(ref);
+    return true;
+  }
+
+  /** Focus a tab row after a reorder rebuilds the strip it lives in. */
+  function focusTabRef(ref) {
+    if (!dom.tabs) return;
+    var node = dom.tabs.querySelector('.tab[data-id="' + String(ref).replace(/"/g, '') + '"]');
+    if (node) node.focus();
+  }
+
+  /** Step through open tabs. Used by the cycle shortcuts. */
+  function cycleTab(delta) {
+    if (state.tabs.length < 2) return;
+    pruneTabs();
+    if (state.tabs.length < 2) return;
+    var activeKey = state.activeNoteId ? 'note:' + state.activeNoteId
+      : state.activeFileId ? 'file:' + state.activeFileId : null;
+    var at = -1;
+    for (var i = 0; i < state.tabs.length; i++) {
+      if (state.tabs[i].kind + ':' + state.tabs[i].id === String(activeKey)) { at = i; break; }
+    }
+    var next = state.tabs[(at + delta + state.tabs.length) % state.tabs.length];
+    if (next) activateTab(next.kind, next.id);
+  }
+
+  /**
+   * Mirror the editor's dirty flag onto the active tab without a full render.
+   * A render per keystroke would rebuild the editor under the cursor, so the dot
+   * is patched in place here and drawn properly by the next tabsViewModel() pass.
+   */
+  function paintTabDirty() {
+    if (!dom.tabs) return;
+    var active = dom.tabs.querySelector('.tab.is-active');
+    if (!active) return;
+    var isNoteTab = (active.getAttribute('data-id') || '').indexOf('note:') === 0;
+    var dot = active.querySelector('.tab__dot');
+    if (state.editorDirty && isNoteTab && state.activeNoteId) {
+      if (!dot) {
+        var close = active.querySelector('.tab__close');
+        var mark = el('span', { class: 'tab__dot', 'aria-hidden': 'true' });
+        if (close) active.insertBefore(mark, close);
+        else active.appendChild(mark);
+      }
+      return;
+    }
+    if (dot) active.removeChild(dot);
+  }
+
+  /**
+   * The caret the toolbar acts on. Pressing a format button moves focus out of the
+   * body, so the range is saved on every caret move (selectionchange) and restored
+   * before the command runs.
+   */
+  var savedRange = null;
+
+  function saveSelection() {
+    try {
+      var sel = window.getSelection();
+      var body = document.getElementById('note-body');
+      if (sel && sel.rangeCount && body && body.contains(sel.anchorNode)) {
+        savedRange = sel.getRangeAt(0).cloneRange();
+      }
+    } catch (e) { /* selection is best-effort */ }
+  }
+
+  function restoreSelection() {
+    var body = document.getElementById('note-body');
+    if (!body) return false;
+    body.focus();
+    try {
+      var sel = window.getSelection();
+      // A live selection inside the body wins: it is newer than any saved range.
+      // This covers select-then-command in the same tick (before selectionchange
+      // fires) as well as the ordinary click-the-button path, where the mousedown
+      // has already moved focus out and the live range is gone.
+      if (sel.rangeCount) {
+        var live = sel.getRangeAt(0);
+        if (body.contains(live.commonAncestorContainer) && body.contains(sel.anchorNode)) {
+          savedRange = live.cloneRange();
+          return true;
+        }
+      }
+      sel.removeAllRanges();
+      if (savedRange && body.contains(savedRange.commonAncestorContainer)) {
+        sel.addRange(savedRange);
+      } else {
+        var end = document.createRange();
+        end.selectNodeContents(body);
+        end.collapse(false);
+        sel.addRange(end);
+      }
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /**
+   * Read the rich body back into the note and autosave, like typing does. Also
+   * normalises a fully-emptied body back to truly empty, so the placeholder rule
+   * (:empty) applies again instead of a leftover <br> holding the box open.
+   *
+   * A body holding only a picture is not empty. A picture carries no text, so testing
+   * the text alone deletes a screenshot the instant it is pasted into a new note, which
+   * is exactly what it used to do; the image test is what keeps the two apart.
+   */
+  function readEditorBody() {
+    var body = document.getElementById('note-body');
+    if (!body || !state.currentNote) return false;
+    if (body.textContent === '' && body.innerHTML !== '' && !body.querySelector('img')) {
+      body.innerHTML = '';
+    }
+    state.currentNote.content = body.innerHTML;
+    state.editorDirty = true;
+    setStatus('Unsaved\u2026');
+    paintTabDirty();
+    saveOpenNote();
+    return true;
+  }
+
+  /** Run one execCommand against the restored caret. Native bold/italic/list work. */
+  function fmtCommand(cmd, value) {
+    var body = document.getElementById('note-body');
+    if (!state.currentNote || !body) return;
+    if (typeof document.execCommand !== 'function') {
+      util.toast('Formatting is not supported in this browser.', 'error');
+      return;
+    }
+    if (!restoreSelection()) return;
+    // A collapsed caret only flips the typing style (no markup yet): saving an
+    // identical body would bump updated_at for nothing, so only save on change.
+    var before = body.innerHTML;
+    document.execCommand(cmd, false, value === undefined ? null : value);
+    saveSelection();
+    if (body.innerHTML === before) { body.focus(); return; }
+    readEditorBody();
+  }
+
+  /** Wrap the selection in a <mark> (yellow, both themes); unwrap when already marked. */
+  function fmtHighlight() {
+    if (!state.currentNote) return;
+    var body = document.getElementById('note-body');
+    if (!body || !restoreSelection()) return;
+    var sel = window.getSelection();
+    if (!sel.rangeCount || sel.isCollapsed) {
+      util.toast('Select the text to highlight first.', 'info');
+      return;
+    }
+    var range = sel.getRangeAt(0);
+    var ancestor = range.commonAncestorContainer;
+    ancestor = ancestor.nodeType === 3 ? ancestor.parentNode : ancestor;
+    var mark = ancestor.closest ? ancestor.closest('mark') : null;
+    if (mark && body.contains(mark)) {
+      var parent = mark.parentNode;
+      while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+      parent.removeChild(mark);
+    } else {
+      var m = document.createElement('mark');
+      try {
+        range.surroundContents(m);
+      } catch (e) {
+        // Selections spanning block boundaries cannot be surrounded; move the
+        // contents inside the mark instead, which always works.
+        m.appendChild(range.extractContents());
+        range.insertNode(m);
+      }
+    }
+    saveSelection();
+    readEditorBody();
+  }
+
+  /** Insert a checkbox row, carrying any selected text into it as the label. */
+  function fmtCheckbox() {
+    var body = document.getElementById('note-body');
+    if (!state.currentNote || !body || !restoreSelection()) return;
+    var sel = window.getSelection();
+    var text = '';
+    try { text = sel.rangeCount ? String(sel.toString() || '') : ''; } catch (e) { /* none */ }
+    var row = document.createElement('div');
+    row.className = 'task-row';
+    var box = document.createElement('input');
+    box.type = 'checkbox';
+    box.tabIndex = -1;
+    var label = document.createElement('span');
+    label.textContent = text || ' ';
+    row.appendChild(box);
+    row.appendChild(label);
+    var range = sel.rangeCount ? sel.getRangeAt(0) : null;
+    if (range) {
+      range.deleteContents();
+      range.insertNode(row);
+    } else {
+      body.appendChild(row);
+    }
+    var caret = document.createRange();
+    caret.selectNodeContents(label);
+    caret.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(caret);
+    saveSelection();
+    readEditorBody();
+  }
+
+  // ------------------------------------------------------------ wiki links UI
+  /**
+   * Create the note a [[link]] names and open it, filed beside the note the link
+   * was written in. An existing note with that title opens instead, so double
+   * presses (and two links racing) converge rather than duplicating.
+   */
+  function createLinkedNote(rawTitle) {
+    var title = String(rawTitle || '').trim().slice(0, 200);
+    if (!title) return Promise.resolve(null);
+    var existing = App.db.resolveLinkTarget(state.workspaceId, util.normTitle(title));
+    if (existing) {
+      openNote(existing.id);
+      return Promise.resolve(existing);
+    }
+    flushPendingSave();
+    state.view = 'notes';
+    var folderId = state.currentNote ? state.currentNote.folder_id : targetFolderId();
+    return App.db.createNote(state.workspaceId, folderId || null, title).then(function (note) {
+      openNote(note.id);
+      util.toast('Created \u201c' + title + '\u201d.', 'success');
+      return note;
+    }).catch(function (err) {
+      util.toast('Could not create the note: ' + err.message, 'error');
+      return null;
+    });
+  }
+
+  /**
+   * Delete a link from a note's body without deleting anything else: every pill
+   * and every raw `[[...]]` run naming that title is cut out, the text around
+   * each cut is joined, and a body left with nothing in it is stored empty rather
+   * than as whitespace. The linked note itself is untouched — this removes the
+   * reference, never the destination.
+   */
+  function removeLinkFromNote(noteId, rawTitle) {
+    var norm = util.normTitle(rawTitle);
+    if (!norm) return;
+    var note = App.db.getNote(noteId);
+    if (!note || typeof note.content !== 'string') return;
+    var box = document.createElement('div');
+    box.innerHTML = note.content;
+    var changed = false;
+    // Pills first: whole widgets go, and a doubled space at the joint collapses.
+    Array.prototype.forEach.call(box.querySelectorAll('.wikilink'), function (pill) {
+      var pillTitle = pill.getAttribute('data-title')
+        || String(pill.textContent || '').replace(/\u00d7$/, '');
+      if (util.normTitle(pillTitle) !== norm) return;
+      var prev = pill.previousSibling;
+      var next = pill.nextSibling;
+      pill.parentNode.removeChild(pill);
+      if (prev && prev.nodeType === 3 && next && next.nodeType === 3
+          && / $/.test(prev.nodeValue) && /^ /.test(next.nodeValue)) {
+        next.nodeValue = next.nodeValue.replace(/^ /, '');
+      }
+      changed = true;
+    });
+    // Raw runs: the brackets go, the surrounding prose stays.
+    var walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
+    var nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    nodes.forEach(function (textNode) {
+      if (!textNode.parentNode) return;
+      if (textNode.parentNode.closest && textNode.parentNode.closest('.wikilink')) return;
+      var src = textNode.nodeValue;
+      var pattern = /\[\[([^\[\]\n]{1,200})\]\]/g;
+      var out = '';
+      var last = 0;
+      var match = pattern.exec(src);
+      var hit = false;
+      while (match) {
+        if (util.normTitle(match[1]) === norm) {
+          out += src.slice(last, match.index);
+          last = match.index + match[0].length;
+          hit = true;
+        }
+        match = pattern.exec(src);
+      }
+      if (!hit) return;
+      out += src.slice(last);
+      // A cut that joins two spaces keeps one: deletion must not leave tracks.
+      textNode.nodeValue = out.replace(/  +/g, ' ');
+      changed = true;
+    });
+    if (!changed) {
+      util.toast('That link is not in this note.', 'info');
+      return;
+    }
+    var next = box.innerHTML;
+    if (util.htmlToText(next).trim() === '') next = '';
+    if (next === note.content) return;
+    App.db.updateNote(noteId, note.title, next).then(function () {
+      if (state.currentNote && state.currentNote.id === noteId) state.currentNote.content = next;
+      render();
+    }).catch(function (err) {
+      util.toast('Could not remove the link: ' + err.message, 'error');
+    });
+  }
+
+  /**
+   * The `[[` completion. state.linkSuggest holds the anchor (node + caret offset
+   * the query came from), because focus moves to the popup's buttons and the live
+   * selection is gone by pick time.
+   */
+  function linkCandidates(query) {
+    var q = util.normTitle(query);
+    var all = App.db.listAllNotes(state.workspaceId);
+    var items = [];
+    for (var i = 0; i < all.length; i++) {
+      if (state.currentNote && String(all[i].id) === String(state.currentNote.id)) continue;
+      var title = all[i].title || '';
+      if (!q || util.normTitle(title).indexOf(q) !== -1) {
+        items.push({ id: all[i].id, title: title || 'Untitled note' });
+        if (items.length >= 8) break;
+      }
+    }
+    return items;
+  }
+
+  function openLinkSuggest(range, query, items) {
+    closeLinkSuggest();
+    var startNode = range.startContainer;
+    // Anchor the replacement: from the opening brackets to the caret.
+    if (!startNode || startNode.nodeType !== 3) return;
+    var node = App.ui.renderLinkSuggest(items, items.length ? 0 : -1);
+    // Mousedown would blur the editor and lose the caret before the click lands;
+    // preventing it keeps the anchor alive until the pick restores it explicitly.
+    node.addEventListener('mousedown', function (event) { event.preventDefault(); });
+    var caret = range.getBoundingClientRect();
+    node.style.position = 'fixed';
+    node.style.left = Math.max(8, Math.round(caret.left)) + 'px';
+    // Flip above the caret when there is no room below: a popup under the fold
+    // is what reads as the layout teleporting away.
+    var below = Math.round(caret.bottom + 6);
+    var room = window.innerHeight - below;
+    node.style.top = (room < 120 ? Math.max(8, Math.round(caret.top - 250)) : below) + 'px';
+    node.style.zIndex = 60;
+    document.body.appendChild(node);
+    state.linkSuggest = {
+      query: query,
+      items: items,
+      active: items.length ? 0 : -1,
+      anchorNode: startNode,
+      anchorOffset: range.startOffset,
+      node: node,
+    };
+  }
+
+  /**
+   * Move the highlight without rebuilding the popup. The position lives on the
+   * node itself, so replacing it (as keyboard navigation used to) drops the
+   * caret coordinates and the list falls to the page bottom — the teleport.
+   */
+  function paintLinkSuggest() {
+    var s = state.linkSuggest;
+    if (!s || !s.node) return;
+    var rows = s.node.querySelectorAll('.link-suggest__item');
+    Array.prototype.forEach.call(rows, function (row, i) {
+      var on = i === s.active;
+      row.classList.toggle('is-active', on);
+      row.setAttribute('aria-selected', on ? 'true' : 'false');
+      if (on && typeof row.scrollIntoView === 'function') {
+        try { row.scrollIntoView({ block: 'nearest' }); } catch (e) { /* keep the caret's scroll */ }
+      }
+    });
+  }
+
+  function closeLinkSuggest() {
+    var s = state.linkSuggest;
+    state.linkSuggest = null;
+    if (s && s.node && s.node.parentNode) s.node.parentNode.removeChild(s.node);
+  }
+
+  /** Re-read the caret: `[[query` opens the list, anything else closes it. */
+  function updateLinkSuggest() {
+    var body = document.getElementById('note-body');
+    if (!body || !state.currentNote) { closeLinkSuggest(); return; }
+    var sel = window.getSelection();
+    if (!sel.rangeCount || !sel.isCollapsed) { closeLinkSuggest(); return; }
+    var range = sel.getRangeAt(0);
+    var node = range.startContainer;
+    if (!node || node.nodeType !== 3 || !body.contains(node)) { closeLinkSuggest(); return; }
+    var match = /\[\[([^\[\]\n]{0,80})$/.exec(node.textContent.slice(0, range.startOffset));
+    if (!match) { closeLinkSuggest(); return; }
+    var query = match[1];
+    var items = linkCandidates(query);
+    var s = state.linkSuggest;
+    // Same query, same anchor, same matches: leave the popup (and its highlight)
+    // alone instead of rebuilding under the reader's eyes.
+    if (s && s.query === query && s.anchorNode === node && s.items.length === items.length
+        && s.items.every(function (item, i) { return items[i] && items[i].id === item.id; })) {
+      return;
+    }
+    openLinkSuggest(range, query, items);
+  }
+
+  /** Write the picked title into the brackets the query came from. */
+  function completeLinkSuggest(index) {
+    var s = state.linkSuggest;
+    if (!s) return false;
+    var item = s.items[index];
+    if (!item) { closeLinkSuggest(); return false; }
+    var body = document.getElementById('note-body');
+    if (!body || !body.contains(s.anchorNode)) { closeLinkSuggest(); return false; }
+    var start = s.anchorOffset - s.query.length - 2;
+    if (start < 0) { closeLinkSuggest(); return false; }
+    closeLinkSuggest();
+    try {
+      body.focus();
+      var range = document.createRange();
+      range.setStart(s.anchorNode, start);
+      range.setEnd(s.anchorNode, s.anchorOffset);
+      range.deleteContents();
+      // A pill, not bracket text: what lands in the body is what the reader keeps
+      // seeing, and the missing style follows when the note gets created.
+      var pill = util.buildWikiPill(document, item.title);
+      range.insertNode(pill);
+      range.setStartAfter(pill);
+      range.collapse(true);
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } catch (e) {
+      return false;
+    }
+    saveSelection();
+    readEditorBody();
+    return true;
+  }
+
+  /**
+   * Follow one pill: open the note it names, or offer to create it. Shared by
+   * mouse and keyboard — the pill is atomic, so activating it can never mean
+   * "edit the text inside".
+   */
+  function followWikiPill(title) {
+    if (title === null || title === undefined) return;
+    createLinkedNote(title);
+  }
+
+  /**
+   * Refresh the links block under the editor after a save, without rebuilding the
+   * editor (which would drop the caret). Typing `[[Hub]]` writes the rows on save
+   * but repaints nothing, so without this the chips would only appear after
+   * navigating away and back. The block is a sibling of the body, never an
+   * ancestor of the caret, so replacing it disturbs nothing being typed.
+   */
+  function paintLinksBlock() {
+    var editor = dom.main ? dom.main.querySelector('.editor') : null;
+    var body = document.getElementById('note-body');
+    if (!editor || !body || !state.currentNote) return;
+    var note = App.db.getNote(state.currentNote.id);
+    if (!note || note.locked || note.damaged || typeof note.content !== 'string') return;
+    var fresh = App.ui.renderNoteLinks({
+      outgoing: App.db.getOutgoingLinks(note.id),
+      backlinks: App.db.getBacklinks(note.id),
+    });
+    var old = null;
+    Array.prototype.forEach.call(editor.children, function (child) {
+      if (child.classList && child.classList.contains('links')) old = child;
+    });
+    if (!fresh && old) old.parentNode.removeChild(old);
+    else if (fresh && old) old.parentNode.replaceChild(fresh, old);
+    else if (fresh && !old) {
+      var toolbar = editor.querySelector('.editor__toolbar');
+      if (toolbar && toolbar.nextSibling) editor.insertBefore(fresh, toolbar.nextSibling);
+      else editor.appendChild(fresh);
+    }
+  }
+
+  // ------------------------------------------------------- workspace checkpoint
+  /**
+   * Workspace Checkpoint: open tabs + the active item, per workspace, in raw localStorage
+   * under `noteapp.tabs:<workspaceId>`.
+   *
+   * A second copy of what savePlace() already keeps inside the prefs place object, under a
+   * stable key: { tabs: [{kind,id,pinned}], noteId, fileId }. Capped at CHECKPOINT_MAX on
+   * write; every id is re-validated through tabRecord() (which itself reads through
+   * getNote/getFileMeta) on restore, so a note or file deleted elsewhere never comes back.
+   * Restores silently — no new UI, a toast only if the write itself fails. No database
+   * writes: this never touches SQLite.
+   */
+  var TABS_KEY = 'noteapp.tabs:';
+  var CHECKPOINT_MAX = 20;
+
+  function checkpointRead(workspaceId) {
+    if (!workspaceId) return null;
+    try {
+      var raw = window.localStorage.getItem(TABS_KEY + workspaceId);
+      if (!raw) return null;
+      var parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  /** Persist the checkpoint. Best-effort: storage pressure must never break a render. */
+  function checkpointWrite() {
+    if (!state.ready || !state.workspaceId) return;
+    try {
+      window.localStorage.setItem(TABS_KEY + state.workspaceId, JSON.stringify({
+        tabs: state.tabs.slice(0, CHECKPOINT_MAX).map(function (t) {
+          return { kind: t.kind, id: t.id, pinned: !!t.pinned };
+        }),
+        noteId: state.activeNoteId,
+        fileId: state.activeFileId,
+      }));
+    } catch (err) {
+      util.toast('Could not remember the open tabs for this workspace.', 'error');
+    }
+  }
+
+  /**
+   * Merge the checkpoint into the restored state. The place object wins ties — both are
+   * written from the same state in the same turn, so a difference only means an older or
+   * foreign write, and the place object is the newer contract.
+   */
+  function restoreCheckpoint(workspaceId) {
+    var saved = checkpointRead(workspaceId);
+    if (!saved) return;
+    var have = {};
+    state.tabs.forEach(function (t) { have[t.kind + ':' + t.id] = true; });
+    (saved.tabs || [])
+      .filter(function (t) { return t && (t.kind === 'note' || t.kind === 'file') && t.id && !have[t.kind + ':' + t.id]; })
+      .filter(function (t) { return !!tabRecord(t.kind, t.id); })
+      .slice(0, Math.max(0, CHECKPOINT_MAX - state.tabs.length))
+      .forEach(function (t) {
+        have[t.kind + ':' + t.id] = true;
+        state.tabs.push({ kind: t.kind, id: t.id, pinned: !!t.pinned });
+      });
+    if (!state.activeNoteId && !state.activeFileId) {
+      var note = saved.noteId ? tabRecord('note', saved.noteId) : null;
+      if (note) {
+        state.activeNoteId = saved.noteId;
+        if (tabIndexOf('note', saved.noteId) === -1) state.tabs.push({ kind: 'note', id: saved.noteId });
+      } else {
+        var file = saved.fileId ? tabRecord('file', saved.fileId) : null;
+        if (file) {
+          state.activeFileId = saved.fileId;
+          if (tabIndexOf('file', saved.fileId) === -1) state.tabs.push({ kind: 'file', id: saved.fileId });
+        }
+      }
+    }
+  }
+
+  /** Tabs remembered per workspace, inside the place object (validated on the way back). */
+  function restoreTabsOnly(workspaceId) {
+    var place = App.prefs.get(PLACE_PREF + workspaceId, null);
+    var stored = (place && place.tabs) || [];
+    state.tabs = stored
+      .filter(function (t) { return t && (t.kind === 'note' || t.kind === 'file') && t.id; })
+      .filter(function (t) { return !!tabRecord(t.kind, t.id); })
+      .slice(0, MAX_TABS)
+      .map(function (t) { return { kind: t.kind, id: t.id, pinned: !!t.pinned }; });
+  }
+
+  // --------------------------------------------------------------- deja-vu
+  /**
+   * Deja-vu: "this title looks like an existing note". Runs on TITLE COMMIT only — the
+   * rename dialog and the editor title's change (blur/Enter) — never on autosave and
+   * never per keystroke. A hit only sets state.dejavu, which the editor draws as a
+   * silent chip near the title: no modal, no toast, no interruption.
+   *
+   * Ignores are persistent but live in raw localStorage under `noteapp.dejavu`, NOT in
+   * SQLite: they are interface state about dismissed hints, not notebook data.
+   */
+  var DEJAVU_KEY = 'noteapp.dejavu';
+  var DEJAVU_THRESHOLD = 0.6;
+  var DEJAVU_MAX = 5;
+
+  function dejavuIgnores() {
+    try {
+      var raw = window.localStorage.getItem(DEJAVU_KEY);
+      var parsed = raw ? JSON.parse(raw) : null;
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (err) {
+      return {};
+    }
+  }
+
+  function dejavuIgnore(noteId, otherId) {
+    try {
+      var all = dejavuIgnores();
+      all[String(noteId) + '>' + String(otherId)] = 1;
+      window.localStorage.setItem(DEJAVU_KEY, JSON.stringify(all));
+    } catch (err) { /* ignores are best-effort */ }
+  }
+
+  function dejavuIgnored(noteId, otherId) {
+    var all = dejavuIgnores();
+    return !!all[String(noteId) + '>' + String(otherId)]
+      || !!all[String(otherId) + '>' + String(noteId)];
+  }
+
+  /**
+   * Run the check for one committed title. Silent by design: it only sets state for
+   * the next paint, and clears it when there is nothing to say.
+   */
+  function checkDejaVu(noteId, title) {
+    state.dejavu = null;
+    if (!noteId || !state.workspaceId || !App.trigram) return;
+    var text = String(title || '');
+    // Generic titles ("Untitled note", single words) never accuse anyone.
+    if (App.trigram.isGenericTitle(text)) return;
+    var words = App.trigram.significantWords(text).slice(0, 3);
+    if (!words.length) return;
+    var candidates = [];
+    try {
+      // Workspace-scoped, LIKE prefilter on the first three significant words; the
+      // trigram similarity itself runs in JS over what this returns.
+      candidates = App.db.titlesLike(state.workspaceId, words);
+    } catch (err) {
+      candidates = [];
+    }
+    var self = App.trigram.trigrams(text);
+    var matches = [];
+    for (var i = 0; i < candidates.length && matches.length < DEJAVU_MAX; i++) {
+      var cand = candidates[i];
+      if (!cand || String(cand.id) === String(noteId)) continue;
+      if (App.trigram.isGenericTitle(cand.title)) continue;
+      if (dejavuIgnored(noteId, cand.id)) continue;
+      if (App.trigram.jaccard(self, cand.title) > DEJAVU_THRESHOLD) {
+        matches.push({ id: cand.id, title: cand.title || 'Untitled note' });
+      }
+    }
+    if (matches.length) state.dejavu = { noteId: noteId, matches: matches };
+  }
+
+  /**
+   * Refresh the chip without rebuilding the editor (which would drop the caret and
+   * focus). Full renders draw it from state; this only patches it in place after a
+   * title commit.
+   */
+  function paintDejaVuChip() {
+    var title = document.getElementById('note-title');
+    if (!title || !title.parentNode || !state.currentNote) return;
+    var host = title.parentNode;
+    var old = null;
+    Array.prototype.forEach.call(host.children, function (child) {
+      if (child.classList && child.classList.contains('dejavu')) old = child;
+    });
+    var fresh = state.dejavu && String(state.dejavu.noteId) === String(state.currentNote.id)
+      ? App.ui.renderDejavuChip(state.dejavu)
+      : null;
+    if (old && fresh) host.replaceChild(fresh, old);
+    else if (old) host.removeChild(old);
+    else if (fresh) host.insertBefore(fresh, title.nextSibling);
+  }
 
   // ---------------------------------------------------------------- autosave
   /**
@@ -68,14 +1077,16 @@ window.NoteApp = window.NoteApp || {};
     setStatus('Saving\u2026');
 
     return App.db.updateNote(id, note.title, note.content).then(function (res) {
-      // Only report "Saved" if the user is still looking at the note we just wrote.
       if (state.currentNote && state.currentNote.id === id) {
         note.updated_at = res.updated_at;
         setStatus('Saved ' + new Date().toLocaleTimeString());
+        paintLinksBlock();
       }
+      paintTabDirty();
     }).catch(function (err) {
       state.editorDirty = true;
       setStatus('Save failed');
+      paintTabDirty();
       util.toast('Could not save the note: ' + err.message, 'error');
     });
   }, 500);
@@ -245,9 +1256,13 @@ window.NoteApp = window.NoteApp || {};
       selection: state.selection,
       noteId: state.activeNoteId,
       fileId: state.activeFileId,
+
+      // Open tabs, oldest first. Validated on restore, so a deleted note never comes back.
+      tabs: state.tabs.map(function (t) { return { kind: t.kind, id: t.id, pinned: !!t.pinned }; }),
       view: state.view,
       taskView: state.taskView,
     });
+    checkpointWrite();
   }
   var savePlaceSoon = util.debounce(savePlace, 400);
 
@@ -269,6 +1284,7 @@ window.NoteApp = window.NoteApp || {};
     state.selection = selection.type === 'folder' && folders[selection.id]
       ? { type: 'folder', id: selection.id }
       : { type: 'all', id: null };
+
     var note = place.noteId ? App.db.getNote(place.noteId) : null;
     if (note && note.workspace_id === workspaceId) {
       state.activeNoteId = note.id;
@@ -276,21 +1292,39 @@ window.NoteApp = window.NoteApp || {};
         state.expanded[note.folder_id] = true;
         expandAncestors(note.folder_id);
       }
-      return;
-    }
-    var file = place.fileId ? App.db.getFileMeta(place.fileId) : null;
-    if (file && file.workspace_id === workspaceId) {
-      state.activeFileId = file.id;
-      if (file.folder_id) {
-        state.expanded[file.folder_id] = true;
-        expandAncestors(file.folder_id);
+    } else {
+      var file = place.fileId ? App.db.getFileMeta(place.fileId) : null;
+      if (file && file.workspace_id === workspaceId) {
+        state.activeFileId = file.id;
+        if (file.folder_id) {
+          state.expanded[file.folder_id] = true;
+          expandAncestors(file.folder_id);
+        }
       }
     }
+    // Open tabs, validated: only live records in this workspace come back, and the
+    // item in front always keeps its tab even when an older place predates tabs.
+    state.tabs = (place.tabs || [])
+      .filter(function (t) { return t && (t.kind === 'note' || t.kind === 'file') && t.id; })
+      .filter(function (t) { return !!tabRecord(t.kind, t.id); })
+      .slice(0, MAX_TABS)
+      .map(function (t) { return { kind: t.kind, id: t.id, pinned: !!t.pinned }; });
+    if (state.activeNoteId && tabIndexOf('note', state.activeNoteId) === -1) {
+      state.tabs.push({ kind: 'note', id: state.activeNoteId });
+    }
+    if (state.activeFileId && tabIndexOf('file', state.activeFileId) === -1) {
+      state.tabs.push({ kind: 'file', id: state.activeFileId });
+    }
+    // The checkpoint fills gaps the place object cannot name (and vice versa); both are
+    // validated, so neither can resurrect a deleted row.
+    restoreCheckpoint(workspaceId);
   }
 
   /** Build the sidebar model from the database, then draw everything. */
   function render() {
     if (!state.ready) return;
+    // Any render rebuilds the editor the completion popup belongs to.
+    closeLinkSuggest();
     var wsId = state.workspaceId;
 
     var sort = sortOf();
@@ -373,6 +1407,15 @@ window.NoteApp = window.NoteApp || {};
 
     renderMainPane(treeModel);
 
+    // Open tabs above the pane. Hidden while the task list is in front; the tab that
+    // is in front is simply the active note/file the pane just drew.
+    if (dom.tabs) {
+      App.ui.renderTabs(dom.tabs, {
+        tabs: tabsViewModel(),
+        hidden: state.view === 'tasks',
+      });
+    }
+
     // The header's task button. Drawn from the render that draws everything it counts, rather
     // than from the click that opens the pane: the count changes for reasons that have
     // nothing to do with this button — a checkbox, a delete, a quick add — and a count only
@@ -391,9 +1434,7 @@ window.NoteApp = window.NoteApp || {};
     // The task list is a pane of its own, so on a narrow viewport it IS the canvas:
     // deciding by the note selection alone would show the tree and leave the pane the
     // reader just asked for off screen.
-    showMobilePane(state.view === 'tasks'
-      ? 'canvas'
-      : (state.searchTerm || (!state.activeNoteId && !state.activeFileId) ? 'list' : 'canvas'));
+    deriveMobilePane();
 
     // The button describes the order the two panes were just drawn in, so it is repainted from
     // the same render rather than from the click that changed it. One place to be right.
@@ -419,6 +1460,22 @@ window.NoteApp = window.NoteApp || {};
       var railRow = document.querySelector('[data-action="view-tasks"]');
       if (railRow) railRow.focus();
     }
+    // A tab switch rebuilds the strip it was pressed from, so focus is handed to the
+    // new active tab rather than dropped on <body> mid-keyboard-session.
+    if (state.tabFocus) {
+      state.tabFocus = false;
+      focusActiveTab();
+    }
+
+    // Ticking a bulk checkbox rebuilds the grid it lives in, so focus is handed
+    // back to the same box — otherwise keyboard multi-select ends after one tick.
+    if (state.bulkFocusId) {
+      var wantedBulk = state.bulkFocusId;
+      state.bulkFocusId = null;
+      var bulkWrap = document.querySelector('.card-wrap[data-note-id="' + wantedBulk + '"]');
+      var bulkInput = bulkWrap ? bulkWrap.querySelector('.checkbox__input') : null;
+      if (bulkInput) bulkInput.focus();
+    }
 
     // Where the reader is, for the next load. Debounced, because a render is often one step of
     // a gesture — a folder opening, a note being picked — and a burst of them is one place.
@@ -439,6 +1496,18 @@ window.NoteApp = window.NoteApp || {};
       return;
     }
 
+    // Spawner is a view of the whole notebook rather than a place inside it, the same way
+    // the task list is. It takes the pane and leaves the tree selection alone, so leaving it
+    // puts the reader back on the note or folder they were looking at.
+    if (state.view === 'spawner') {
+      App.spawner.render(dom.main, {
+        workspaceId: state.workspaceId,
+        activeNoteId: state.activeNoteId,
+        render: render,
+      });
+      return;
+    }
+
     if (state.activeNoteId) {
       var note = App.db.getNote(state.activeNoteId);
       if (note) {
@@ -446,8 +1515,16 @@ window.NoteApp = window.NoteApp || {};
         state.editorDirty = false;
         App.ui.renderEditor(dom.main, {
           note: note,
+          // The Deja-vu chip, if this exact note earned one on its last title commit.
+          dejavu: state.dejavu && String(state.dejavu.noteId) === String(note.id) ? state.dejavu : null,
           // The folder chain the editor prints as a path — and, crumb by crumb, as somewhere to go.
           chain: note.folder_id ? App.db.folderChains(state.workspaceId)[note.folder_id] : [],
+          // The wiki graph under the editor. Readable bodies only: a locked note
+          // keeps its lock notice instead, exactly as before.
+          links: note.locked || note.damaged || typeof note.content !== 'string' ? null : {
+            outgoing: App.db.getOutgoingLinks(note.id),
+            backlinks: App.db.getBacklinks(note.id),
+          },
         });
         return;
       }
@@ -488,6 +1565,23 @@ window.NoteApp = window.NoteApp || {};
       state.activeFileId = null;
     }
 
+    // Bulk selection belongs to one place: a scope change (workspace, folder,
+    // view, search) silently drops it, so a stale set can never act elsewhere.
+    if (state.bulkScope !== bulkScopeKey()) {
+      state.bulkSelected = [];
+      state.bulkScope = bulkScopeKey();
+    } else if (state.bulkSelected.length) {
+      // A selected note deleted (or moved out of the workspace) from another
+      // control leaves a ghost in the count and the bar. Any id no longer in
+      // this workspace's lists is dropped before it is drawn.
+      var liveNotes = {};
+      treeModel.rootNotes.forEach(function (n) { liveNotes[n.id] = true; });
+      Object.keys(treeModel.notesByFolder).forEach(function (fid) {
+        treeModel.notesByFolder[fid].forEach(function (n) { liveNotes[n.id] = true; });
+      });
+      var prunedBulk = state.bulkSelected.filter(function (id) { return !!liveNotes[id]; });
+      if (prunedBulk.length !== state.bulkSelected.length) state.bulkSelected = prunedBulk;
+    }
     if (state.selection.type === 'folder') {
       var folder = treeModel.folders.filter(function (f) { return f.id === state.selection.id; })[0];
       if (folder) {
@@ -500,6 +1594,8 @@ window.NoteApp = window.NoteApp || {};
           files: treeModel.filesByFolder[folder.id] || [],
           activeNoteId: state.activeNoteId,
           activeFileId: state.activeFileId,
+          bulkSelected: state.bulkSelected,
+          onToggleBulk: toggleBulkSelect,
         });
         return;
       }
@@ -515,6 +1611,8 @@ window.NoteApp = window.NoteApp || {};
       files: treeModel.rootFiles,
       activeNoteId: state.activeNoteId,
       activeFileId: state.activeFileId,
+      bulkSelected: state.bulkSelected,
+      onToggleBulk: toggleBulkSelect,
     });
   }
 
@@ -616,6 +1714,13 @@ window.NoteApp = window.NoteApp || {};
     render();
   }
 
+  /** Show the Spawner, or hand the pane back to the notebook. */
+  function showSpawner(on) {
+    flushPendingSave();
+    state.view = on ? 'spawner' : 'notes';
+    render();
+  }
+
   /** The slices of the task list, in the order the filter offers them. */
   var TASK_VIEWS = ['all', 'today', 'upcoming', 'done'];
 
@@ -672,8 +1777,15 @@ window.NoteApp = window.NoteApp || {};
 
   /** Tick a task off, or put it back. The rows, the badges and the rail all re-read. */
   function toggleTaskDone(id, done) {
-    App.db.setTaskDone(id, done).then(function () {
+    App.db.setTaskDone(id, done).then(function (result) {
+      // A repeating task is not finished, it is moved: the row stays in the list with a
+      // new date, so the toast is the only thing that explains why the tick did not
+      // clear it. The date is read back rather than computed here, because the rule and
+      // its month-end clamping belong to the storage layer.
       render();
+      if (result && result.repeated) {
+        util.toast('Repeating task moved to ' + util.formatWhen(result.repeated) + '.', 'success', 8000);
+      }
     }).catch(function (err) {
       util.toast('Could not update the task: ' + err.message, 'error');
     });
@@ -724,6 +1836,15 @@ window.NoteApp = window.NoteApp || {};
    * midnight, and due_has_time is what stops that midnight being read back as a time — the
    * two facts one timestamp cannot carry on its own, which is why the column exists.
    */
+  /** Which reminder preset matches a stored pair, or '' when there is none to show. */
+  function reminderPreset(dueAt, remindAt) {
+    if (!dueAt || !remindAt) return '';
+    var due = new Date(dueAt).getTime();
+    var remind = new Date(remindAt).getTime();
+    if (isNaN(due) || isNaN(remind)) return '';
+    var minutes = Math.round((due - remind) / 60000);
+    return minutes < 0 ? '' : String(minutes);
+  }
   function buildTaskForm(task) {
     var titleInput = el('input', {
       id: 'task-title',
@@ -778,6 +1899,39 @@ window.NoteApp = window.NoteApp || {};
       if (!dueTime.disabled && !dueTime.value) dueTime.value = '09:00';
     });
 
+    var repeat = App.ui.select({
+      label: 'Repeat',
+      value: repeatFreq(task.recurrence),
+      options: [
+        { value: '', label: 'Does not repeat' },
+        { value: 'daily', label: 'Every day' },
+        { value: 'weekdays', label: 'Every weekday' },
+        { value: 'weekly', label: 'Every week' },
+        { value: 'monthly', label: 'Every month' },
+        { value: 'yearly', label: 'Every year' },
+      ],
+    });
+    // An offset from the due date, resolved to an absolute moment on save. This is what
+    // makes a reminder survive the due date moving: '1 hour before' stays true, while a
+    // fixed timestamp would quietly become wrong.
+    var remind = App.ui.select({
+      label: 'Remind me',
+      value: reminderPreset(task.due_at, task.remind_at),
+      options: [
+        { value: '', label: 'No reminder' },
+        { value: '0', label: 'At the due time' },
+        { value: '10', label: '10 minutes before' },
+        { value: '60', label: '1 hour before' },
+        { value: '1440', label: '1 day before' },
+      ],
+    });
+    var hints = ['A reminder is measured from the due date, so a task without one cannot remind.'];
+    if (typeof Notification === 'undefined') {
+      hints.push('This browser has no notifications, so reminders are announced inside the app.');
+    } else if (Notification.permission === 'denied') {
+      hints.push('Notifications are blocked for this page, so reminders are announced inside the app.');
+    }
+    var reminderHint = el('p', { class: 'task-form__hint', text: hints.join(' ') });
     var priority = App.ui.select({
       label: 'Priority',
       value: String(task.priority || 0),
@@ -799,8 +1953,13 @@ window.NoteApp = window.NoteApp || {};
         taskField('Due date', el('div', { class: 'field__control' }, [dueDate]), 'task-due'),
         taskField('Time', el('div', { class: 'field__control task-form__when' }, [allDay, dueTime]), 'task-allday'),
       ]),
+      el('div', { class: 'task-form__row' }, [
+        taskField('Repeat', repeat, null),
+        taskField('Remind me', remind, null),
+      ]),
+      reminderHint,
+      reminderHint,
     ]);
-
     return {
       root: root,
       read: function () {
@@ -827,6 +1986,12 @@ window.NoteApp = window.NoteApp || {};
           // describe, so the flag follows the date rather than the toggle.
           due_has_time: due && hasTime ? 1 : 0,
           priority: Number(priority.getValue()) || 0,
+          // Stored as an absolute instant, because that is what a scheduler can compare
+          // against without knowing anything about the rule that produced it.
+          remind_at: due && remind.getValue() !== ''
+            ? new Date(new Date(due).getTime() - Number(remind.getValue()) * 60000).toISOString()
+            : null,
+          recurrence: repeat.getValue() ? { freq: repeat.getValue() } : null,
         };
       },
     };
@@ -852,7 +2017,14 @@ window.NoteApp = window.NoteApp || {};
       focus: '#task-title',
       confirmLabel: 'Save task',
       onSubmit: function () {
-        return App.db.updateTask(id, form.read()).then(function (ok) {
+        // Asked on the gesture that sets a reminder, never at boot: a permission prompt out
+        // of nowhere is the one people refuse. A refusal still saves: the reminder then
+        // announces itself inside the app.
+        var fields = form.read();
+        var ready = fields.remind_at ? ensureNotifyPermission() : Promise.resolve(null);
+        return ready.then(function () {
+          return App.db.updateTask(id, fields);
+        }).then(function (ok) {
           // The row can be gone: another tab can delete it between the dialog opening and
           // the save landing, and reporting that is better than closing on a write that
           // changed nothing.
@@ -906,12 +2078,17 @@ window.NoteApp = window.NoteApp || {};
   function newNote() {
     flushPendingSave();
     // The new note has to be visible, which means the editor has to be the pane that is
-    // showing — creating one behind the task list would look like nothing happened.
+    // showing — creating one behind the task list would look like nothing happened, and
+    // behind a set of search results on a phone the same. The query replaced the tree, so
+    // it goes with the navigation.
+    clearSearch();
     state.view = 'notes';
     return App.db.createNote(state.workspaceId, targetFolderId(), 'Untitled note').then(function (note) {
       if (note.folder_id) expandAncestors(note.folder_id);
       state.activeFileId = null;
       state.activeNoteId = note.id;
+      ensureTab('note', note.id);
+      pushTabHistory('note', note.id);
       state.selection = note.folder_id ? { type: 'folder', id: note.folder_id } : state.selection;
       render();
       focusEditorTitle();
@@ -987,7 +2164,26 @@ window.NoteApp = window.NoteApp || {};
     state.workspaceId = workspaceId;
     state.selection = { type: 'all', id: null };
     state.expanded = {};
+    state.activeNoteId = null;
+    state.activeFileId = null;
+    state.currentNote = null;
+    // The entered workspace brings its own tabs; the item being opened joins them below.
+    restoreTabsOnly(workspaceId);
     App.prefs.set('lastWorkspaceId', workspaceId);
+  }
+
+  /**
+   * The selection is where the reader is. Opening something inside another folder moves
+   * the highlight there, and opening a loose item returns it to the workspace root —
+   * otherwise the previously selected folder keeps its highlight underneath whatever
+   * just opened. A folder left behind for the root also closes: an open subtree whose
+   * highlight just moved away reads as the tree disagreeing with the pane.
+   */
+  function followSelection(homeFolderId) {
+    var home = homeFolderId || null;
+    if (state.selection.type !== 'folder' || state.selection.id === home) return;
+    if (!home) delete state.expanded[state.selection.id];
+    state.selection = home ? { type: 'folder', id: home } : { type: 'all', id: null };
   }
 
   /**
@@ -1003,10 +2199,7 @@ window.NoteApp = window.NoteApp || {};
   function goToFolder(id) {
     if (!id || !App.db.folderPaths(state.workspaceId)[id]) return;
     flushPendingSave();
-    if (state.searchTerm) {
-      state.searchTerm = '';
-      if (dom.searchInput) dom.searchInput.value = '';
-    }
+    clearSearch();
     expandAncestors(id);
     // And the folder opens: a destination the reader cannot see the contents of is not one.
     state.expanded[id] = true;
@@ -1018,16 +2211,48 @@ window.NoteApp = window.NoteApp || {};
     focusMovedRow('folder', id);
   }
 
-  function openNote(id) {
+  /**
+   * Leaving the search behind. The query replaced the tree, so anything that navigates to a
+   * place clears it — otherwise a hit opened from the results would leave the results in
+   * front of it, which on a phone is the note appearing not to open at all.
+   */
+  function clearSearch() {
+    if (!state.searchTerm) {
+      // Whitespace-only queries leave the input holding spaces while searchTerm is '',
+      // so the guard cannot be the only exit.
+      if (dom.searchInput && dom.searchInput.value) dom.searchInput.value = '';
+      return;
+    }
+    // The input is debounced, so a navigation that lands inside that window would
+    // otherwise be overtaken by the old query ~180ms later — which on a phone re-pins
+    // the results in front of the note that was just opened.
+    if (runSearch && runSearch.cancel) runSearch.cancel();
+    state.searchTerm = '';
+    if (dom.searchInput) dom.searchInput.value = '';
+  }
+
+  function openNote(id, opts) {
     flushPendingSave();
     // A hit in another workspace takes the reader there before the note opens. See above.
     var note = App.db.getNote(id);
-    if (note) adoptWorkspaceOf(note.workspace_id);
+    if (!note) { pruneTabs(); render(); return; }
+    clearSearch();
+    adoptWorkspaceOf(note.workspace_id);
+    followSelection(note.folder_id);
+    // A chip belongs to the title commit that earned it, not to the navigation: without
+    // this the previous note's chip lingers in state and reappears when returning.
+    state.dejavu = null;
     state.view = 'notes';
     state.activeFileId = null;
     state.activeNoteId = id;
     // Reveal the note if it lives inside a collapsed folder, at any nesting depth.
-    if (note && note.folder_id) expandAncestors(note.folder_id);
+    if (note.folder_id) expandAncestors(note.folder_id);
+    ensureTab('note', id);
+    if (!opts || !opts.background) pushTabHistory('note', id);
+    // A navigation always re-derives the narrow pane, even when the note is already the
+    // active one: opening it again from the list must still bring it in front.
+    mobilePaneKey = null;
+    if (opts && opts.background) { render(); return; }
     render();
   }
 
@@ -1035,7 +2260,8 @@ window.NoteApp = window.NoteApp || {};
     var note = App.db.getNote(id);
     if (!note) return;
     var label = note.title && note.title.trim() ? note.title : 'Untitled note';
-    var words = (note.content || '').trim().split(/\s+/).filter(Boolean).length;
+    // Bodies may carry formatting markup; the count is over visible words only.
+    var words = util.htmlToText(note.content || '').trim().split(/\s+/).filter(Boolean).length;
 
     App.ui.dialog({
       title: 'Delete this note?',
@@ -1057,12 +2283,101 @@ window.NoteApp = window.NoteApp || {};
           state.activeNoteId = null;
           state.currentNote = null;
         }
+        state.tabs = state.tabs.filter(function (t) {
+          return !(t.kind === 'note' && String(t.id) === String(id));
+        });
         util.toast('Note deleted.', 'info');
         render();
       }).catch(function (err) {
         util.toast('Delete failed: ' + err.message, 'error');
       });
     });
+  }
+
+  function deleteBulkNotes(ids) {
+    var list = (ids || []).filter(function (id) { return !!App.db.getNote(id); });
+    if (!list.length) return;
+    var n = list.length;
+    App.ui.dialog({
+      title: 'Delete ' + n + (n === 1 ? ' note?' : ' notes?'),
+      icon: 'trash',
+      danger: true,
+      message: n + (n === 1 ? ' note will be removed from this browser.' : ' notes will be removed from this browser.'),
+      // The concrete consequence, not a generic "are you sure".
+      consequences: [
+        'They stay in the trash until removed for good, and can be restored from there.',
+        'Export the database from Settings first if any of it matters.',
+      ],
+      confirmLabel: 'Delete ' + n + (n === 1 ? ' note' : ' notes'),
+    }).then(function (ok) {
+      if (!ok) return;
+      saveOpenNote.cancel();
+      App.db.bulkDeleteNotes(list).then(function () {
+        list.forEach(function (nid) {
+          if (String(state.activeNoteId) === String(nid)) {
+            state.activeNoteId = null;
+            state.currentNote = null;
+          }
+        });
+        state.tabs = state.tabs.filter(function (t) {
+          return !(t.kind === 'note' && list.some(function (nid) { return String(nid) === String(t.id); }));
+        });
+        clearBulkSelection();
+        util.toast(n + (n === 1 ? ' note deleted.' : ' notes deleted.'), 'info');
+        render();
+      }).catch(function (err) {
+        util.toast('Delete failed: ' + err.message, 'error');
+      });
+    });
+  }
+
+  function exportBulkNotes(ids) {
+    var parts = [];
+    var locked = 0;
+    var damaged = 0;
+    var privateSkipped = 0;
+    (ids || []).forEach(function (id) {
+      var note = App.db.getNote(id);
+      if (!note) return;
+      // Same rule as copy: an unreadable body would export as an empty note, so
+      // it is skipped and counted instead of written out as a hollow heading.
+      // Private notes are skipped the same way: bulk export is the one path that
+      // can sweep up notes the reader did not open one by one. Per-note copy and
+      // download stay allowed — marking a note private does not lock its own copy.
+      if (note.locked) { locked++; return; }
+      if (note.damaged) { damaged++; return; }
+      if (note.is_private) { privateSkipped++; return; }
+      var title = note.title && note.title.trim() ? note.title : 'Untitled note';
+      // Pills become [[Title]] so a pasted re-import keeps its links.
+      parts.push('## ' + title + '\n\n' + util.noteToPlainText(note.content || '').trim());
+    });
+    if (!parts.length) {
+      var why = locked ? 'unlock the notebook first'
+        : damaged ? 'the selected notes could not be read'
+          : privateSkipped ? 'the selected notes are marked private'
+            : '';
+      util.toast(why ? 'Nothing to export \u2014 ' + why + '.' : 'Nothing to export.', 'info');
+      return;
+    }
+    var combined = parts.join('\n\n---\n\n') + '\n';
+    try {
+      var blob = new Blob([combined], { type: 'text/markdown' });
+      var stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      var url = URL.createObjectURL(blob);
+      var link = el('a', { href: url, download: 'notes-export-' + stamp + '.md' });
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+      var skips = [];
+      if (locked) skips.push(locked + ' locked');
+      if (damaged) skips.push(damaged + ' unreadable');
+      if (privateSkipped) skips.push(privateSkipped + ' private');
+      util.toast('Exported ' + parts.length + (parts.length === 1 ? ' note' : ' notes')
+        + (skips.length ? ' (' + skips.join(', ') + ' skipped).' : '.'), 'success');
+    } catch (err) {
+      util.toast('Export failed: ' + err.message, 'error');
+    }
   }
 
   function renameNote(id) {
@@ -1079,12 +2394,235 @@ window.NoteApp = window.NoteApp || {};
       saveOpenNote.cancel();
       App.db.updateNote(id, next, note.content).then(function () {
         if (state.currentNote && state.currentNote.id === id) state.currentNote.title = next;
+        // Title commit, not autosave: the one place a rename lands.
+        checkDejaVu(id, next);
         render();
       }).catch(function (err) {
         util.toast('Rename failed: ' + err.message, 'error');
       });
     });
   }
+
+  /**
+   * The move picker: one trash-panel flow for notes, files and folders alike.
+   *
+   * The small hand-rolled destination dialogs are gone: picking a home for something
+   * is a browsing task (scan, filter, choose), which is what the panel surface is for.
+   * app.js owns the model and the move itself; ui.js owns the panel paint, exactly like
+   * the trash. The three thin wrappers below keep their names so no menu, button or
+   * test has to change what it calls.
+   */
+  function openMovePanel(kind, id) {
+    if (movePanel) return;
+    // Bulk notes arrive as an id array; everything else stays singular.
+    var ids = Array.isArray(id) ? id.filter(function (nid) { return !!App.db.getNote(nid); }) : null;
+    if (ids && !ids.length) return;
+    if (!ids) {
+      if (kind === 'folder') {
+        var folderList = App.db.listFolders(state.workspaceId);
+        var exists = folderList.some(function (f) { return f.id === id; });
+        if (!exists) return;
+        if (App.db.listWorkspaces().length < 2) {
+          util.toast('No other workspace exists to move to.', 'info');
+          return;
+        }
+      } else if (kind === 'note') {
+        if (!App.db.getNote(id)) return;
+      } else {
+        if (!App.db.getFileMeta(id)) return;
+      }
+    }
+    state.moveKind = kind;
+    state.moveId = ids ? null : id;
+    state.moveIds = ids;
+    state.moveTerm = '';
+    state.moveView = 'all';
+
+    App.ui.dialog({
+      title: ids ? 'Move ' + ids.length + ' notes' : kind === 'note' ? 'Move note' : kind === 'file' ? 'Move file' : 'Move folder',
+      fullscreen: true,
+      hideHeader: true,
+      hideFooter: true,
+      closeOnBackdrop: false,
+      focus: '#move-search',
+      onOpen: function (api) {
+        App.ui.renderMovePanel(api.body, Object.assign(moveModel(), {
+          onPick: pickMoveDestination,
+          onSearch: function (term) {
+            state.moveTerm = String(term || '');
+            refreshMovePanel();
+          },
+          onView: function (view) {
+            state.moveView = view;
+            refreshMovePanel();
+          },
+          onClose: closeMovePanel,
+        }));
+        movePanel = api.body;
+        movePanel.__close = api.close;
+      },
+    }).then(function () {
+      movePanel = null;
+      state.moveTerm = '';
+      state.moveIds = null;
+    });
+  }
+
+  /** Everything the move panel needs, derived fresh — the panel itself holds no state. */
+  function moveModel() {
+    var kind = state.moveKind;
+    var id = state.moveId;
+    var workspaces = App.db.listWorkspaces();
+    var countsByWs = {};
+    workspaces.forEach(function (ws) {
+      try { countsByWs[ws.id] = App.db.counts(ws.id); } catch (e) { countsByWs[ws.id] = null; }
+    });
+    if (kind === 'folder') {
+      var theirs = App.db.listFolders(state.workspaceId);
+      var folder = theirs.filter(function (f) { return f.id === id; })[0];
+      return {
+        mode: 'workspace', icon: 'folder',
+        title: 'Move folder',
+        sub: 'Move \u201c' + (folder ? folder.name : 'folder') + '\u201d and everything inside it to another workspace.',
+        workspaces: workspaces, foldersByWs: {}, countsByWs: countsByWs,
+        currentWsId: state.workspaceId,
+        term: state.moveTerm || '',
+        view: state.moveView || 'all',
+        footNote: 'The whole subtree moves with it.',
+      };
+    }
+    // Bulk notes share one destination picker: plural copy, no single current.
+    if (state.moveIds && state.moveIds.length) {
+      var foldersByWsBulk = {};
+      workspaces.forEach(function (ws) {
+        foldersByWsBulk[ws.id] = App.db.listFolders(ws.id);
+      });
+      return {
+        mode: 'place', icon: 'note',
+        title: 'Move ' + state.moveIds.length + ' notes',
+        sub: 'Move ' + state.moveIds.length + ' notes to another folder or workspace.',
+        workspaces: workspaces, foldersByWs: foldersByWsBulk, countsByWs: countsByWs,
+        // No single current home: the selection spans destinations, so nothing
+        // is marked "where it is now" (a null currentWsId suppresses the mark).
+        currentWsId: null,
+        currentFolderId: null,
+        term: state.moveTerm || '',
+        view: state.moveView || 'all',
+      };
+    }
+    var item = kind === 'note' ? App.db.getNote(id) : App.db.getFileMeta(id);
+    var label = kind === 'note'
+      ? (item && item.title && item.title.trim() ? item.title : 'Untitled note')
+      : (item ? item.filename : 'file');
+    var foldersByWs = {};
+    workspaces.forEach(function (ws) {
+      foldersByWs[ws.id] = App.db.listFolders(ws.id);
+    });
+    return {
+      mode: 'place', icon: kind,
+      title: kind === 'note' ? 'Move note' : 'Move file',
+      sub: 'Move \u201c' + label + '\u201d to another folder or workspace.',
+      workspaces: workspaces, foldersByWs: foldersByWs, countsByWs: countsByWs,
+      currentWsId: item ? item.workspace_id : null,
+      currentFolderId: item ? (item.folder_id || null) : null,
+      term: state.moveTerm || '',
+      view: state.moveView || 'all',
+    };
+  }
+
+  function refreshMovePanel() {
+    if (!movePanel || !movePanel.__refresh) return;
+    movePanel.__refresh(moveModel());
+  }
+
+  function closeMovePanel() {
+    if (movePanel && movePanel.__close) movePanel.__close(null);
+  }
+
+  /** One pressed destination card. The panel is already closed first: the move is the
+   *  answer, and the list the question came from has nothing left to say. */
+  function pickMoveDestination(wsId, folderId) {
+    var kind = state.moveKind;
+    var id = state.moveId;
+    var targetFolder = folderId || null;
+    closeMovePanel();
+    // Bulk notes: prune already-there rows, move the rest in one snapshot.
+    if (state.moveIds && state.moveIds.length) {
+      var todo = state.moveIds.filter(function (nid) {
+        var n = App.db.getNote(nid);
+        return n && (String(n.workspace_id) !== String(wsId) || String(n.folder_id || '') !== String(targetFolder || ''));
+      });
+      if (!todo.length) return;
+      App.db.bulkMoveNotes(todo, wsId, targetFolder).then(function () {
+        if (state.activeNoteId && todo.some(function (nid) { return String(nid) === String(state.activeNoteId); }) && wsId !== state.workspaceId) {
+          state.activeNoteId = null;
+          state.currentNote = null;
+        }
+        if (targetFolder && wsId === state.workspaceId) state.expanded[targetFolder] = true;
+        clearBulkSelection();
+        util.toast(todo.length + (todo.length === 1 ? ' note moved.' : ' notes moved.'), 'success');
+        render();
+      }).catch(function (err) {
+        util.toast('Move failed: ' + err.message, 'error');
+      });
+      return;
+    }
+    if (kind === 'note') {
+      var note = App.db.getNote(id);
+      if (!note) return;
+      if (String(note.workspace_id) === String(wsId) && String(note.folder_id || '') === String(targetFolder || '')) return;
+      App.db.moveNote(id, wsId, targetFolder).then(function () {
+        // A note that left the workspace cannot stay open in it.
+        if (state.activeNoteId === id && wsId !== state.workspaceId) state.activeNoteId = null;
+        // Reveal the destination so the moved note is visible rather than vanished.
+        if (targetFolder && wsId === state.workspaceId) state.expanded[targetFolder] = true;
+        util.toast('Note moved.', 'success');
+        render();
+      }).catch(function (err) {
+        util.toast('Move failed: ' + err.message, 'error');
+      });
+      return;
+    }
+    if (kind === 'file') {
+      var meta = App.db.getFileMeta(id);
+      if (!meta) return;
+      if (String(meta.workspace_id) === String(wsId) && String(meta.folder_id || '') === String(targetFolder || '')) return;
+      App.db.moveFile(id, wsId, targetFolder).then(function () {
+        // A file that left the workspace cannot stay open in it.
+        if (state.activeFileId === id && wsId !== state.workspaceId) state.activeFileId = null;
+        // Reveal the destination so the moved file is visible rather than vanished.
+        if (targetFolder && wsId === state.workspaceId) state.expanded[targetFolder] = true;
+        util.toast('File moved.', 'success');
+        render();
+      }).catch(function (err) {
+        util.toast('Move failed: ' + err.message, 'error');
+      });
+      return;
+    }
+    if (String(wsId) === String(state.workspaceId)) return;
+    var allWorkspaces = App.db.listWorkspaces();
+    App.db.moveFolder(id, wsId).then(function () {
+      // If the moved folder was selected, or an open note or file was inside it, fall back.
+      var doomedIds = App.db.descendantFolderIds(id);
+      if (state.selection.type === 'folder' && doomedIds.indexOf(state.selection.id) !== -1) {
+        state.selection = { type: 'all', id: null };
+      }
+      if (state.activeNoteId) {
+        var openNote = App.db.getNote(state.activeNoteId);
+        if (openNote && doomedIds.indexOf(openNote.folder_id) !== -1) state.activeNoteId = null;
+      }
+      if (state.activeFileId) {
+        var openFile = App.db.getFileMeta(state.activeFileId);
+        if (openFile && doomedIds.indexOf(openFile.folder_id) !== -1) state.activeFileId = null;
+      }
+      util.toast('Folder moved to \u201c' + (allWorkspaces.filter(function (w) { return w.id === wsId; })[0] || { name: wsId }).name + '\u201d.', 'success');
+      render();
+    }).catch(function (err) {
+      util.toast('Move failed: ' + err.message, 'error');
+    });
+  }
+
+  function moveNote(id) { openMovePanel('note', id); }
 
   // ------------------------------------------------------------- folder actions
   function newFolder(parentId) {
@@ -1124,100 +2662,7 @@ window.NoteApp = window.NoteApp || {};
     });
   }
 
-  function moveFolder(id) {
-    var folders = App.db.listFolders(state.workspaceId);
-    var folder = folders.filter(function (f) { return f.id === id; })[0];
-    if (!folder) return;
-    var workspaces = App.db.listWorkspaces();
-    var others = workspaces.filter(function (w) { return w.id !== state.workspaceId; });
-    if (!others.length) {
-      util.toast('No other workspace exists to move to.', 'info');
-      return;
-    }
-
-    // Custom dialog with a native workspace select.
-    var titleId = 'dlg-move-title-' + util.uuid().slice(0, 8);
-    var node = document.createElement('dialog');
-    node.className = 'dialog';
-    node.setAttribute('aria-labelledby', titleId);
-
-    var form = document.createElement('form');
-    form.className = 'dialog__form';
-    form.setAttribute('novalidate', 'novalidate');
-
-    // Header
-    var head = el('div', { class: 'dialog__head' }, [
-      el('span', { class: 'dialog__icon' }, [App.ui.icon('folder', 19)]),
-      el('h2', { id: titleId, class: 'dialog__title', text: 'Move folder' }),
-      el('button', {
-        class: 'dialog__close',
-        type: 'button',
-        'aria-label': 'Close',
-        onclick: function () { dismiss(); },
-      }, [App.ui.icon('close', 15)]),
-    ]);
-    form.appendChild(head);
-
-    // Body
-    var selectRoot = App.ui.select({
-      label: 'Target workspace',
-      value: others[0] ? others[0].id : '',
-      options: others.map(function (w) { return { value: w.id, label: w.name }; }),
-    });
-    var body = el('div', { class: 'dialog__body' }, [
-      el('p', { class: 'dialog__message', text: 'Move \u201c' + folder.name + '\u201d and everything inside it to another workspace.' }),
-    ]);
-    body.appendChild(el('label', { class: 'field__label', for: 'select-' + util.uuid().slice(0, 8), text: 'Target workspace' }));
-    body.appendChild(selectRoot);
-    form.appendChild(body);
-
-    // Footer
-    var cancelBtn = el('button', { class: 'btn', type: 'button', onclick: function () { dismiss(); } }, ['Cancel']);
-    var confirmBtn = el('button', { class: 'btn btn--primary', type: 'submit' }, ['Move folder']);
-    form.appendChild(el('div', { class: 'dialog__footer' }, [cancelBtn, confirmBtn]));
-
-    node.appendChild(form);
-
-    function dismiss() {
-      node.classList.add('dialog--closing');
-      setTimeout(function () {
-        if (node.open) node.close();
-        if (node.parentNode) node.parentNode.removeChild(node);
-        document.activeElement && document.activeElement.focus();
-      }, 140);
-    }
-
-    form.addEventListener('submit', function (event) {
-      event.preventDefault();
-      var targetId = selectRoot ? selectRoot.getValue() : null;
-      if (!targetId) return;
-      node.classList.add('dialog--closing');
-      setTimeout(function () {
-        if (node.open) node.close();
-        if (node.parentNode) node.parentNode.removeChild(node);
-      }, 140);
-      App.db.moveFolder(id, targetId).then(function () {
-        // If the moved folder was selected, or an open note/file was inside it, fall back.
-        var doomedIds = App.db.descendantFolderIds(id);
-        if (state.selection.type === 'folder' && doomedIds.indexOf(state.selection.id) !== -1) {
-          state.selection = { type: 'all', id: null };
-        }
-        if (state.activeNoteId) {
-          var note = App.db.getNote(state.activeNoteId);
-          if (note && doomedIds.indexOf(note.folder_id) !== -1) state.activeNoteId = null;
-        }
-        util.toast('Folder moved to \u201c' + (workspaces.filter(function (w) { return w.id === targetId; })[0] || { name: targetId }).name + '\u201d.', 'success');
-        render();
-      }).catch(function (err) {
-        util.toast('Move failed: ' + err.message, 'error');
-      });
-    });
-
-    document.body.appendChild(node);
-    if (typeof node.showModal === 'function') node.showModal();
-    else node.setAttribute('open', '');
-    document.getElementById('move-workspace-select').focus();
-  }
+  function moveFolder(id) { openMovePanel('folder', id); }
 
   function deleteFolder(id) {
     var folders = App.db.listFolders(state.workspaceId);
@@ -1403,6 +2848,27 @@ window.NoteApp = window.NoteApp || {};
   function setTrashSearch(term) {
     state.trashTerm = String(term || '');
     refreshTrash();
+  }
+
+  function bulkScopeKey() {
+    return state.workspaceId + '|' + state.selection.type + '|' + (state.selection.id || '')
+      + '|' + state.view + '|' + (state.searchTerm || '');
+  }
+
+  function toggleBulkSelect(id, checked) {
+    var next = state.bulkSelected.filter(function (x) { return String(x) !== String(id); });
+    if (checked !== false) next.push(id);
+    state.bulkSelected = next;
+    state.bulkScope = bulkScopeKey();
+    // render() rebuilds the grid, so the ticked box is a different element by the
+    // time it returns; this hands focus back to the one the reader was on.
+    state.bulkFocusId = id;
+    render();
+  }
+
+  function clearBulkSelection() {
+    state.bulkSelected = [];
+    state.bulkScope = bulkScopeKey();
   }
 
   function toggleTrashSelect(id, checked) {
@@ -1617,15 +3083,33 @@ window.NoteApp = window.NoteApp || {};
   }
 
   // --------------------------------------------------------------- file actions
-  function openFile(id) {
+  function openFile(id, opts) {
     flushPendingSave();
     // A hit in another workspace takes the reader there before the file opens. See above.
     var meta = App.db.getFileMeta(id);
-    if (meta) adoptWorkspaceOf(meta.workspace_id);
+    if (!meta) { pruneTabs(); render(); return; }
+    clearSearch();
+    adoptWorkspaceOf(meta.workspace_id);
+    followSelection(meta.folder_id);
     state.view = 'notes';
     state.activeNoteId = null;
     state.activeFileId = id;
+    ensureTab('file', id);
+    if (!opts || !opts.background) pushTabHistory('file', id);
+    mobilePaneKey = null;
+    if (opts && opts.background) { render(); return; }
     render();
+  }
+
+  /** Write a blob to disk via an object URL. */
+  function writeBlobDownload(resolved) {
+    var url = URL.createObjectURL(resolved.blob);
+    var link = el('a', { href: url, download: resolved.filename });
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    // Revoke on the next tick; revoking synchronously can cancel the download.
+    setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
   }
 
   function downloadFile(id) {
@@ -1637,13 +3121,7 @@ window.NoteApp = window.NoteApp || {};
       return;
     }
     if (!resolved) return;
-    var url = URL.createObjectURL(resolved.blob);
-    var link = el('a', { href: url, download: resolved.filename });
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    // Revoke on the next tick; revoking synchronously can cancel the download.
-    setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+    writeBlobDownload(resolved);
   }
 
   function openFileInTab(id) {
@@ -1655,22 +3133,25 @@ window.NoteApp = window.NoteApp || {};
       return;
     }
     if (!resolved) return;
-    var url = URL.createObjectURL(resolved.blob);
-    var win = null;
-    try {
-      win = window.open(url, '_blank');
-    } catch (err) {
-      win = null;
-    }
-    // Chrome refuses blob: URLs opened from a file:// document, so fall back to a download
-    // rather than leaving the user with a dead button.
-    if (!win) {
-      URL.revokeObjectURL(url);
-      util.toast('This browser will not open local files in a tab here. Downloading instead.', 'info');
-      downloadFile(id);
-      return;
-    }
-    setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+    var openResolved = function (target) {
+      var url = URL.createObjectURL(target.blob);
+      var win = null;
+      try {
+        win = window.open(url, '_blank');
+      } catch (err) {
+        win = null;
+      }
+      // Chrome refuses blob: URLs opened from a file:// document, so fall back to a download
+      // rather than leaving the user with a dead button.
+      if (!win) {
+        URL.revokeObjectURL(url);
+        util.toast('This browser will not open local files in a tab here. Downloading instead.', 'info');
+        downloadFile(id);
+        return;
+      }
+      setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+    };
+    openResolved(resolved);
   }
 
   function renameFile(id) {
@@ -1707,12 +3188,56 @@ window.NoteApp = window.NoteApp || {};
       if (!ok) return;
       App.db.deleteFile(id).then(function () {
         if (state.activeFileId === id) state.activeFileId = null;
+        state.tabs = state.tabs.filter(function (t) {
+          return !(t.kind === 'file' && String(t.id) === String(id));
+        });
         util.toast('File deleted.', 'info');
         render();
       }).catch(function (err) {
         util.toast('Delete failed: ' + err.message, 'error');
       });
     });
+  }
+
+  function moveFile(id) { openMovePanel('file', id); }
+
+  /**
+   * The attachment in this folder that already holds exactly these bytes, or null.
+   *
+   * Name and length are compared first because they cost nothing, and only a file that
+   * matches both has its bytes read back. A stored file the vault will not open (locked,
+   * or damaged) counts as a different file rather than as a duplicate, so a copy is never
+   * dropped from an unreadable row.
+   */
+  function duplicateAttachment(workspaceId, folderId, name, bytes) {
+    var rows = App.db.listFilesIn(workspaceId, folderId || null) || [];
+    var same = rows.filter(function (row) {
+      return row.filename === name && Number(row.size) === bytes.length;
+    });
+    var chain = Promise.resolve(null);
+    same.forEach(function (row) {
+      chain = chain.then(function (found) {
+        if (found) return found;
+        var stored = null;
+        try {
+          stored = App.db.getFileBlob(row.id);
+        } catch (e) {
+          return null;
+        }
+        if (!stored || !stored.blob || typeof stored.blob.arrayBuffer !== 'function') return null;
+        return stored.blob.arrayBuffer().then(function (buffer) {
+          var other = new Uint8Array(buffer);
+          if (other.length !== bytes.length) return null;
+          for (var i = 0; i < other.length; i++) {
+            if (other[i] !== bytes[i]) return null;
+          }
+          return row;
+        }).catch(function () {
+          return null;
+        });
+      });
+    });
+    return chain;
   }
 
   /**
@@ -1725,25 +3250,51 @@ window.NoteApp = window.NoteApp || {};
     if (!files.length) return;
 
     var done = 0;
+    var added = 0;
+    var addedName = '';
+    var repeated = 0;
+    var repeatedName = '';
     App.ui.setUploadStatus('Uploading 0/' + files.length + '\u2026');
 
     files.forEach(function (file) {
       uploadQueue = uploadQueue.then(function () {
         return file.arrayBuffer().then(function (buffer) {
-          return App.db.addFile(
-            state.workspaceId,
-            folderId || null,
-            file.name,
-            file.type || guessMime(file.name),
-            new Uint8Array(buffer)
-          );
+          var bytes = new Uint8Array(buffer);
+          // The same file moved in twice used to become a second row, and the listing
+          // draws an attachment as the same card a note gets, so the copy read as a new
+          // note. The bytes decide, so a different file that merely shares a name is
+          // still added, and the file the reader chose is the one that is kept.
+          return duplicateAttachment(state.workspaceId, folderId, file.name, bytes).then(function (already) {
+            if (already) {
+              repeated++;
+              if (!repeatedName) repeatedName = file.name;
+              return null;
+            }
+            return App.db.addFile(
+              state.workspaceId,
+              folderId || null,
+              file.name,
+              file.type || guessMime(file.name),
+              bytes
+            ).then(function () {
+              added++;
+              if (!addedName) addedName = file.name;
+            });
+          });
         });
       }).then(function () {
         done++;
         App.ui.setUploadStatus(done < files.length ? 'Uploading ' + done + '/' + files.length + '\u2026' : '');
         if (done === files.length) {
           if (folderId) state.expanded[folderId] = true;
-          util.toast(files.length === 1 ? 'Added \u201c' + files[0].name + '\u201d.' : 'Added ' + files.length + ' files.', 'success');
+          if (added) {
+            util.toast(added === 1 ? 'Added \u201c' + addedName + '\u201d.' : 'Added ' + added + ' files.', 'success');
+          }
+          if (repeated) {
+            util.toast(repeated === 1
+              ? '\u201c' + repeatedName + '\u201d is already attached.'
+              : repeated + ' files were already attached.', 'info');
+          }
           render();
           renderFooter();
         }
@@ -1780,9 +3331,10 @@ window.NoteApp = window.NoteApp || {};
     state.selection = { type: 'all', id: null };
     state.activeNoteId = null;
     state.activeFileId = null;
+    state.currentNote = null;
+    state.tabs = [];
     state.expanded = {};
-    state.searchTerm = '';
-    if (dom.searchInput) dom.searchInput.value = '';
+    clearSearch();
     App.prefs.set('lastWorkspaceId', id);
     restorePlace(id);
     render();
@@ -1824,6 +3376,69 @@ window.NoteApp = window.NoteApp || {};
     });
   }
 
+  /**
+   * The workspace picker: a trash-panel-styled dialog for switching workspaces.
+   *
+   * A dropdown stops scaling once the list grows — it has no search, no counts, and no
+   * room to breathe. The picker reuses the trash panel's own shell (fullscreen dialog,
+   * panel head / tools / list / foot) so it reads as the same surface, with rows that
+   * are workspaces instead of deleted items.
+   */
+  function wsPickerModel() {
+    var countsById = {};
+    state.workspaces.forEach(function (ws) {
+      try { countsById[ws.id] = App.db.counts(ws.id); } catch (e) { countsById[ws.id] = null; }
+    });
+    return {
+      workspaces: state.workspaces,
+      currentId: state.workspaceId,
+      term: state.wsPickerTerm || '',
+      countsById: countsById,
+    };
+  }
+
+  function refreshWsPicker() {
+    if (!wsPickerPanel || !wsPickerPanel.__refresh) return;
+    wsPickerPanel.__refresh(wsPickerModel());
+  }
+
+  function openWorkspacePicker() {
+    if (wsPickerPanel) return;
+    state.wsPickerTerm = '';
+    App.ui.dialog({
+      title: 'Workspaces',
+      fullscreen: true,
+      hideHeader: true,
+      hideFooter: true,
+      closeOnBackdrop: false,
+      focus: '#ws-search',
+      onOpen: function (api) {
+        App.ui.renderWorkspacePanel(api.body, Object.assign(wsPickerModel(), {
+          onPick: function (id) {
+            if (api.body && api.body.__close) api.body.__close(null);
+            if (id && id !== state.workspaceId) switchWorkspace(id);
+          },
+          onNew: function () {
+            if (api.body && api.body.__close) api.body.__close(null);
+            addWorkspace();
+          },
+          onSearch: function (term) {
+            state.wsPickerTerm = String(term || '');
+            refreshWsPicker();
+          },
+          onClose: function () {
+            if (api.body && api.body.__close) api.body.__close(null);
+          },
+        }));
+        wsPickerPanel = api.body;
+        wsPickerPanel.__close = api.close;
+      },
+    }).then(function () {
+      wsPickerPanel = null;
+      state.wsPickerTerm = '';
+    });
+  }
+
   function deleteWorkspace() {
     var ws = currentWorkspace();
     if (!ws) return;
@@ -1852,6 +3467,8 @@ window.NoteApp = window.NoteApp || {};
           state.selection = { type: 'all', id: null };
           state.activeNoteId = null;
           state.activeFileId = null;
+          state.currentNote = null;
+          state.tabs = [];
           state.expanded = {};
           return refreshWorkspaces();
         }).then(render);
@@ -1910,12 +3527,23 @@ window.NoteApp = window.NoteApp || {};
   }
 
   /**
-   * The one and only export path. Writes the raw SQLite bytes to disk — no transformation,
-   * so the file is the database itself.
+   * The one and only database export path. Writes the raw SQLite bytes to disk — no
+   * transformation, so the file is the database itself.
    */
   function exportDatabase() {
+    var bytes;
     try {
-      var bytes = App.db.exportBytes();
+      bytes = App.db.exportBytes();
+    } catch (err) {
+      util.toast('Export failed: ' + err.message, 'error');
+      return;
+    }
+    downloadDatabase(bytes);
+  }
+
+  /** Write bytes to disk. */
+  function downloadDatabase(bytes) {
+    try {
       var blob = new Blob([bytes], { type: 'application/vnd.sqlite3' });
       var stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
       var url = URL.createObjectURL(blob);
@@ -2061,16 +3689,25 @@ window.NoteApp = window.NoteApp || {};
   /**
    * Turn encryption on.
    *
-   * The two password fields are checked here rather than by the dialog builder, because the
-   * builder owns one field and this asks for two. The statement about what happens if the
-   * password is lost is in the consequences list, in the same words the danger dialogs use,
-   * because it is the same kind of fact: there is no copy anywhere else.
+   * One password field at a time, in two steps inside a single modal: choose, then
+   * confirm. Two stacked fields ask the reader to hold both jobs in mind at once, and a
+   * mismatch only surfaces at the end, next to a field they filled in a while ago. Here
+   * each step has one job, its own error, and a way back — Back returns to step 1 with
+   * the first password still typed, so a typo in step 2 never means starting over.
+   * The statement about what happens if the password is lost is in the consequences
+   * list, in the same words the danger dialogs use, because it is the same kind of
+   * fact: there is no copy anywhere else.
    */
   function enableVaultFlow() {
     if (!App.crypto.isSupported()) {
       util.toast(App.crypto.unsupportedMessage(), 'error', 9000);
       return;
     }
+    // The settings panel steps aside while this modal owns the screen, then resurfaces:
+    // two stacked dialogs read as one broken surface. Reopening refreshes the vault
+    // section to whatever the flow just did, so no separate repaint is needed here.
+    var settingsWasOpen = !!(dom.settingsDialog && dom.settingsDialog.open);
+    if (settingsWasOpen) closeSettings();
     /**
      * The one place the success is reported, so the state and the Settings section are redrawn
      * identically however the conversion ended. It is a function rather than three calls in the
@@ -2093,8 +3730,118 @@ window.NoteApp = window.NoteApp || {};
     }
 
     var first = passwordField('Password', 'At least ' + MIN_PASSWORD + ' characters. It is not stored anywhere, and it cannot be recovered.', 'new-password');
-    var again = passwordField('Password again', 'Spaces at the start and end are ignored.');
-    var dialogBody = null;
+    var again = passwordField('Confirm password', 'Enter the same password once more. Spaces at the start and end are ignored.');
+    var stepHost = el('div');
+    var api = null;
+
+    function stepFooter(buttons) {
+      var footer = el('div', { class: 'dialog__footer' });
+      buttons.forEach(function (btn) { footer.appendChild(btn); });
+      return footer;
+    }
+
+    function cancelBtn() {
+      return el('button', {
+        class: 'btn', type: 'button',
+        onclick: function () { if (api) api.close(null); },
+      }, ['Cancel']);
+    }
+
+    function showStep1() {
+      stepHost.textContent = '';
+      stepHost.appendChild(el('p', { class: 'dialog__note', text: 'Step 1 of 2 \u2014 choose a password.' }));
+      stepHost.appendChild(first.root);
+      stepHost.appendChild(stepFooter([cancelBtn(),
+        el('button', {
+          class: 'btn btn--primary', type: 'button',
+          onclick: function () { checkStep1(); },
+        }, ['Continue']),
+      ]));
+      first.input.focus();
+    }
+
+    function checkStep1() {
+      var password = first.input.value.trim();
+      if (password.length < MIN_PASSWORD) {
+        App.ui.setFieldError(first, 'Use at least ' + MIN_PASSWORD + ' characters. This password is the whole protection, so its length is what matters most.');
+        first.input.focus();
+        return;
+      }
+      App.ui.setFieldError(first, null);
+      showStep2();
+    }
+
+    function showStep2() {
+      stepHost.textContent = '';
+      stepHost.appendChild(el('p', { class: 'dialog__note', text: 'Step 2 of 2 \u2014 confirm it.' }));
+      stepHost.appendChild(again.root);
+      stepHost.appendChild(stepFooter([
+        el('button', {
+          class: 'btn', type: 'button',
+          onclick: function () { showStep1(); },
+        }, ['Back']),
+        el('button', {
+          class: 'btn btn--primary', type: 'button',
+          onclick: function () { submitEncrypt(); },
+        }, ['Encrypt this notebook']),
+      ]));
+      again.input.focus();
+    }
+
+    function submitEncrypt() {
+      var password = first.input.value.trim();
+      if (password !== again.input.value.trim()) {
+        App.ui.setFieldError(again, 'The two passwords do not match. Go back if you need to change the first one.');
+        again.input.focus();
+        return;
+      }
+      App.ui.setFieldError(again, null);
+      // The last keystrokes must be in the database before the conversion reads it.
+      // db.enableVault() waits for the write queue itself; flushing here is what stops the
+      // 500 ms debounce from holding those keystrokes back until after the conversion.
+      flushPendingSave();
+      runVaultConversion('Encrypting this notebook\u2026', function (report) {
+        return App.db.enableVault(password, report);
+      }).then(function (result) {
+        if (api) api.close(null);
+        afterEnable(result);
+      }, function (err) {
+        // Redrawn on BOTH paths, and the vault state read back out of the database rather than
+        // inferred from the error. Past the commit the notebook IS encrypted and unlocked, so a
+        // Settings section still reading "Encryption Off" over it would be a lie about the
+        // user's own data, which is the one thing this panel must never print. When the
+        // conversion stood, the failure is a warning and the dialog closes; when nothing was
+        // changed, the error stays in front of the field it came from.
+        render();
+        renderFooter();
+        renderVaultSection();
+        if (App.db.vaultState() === 'off') {
+          App.ui.setFieldError(again, err.message || 'That did not work.');
+          return;
+        }
+        // Past the commit the notebook IS encrypted, and locked: the key is dropped here as
+        // well, so what the toast says about the user's data stays true even on this path.
+        App.db.lockVault();
+        render();
+        renderFooter();
+        renderVaultSection();
+        if (api) api.close(null);
+        util.toast('Encryption is on, but the last step did not finish ('
+          + err.message + '). Nothing was undone: the notebook is encrypted and locked.',
+          'error', 14000);
+      });
+    }
+
+    // Enter moves the step forward, the way a form submit would: the builder's own
+    // submit is suppressed alongside its footer, so the keys are wired here instead.
+    [[first, checkStep1], [again, submitEncrypt]].forEach(function (pair) {
+      pair[0].input.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          pair[1]();
+        }
+      });
+    });
 
     App.ui.dialog({
       title: 'Turn on encryption',
@@ -2109,49 +3856,15 @@ window.NoteApp = window.NoteApp || {};
         'The notebook locks the moment encryption is on: reading the notes again asks for this password.',
         'One unlock is remembered for this tab, so a reload inside it stays unlocked; closing the tab locks the notebook again.',
       ],
-      body: el('div', { class: 'field-stack' }, [first.root, again.root]),
-      focus: first.input,
-      confirmLabel: 'Encrypt this notebook',
-      onOpen: function (api) { dialogBody = api.body; },
-      onSubmit: function () {
-        clearDialogError(dialogBody);
-        var password = first.input.value.trim();
-        if (password.length < MIN_PASSWORD) {
-          return Promise.reject(new Error('Use at least ' + MIN_PASSWORD + ' characters. This password is the whole protection, so its length is what matters most.'));
-        }
-        if (password !== again.input.value.trim()) {
-          return Promise.reject(new Error('The two passwords do not match.'));
-        }
-        // The last keystrokes must be in the database before the conversion reads it.
-        // db.enableVault() waits for the write queue itself; flushing here is what stops the
-        // 500 ms debounce from holding those keystrokes back until after the conversion.
-        flushPendingSave();
-        return runVaultConversion('Encrypting this notebook\u2026', function (report) {
-          return App.db.enableVault(password, report);
-        }).then(function (result) {
-          afterEnable(result);
-        }, function (err) {
-          // Redrawn on BOTH paths, and the vault state read back out of the database rather than
-          // inferred from the error. Past the commit the notebook IS encrypted and unlocked, so a
-          // Settings section still reading "Encryption Off" over it would be a lie about the
-          // user's own data, which is the one thing this panel must never print. When the
-          // conversion stood, the failure is a warning and the dialog closes; when nothing was
-          // changed, the error is rethrown so the dialog keeps it in front of the field.
-          render();
-          renderFooter();
-          renderVaultSection();
-          if (App.db.vaultState() === 'off') throw err;
-          // Past the commit the notebook IS encrypted, and locked: the key is dropped here as
-          // well, so what the toast says about the user's data stays true even on this path.
-          App.db.lockVault();
-          render();
-          renderFooter();
-          renderVaultSection();
-          util.toast('Encryption is on, but the last step did not finish ('
-            + err.message + '). Nothing was undone: the notebook is encrypted and locked.',
-            'error', 14000);
-        });
+      body: stepHost,
+      hideFooter: true,
+      focus: false,
+      onOpen: function (open) {
+        api = open;
+        showStep1();
       },
+    }).then(function () {
+      if (settingsWasOpen) openSettings();
     });
   }
 
@@ -2194,6 +3907,8 @@ window.NoteApp = window.NoteApp || {};
           render();
           renderFooter();
           renderVaultSection();
+          // Bodies just became readable: backfill any links the locked boot skipped.
+          App.db.rebuildLinks().catch(function () { /* links stay as they were */ });
           if (result.failures.length) {
             // The key is right — the check string proved it — so this is damage, and it is
             // named rather than passed off as an empty note.
@@ -2376,12 +4091,15 @@ window.NoteApp = window.NoteApp || {};
     // has opened.
     setIcon(document.getElementById('workspace-trash'), 'trash', 19);
     setIcon(document.getElementById('settings-close'), 'close', 15);
+    setIcon(document.getElementById('template-close'), 'close', 15);
     // The sort control is icon-only; its label and its tooltip come from the live sort in
     // paintSortButton(), because both have to name the order that is currently showing.
     setIcon(dom.sortMenu, 'sort', 14);
 
     var settingsIcon = document.getElementById('settings-icon');
     if (settingsIcon) settingsIcon.appendChild(App.ui.icon('database'));
+    var templateIcon = document.getElementById('template-icon');
+    if (templateIcon) templateIcon.appendChild(App.ui.icon('layers'));
 
     var rename = document.getElementById('workspace-rename');
     if (rename) {
@@ -2460,7 +4178,137 @@ window.NoteApp = window.NoteApp || {};
   }
 
   // --------------------------------------------------------------- event wiring
+  // Template picker state: the selected row id, and the live filter text.
+  var selectedTemplateId = null;
+  function templateFilterText() {
+    var f = document.getElementById('template-filter');
+    return f ? f.value.trim().toLowerCase() : '';
+  }
+  // One painter for the template picker, shared by open + delete + filter so the
+  // list never goes stale behind the dialog.
+  function paintTemplateList(host) {
+    var rows = [];
+    try { rows = App.db.listTemplates(state.workspaceId) || []; } catch (e) { rows = []; }
+    var q = templateFilterText();
+    if (q) rows = rows.filter(function (t) { return (t.name || '').toLowerCase().indexOf(q) !== -1; });
+    if (selectedTemplateId && !rows.some(function (t) { return String(t.id) === String(selectedTemplateId); })) {
+      selectedTemplateId = null;
+    }
+    host.innerHTML = rows.length ? rows.map(function (t) {
+      var label = t.name || 'Untitled';
+      var sel = String(t.id) === String(selectedTemplateId) ? ' is-selected' : '';
+      return '<div class="tpl-row' + sel + '">' +
+        '<button class="tpl-row__pick" type="button" role="option" aria-selected="' + (sel ? 'true' : 'false') + '" data-action="preview-template" data-id="' +
+        util.escapeHtml(t.id) + '"><span class="tpl-row__check" aria-hidden="true">✓</span>' +
+        '<span class="tpl-row__label">' + util.escapeHtml(label) + '</span></button>' +
+        '<button class="tpl-row__delete" type="button" data-action="delete-template" data-id="' +
+        util.escapeHtml(t.id) + '" aria-label="Delete template ' + util.escapeHtml(label) + '" title="Delete template">' +
+        '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" style="font-size:12px"><path d="M6.5 6.5 17.5 17.5"/><path d="M17.5 6.5 6.5 17.5"/></svg></button></div>';
+    }).join('') : (q ? '<p class="dialog__note">No templates match “' + util.escapeHtml(templateFilterText()) + '”.</p>'
+      : '<div class="empty-state"><span class="empty-state__mark" aria-hidden="true">▤</span>' +
+      '<h2>No templates yet</h2><p>Open a note and press T in the format bar to save one.</p></div>');
+    paintTemplatePreview();
+    var use = document.getElementById('template-use');
+    if (use) { if (selectedTemplateId) use.removeAttribute('disabled'); else use.setAttribute('disabled', ''); }
+  }
+  function paintTemplatePreview() {
+    var prev = document.getElementById('template-preview');
+    if (!prev) return;
+    var found = selectedTemplateId ? findTemplate(selectedTemplateId) : null;
+    if (!found) { prev.innerHTML = ''; prev.classList.add('is-hidden'); return; }
+    prev.innerHTML = '<h3 class="template-preview__title">' + util.escapeHtml(found.name || 'Untitled') + '</h3>' +
+      '<div class="template-preview__body">' + util.sanitizeRichHtml(found.content || '') + '</div>';
+    prev.classList.remove('is-hidden');
+  }
+
+  function findTemplate(id) {
+    var found = null;
+    try {
+      (App.db.listTemplates(state.workspaceId) || []).forEach(function (t) {
+        if (String(t.id) === String(id)) found = t;
+      });
+    } catch (e) { found = null; }
+    return found;
+  }
+
   var ACTIONS = {
+    'save-as-template': function () {
+      var n = state.currentNote;
+      if (!n) { util.toast('Open a note first, then save it as a template.', 'info'); return; }
+      var name = (n.title || 'Untitled').trim() || 'Untitled';
+      App.db.saveTemplate(null, state.workspaceId, name, n.content || '').then(function () {
+        util.toast('Template saved.', 'success');
+      }).catch(function (err) { util.toast('Could not save the template: ' + err.message, 'error'); });
+    },
+    'new-from-template': function () {
+      var host = document.getElementById('template-list');
+      var dlg = document.getElementById('template-picker');
+      if (!host || !dlg) return;
+      var filter = document.getElementById('template-filter');
+      if (filter) filter.value = '';
+      selectedTemplateId = null;
+      paintTemplateList(host);
+      if (typeof dlg.showModal === 'function') dlg.showModal();
+      if (filter) filter.focus();
+      else { var first = host.querySelector('button'); if (first) first.focus(); }
+    },
+    'close-template-picker': function () {
+      var dlg = document.getElementById('template-picker');
+      if (dlg && dlg.open) dlg.close();
+    },
+    'delete-template': function (id) {
+      var rows = [];
+      try { rows = App.db.listTemplates(state.workspaceId) || []; } catch (e) { rows = []; }
+      var at = 0;
+      rows.forEach(function (t, i) { if (String(t.id) === String(id)) at = i; });
+      var label = ((rows[at] && rows[at].name)) || 'Untitled';
+      App.ui.confirm({
+        title: 'Delete template?',
+        consequences: '“' + label + '” will be permanently removed. Notes made from it are untouched.',
+        confirmLabel: 'Delete',
+        danger: true,
+      }).then(function (ok) {
+        if (!ok) return;
+        return App.db.deleteTemplate(id).then(function () {
+          var host = document.getElementById('template-list');
+          if (host) {
+            paintTemplateList(host);
+            // Stay in the dialog: focus the row that took the deleted one's place.
+            var remaining = host.querySelectorAll('.tpl-row__pick');
+            var next = remaining.length ? remaining[Math.min(at, remaining.length - 1)] : host.querySelector('button');
+            if (next) next.focus();
+          }
+          util.toast('Template deleted.', 'info');
+        });
+      }).catch(function (err) { util.toast('Could not delete the template: ' + err.message, 'error'); });
+    },
+    'preview-template': function (id) {
+      var found = findTemplate(id);
+      if (!found) { util.toast('That template is gone.', 'info'); return; }
+      selectedTemplateId = found.id;
+      var host = document.getElementById('template-list');
+      if (host) paintTemplateList(host);
+      // Focus stays on the picked row: paint preserves selection, and the row
+      // keeps its place so keyboard users don't lose position after each preview.
+      if (host) {
+        var btn = host.querySelector('.tpl-row__pick[data-id="' + found.id + '"]');
+        if (btn) btn.focus();
+      }
+    },
+    'use-template': function (id) {
+      var found = id ? findTemplate(id) : null;
+      if (!found && selectedTemplateId) found = findTemplate(selectedTemplateId);
+      if (!found) { util.toast('Pick a template first.', 'info'); return; }
+      flushPendingSave();
+      state.view = 'notes';
+      var dlg = document.getElementById('template-picker');
+      if (dlg && dlg.open) dlg.close();
+      App.db.createNote(state.workspaceId, targetFolderId(), found.name || 'Untitled note').then(function (note) {
+        return App.db.updateNote(note.id, note.title, found.content || '').then(function () {
+          openNote(note.id);
+        });
+      }).catch(function (err) { util.toast('Could not create the note: ' + err.message, 'error'); });
+    },
     'select-all': function () {
       flushPendingSave();
       // Choosing something in the notebook is also choosing the notebook: staying on the
@@ -2470,6 +4318,9 @@ window.NoteApp = window.NoteApp || {};
       state.selection = { type: 'all', id: null };
       state.activeNoteId = null;
       state.activeFileId = null;
+      // "All notes" is a folder-sized destination too: pressing it on a phone shows the
+      // whole listing, which is where the cards and their checkboxes live.
+      if (narrow) { mobilePanePinned = false; applyMobilePane(); }
       render();
     },
     // A breadcrumb's destination: the selection a press on the folder row makes, with the search
@@ -2499,8 +4350,13 @@ window.NoteApp = window.NoteApp || {};
       // the list, off the screen with it. Because this press is the one that takes the toggle
       // off the content, pressing it twice closes the folder and pressing it once never does.
       if (!(state.expanded[id] && inside)) state.expanded[id] = !state.expanded[id];
+      // On a phone the tree IS the list pane, so a row press is the way into a folder's
+      // contents. Without this the card grid — and with it bulk selection — had no route
+      // onto the screen at all. The arrow still expands in place for tree work.
+      if (narrow) { mobilePanePinned = false; applyMobilePane(); }
       render();
     },
+
     'toggle-folder': function (id) {
       // The precision control obeys the same rule, and it deliberately does not move the toggle
       // itself (that is its whole job). So while something inside is toggled the arrow only
@@ -2512,18 +4368,81 @@ window.NoteApp = window.NoteApp || {};
     },
     'open-note': function (id) { openNote(id); },
     'open-file': function (id) { openFile(id); },
+    // Open tabs. Ids arrive as `note:<id>` / `file:<id>` (see ui.renderTabs), so one
+    // handler covers both kinds without a second attribute to read.
+    'activate-tab': function (id) {
+      var parsed = parseTabRef(id);
+      if (parsed) activateTab(parsed.kind, parsed.id);
+    },
+    'close-tab': function (id) { closeTabRef(id); },
+    'close-other-tabs': function (id) { closeOtherTabs(id); },
+    'close-all-tabs': function () { closeAllTabs(); },
+    // Rich-text toolbar. Bold/italic/lists ride the native commands (Ctrl+B and
+    // Ctrl+I work without the bar too); highlight, checkbox and clear are small
+    // hand-rolled DOM edits over the restored caret.
+    // Wiki links. The id of a create carries the percent-encoded title, because a
+    // title may contain anything — including the ':' other actions split on.
+    'create-linked-note': function (id) {
+      try { createLinkedNote(decodeURIComponent(id)); }
+      catch (e) { createLinkedNote(id); }
+    },
+    // The id carries the percent-encoded link title, like create-linked-note.
+    'remove-outgoing-link': function (id) {
+      if (!state.currentNote) return;
+      try { removeLinkFromNote(state.currentNote.id, decodeURIComponent(id)); }
+      catch (e) { removeLinkFromNote(state.currentNote.id, id); }
+    },
+    'link-suggest-pick': function (id) { completeLinkSuggest(Number(id)); },
+    // Deja-vu chip: open the suspected duplicate, or record a persistent ignore.
+    'dejavu-open': function (id) { openNote(id); },
+    'dejavu-dismiss': function (id) {
+      if (!state.dejavu) return;
+      dejavuIgnore(state.dejavu.noteId, id);
+      state.dejavu.matches = state.dejavu.matches.filter(function (m) {
+        return String(m.id) !== String(id);
+      });
+      if (!state.dejavu.matches.length) state.dejavu = null;
+      render();
+    },
+    'fmt-bold': function () { fmtCommand('bold'); },
+    'fmt-italic': function () { fmtCommand('italic'); },
+    'fmt-bullets': function () { fmtCommand('insertUnorderedList'); },
+    'fmt-highlight': function () { fmtHighlight(); },
+    'fmt-checkbox': function () { fmtCheckbox(); },
+    'fmt-clear': function () {
+      var body = document.getElementById('note-body');
+      if (!state.currentNote || !body || !restoreSelection()) return;
+      var before = body.innerHTML;
+      if (typeof document.execCommand === 'function') document.execCommand('removeFormat');
+      // removeFormat leaves <mark> alone: highlights unwrap here too. Structure
+      // (lists, checkbox rows) stays — clearing is about inline styling, not layout.
+      Array.prototype.slice.call(body.querySelectorAll('mark')).forEach(function (m) {
+        var parent = m.parentNode;
+        while (m.firstChild) parent.insertBefore(m.firstChild, m);
+        parent.removeChild(m);
+      });
+      saveSelection();
+      if (body.innerHTML === before) { body.focus(); return; }
+      readEditorBody();
+    },
     'new-note': function () { newNote(); },
     'new-folder': function () { newFolder(null); },
     'new-subfolder': function () { newFolder(state.selection.type === 'folder' ? state.selection.id : null); },
     'upload-file': function () { dom.fileInput.click(); },
+    'bulk-move': function () { if (state.bulkSelected.length) openMovePanel('note', state.bulkSelected.slice()); },
+    'bulk-export': function () { if (state.bulkSelected.length) exportBulkNotes(state.bulkSelected.slice()); },
+    'bulk-delete': function () { if (state.bulkSelected.length) deleteBulkNotes(state.bulkSelected.slice()); },
+    'bulk-clear': function () { clearBulkSelection(); render(); },
     'rename-note': function () { if (state.activeNoteId) renameNote(state.activeNoteId); },
     'delete-note': function () { if (state.activeNoteId) deleteNote(state.activeNoteId); },
+    'toggle-private': function (id) { toggleNotePrivate(id || state.activeNoteId); },
     'rename-folder': function () { if (state.selection.type === 'folder') renameFolder(state.selection.id); },
     'move-folder': function () { if (state.selection.type === 'folder') moveFolder(state.selection.id); },
     'delete-folder': function () { if (state.selection.type === 'folder') deleteFolder(state.selection.id); },
     'download-file': function (id) { downloadFile(id); },
     'open-file-tab': function (id) { openFileInTab(id); },
     'rename-file': function (id) { renameFile(id); },
+    'move-file': function (id) { moveFile(id); },
     'delete-file': function (id) { deleteFile(id); },
     'view-trash': function () { openTrash(); },
     'close-trash': function () { closeTrash(); },
@@ -2543,11 +4462,17 @@ window.NoteApp = window.NoteApp || {};
     'vault-disable': function () { disableVaultFlow(); },
     'vault-lock': function () { lockVaultFlow(); },
     'vault-unlock': function () { unlockVaultFlow(); },
-    'toggle-nav': function () { showMobilePane('list'); },
+    // The narrow layout's back control: it only ever appears while the canvas is in
+    // front (see the stylesheet), so one press puts the reader back on the tree.
+    'toggle-nav': function () {
+      mobilePanePinned = true;
+      applyMobilePane();
+    },
     'sort-menu': function () { openSortMenu(); },
     // Pressing the rail's task row again hands the pane back to the notebook. A view that
     // could only be entered and never left would make the rail row a one-way door.
     'view-tasks': function () { showTasks(state.view !== 'tasks'); },
+    'view-spawner': function () { showSpawner(state.view !== 'spawner'); },
     // The Add button beside the quick-add field: the same filing, reached by hand.
     'add-task': function () { addTaskFromQuickAdd(); },
     'task-edit': function (id) { editTask(id); },
@@ -2618,6 +4543,86 @@ window.NoteApp = window.NoteApp || {};
       return;
     }
 
+    // The strip behind the tabs: reopen what was closed, or jump back. Handled
+    // before the tab-row path so empty strip space has something to say.
+    var stripBg = target.closest ? target.closest('#tabs') : null;
+    if (stripBg && !(target.closest && target.closest('#tabs .tab'))) {
+      var closedTitle = lastClosedTitle();
+      var stripItems = [];
+      if (closedTitle) {
+        stripItems.push({ label: 'Reopen \u201c' + closedTitle + '\u201d', onclick: function () { reopenClosedTab(); } });
+      }
+      stripItems.push({ label: 'Jump to previous tab', onclick: function () { jumpToPreviousTab(); } });
+      stripItems.push({ sep: true });
+      stripItems.push({ label: 'Close all tabs', icon: 'trash', onclick: function () { closeAllTabs(); } });
+      App.ui.openMenu({
+        x: event.clientX,
+        y: event.clientY,
+        title: 'Open tabs',
+        items: stripItems,
+      });
+      return;
+    }
+
+    // A link pill gets Open-or-Create plus Remove: a right-click is the
+    // discoverable sibling of Backspace, which already removes a pill whole.
+    var pillNode = target.closest ? target.closest('[data-ctx="wikilink"]') : null;
+    if (pillNode) {
+      var pillTitle = pillNode.getAttribute('data-ctx-label')
+        || pillNode.getAttribute('data-title') || 'This link';
+      var pillResolved = pillNode.getAttribute('data-resolved') === 'true';
+      App.ui.openMenu({
+        x: event.clientX,
+        y: event.clientY,
+        title: pillTitle,
+        items: [
+          pillResolved
+            ? { label: 'Open \u201c' + pillTitle + '\u201d', icon: 'note', onclick: function () { createLinkedNote(pillTitle); } }
+            : { label: 'Create \u201c' + pillTitle + '\u201d', icon: 'plus', onclick: function () { createLinkedNote(pillTitle); } },
+          { sep: true },
+          { label: 'Remove link', icon: 'close', onclick: function () {
+            if (state.currentNote) removeLinkFromNote(state.currentNote.id, pillTitle);
+          } },
+        ],
+      });
+      return;
+    }
+
+    // Open tabs get their own menu (close this / others / all). Handled before the
+    // generic row path below, whose fall-through would otherwise offer note commands.
+    var tabNode = target.closest ? target.closest('[data-ctx="tab"]') : null;
+    if (tabNode) {
+      var tabRef = tabNode.getAttribute('data-id');
+      var tabLabel = tabNode.getAttribute('data-ctx-label') || 'This tab';
+      // Reorder without dragging: the ends this tab cannot move toward are absent
+      // rather than disabled, matching how Move up/down behave under manual sort.
+      var tabParsed = parseTabRef(tabRef);
+      var tabAt = tabParsed ? tabIndexOf(tabParsed.kind, tabParsed.id) : -1;
+      var tabPinned = tabAt !== -1 && !!state.tabs[tabAt].pinned;
+      var tabItems = [];
+      tabItems.push(tabPinned
+        ? { label: 'Unpin tab', onclick: function () { setTabPinned(tabRef, false); } }
+        : { label: 'Pin tab', onclick: function () { setTabPinned(tabRef, true); } });
+      if (tabAt > 0) {
+        tabItems.push({ label: 'Move tab left', onclick: function () { moveTab(tabRef, -1); } });
+      }
+      if (tabAt !== -1 && tabAt < state.tabs.length - 1) {
+        tabItems.push({ label: 'Move tab right', onclick: function () { moveTab(tabRef, 1); } });
+      }
+      if (tabItems.length) tabItems.push({ sep: true });
+      tabItems.push({ label: 'Close tab', icon: 'close', onclick: function () { closeTabRef(tabRef); } });
+      tabItems.push({ label: 'Close other tabs', icon: 'layers', onclick: function () { closeOtherTabs(tabRef); } });
+      tabItems.push({ sep: true });
+      tabItems.push({ label: 'Close all tabs', icon: 'trash', onclick: function () { closeAllTabs(); } });
+      App.ui.openMenu({
+        x: event.clientX,
+        y: event.clientY,
+        title: tabLabel,
+        items: tabItems,
+      });
+      return;
+    }
+
     var entryNode = target.closest ? target.closest('[data-ctx]') : null;
     if (entryNode) {
       var type = entryNode.getAttribute('data-ctx');
@@ -2628,6 +4633,7 @@ window.NoteApp = window.NoteApp || {};
       // its menu depends on it. Declared out here so the entry object below still carries the
       // flag whatever kind of row was clicked.
       var entryDone = false;
+      var entryPrivate = false;
 
       if (type === 'folder') {
         // "New note inside" has to name the folder that was right-clicked, not whatever
@@ -2644,10 +4650,15 @@ window.NoteApp = window.NoteApp || {};
           'move-item-down': function () { reorderAction('folder', id, 1); },
         };
       } else if (type === 'note') {
+        var menuNote = null;
+        try { menuNote = App.db.getNote(id); } catch (err) { menuNote = null; }
+        entryPrivate = !!(menuNote && menuNote.is_private);
         overrides = {
           'rename-note': function () { renameNote(id); },
+          'move-note': function () { moveNote(id); },
           'delete-note': function () { deleteNote(id); },
           'copy-note': function () { copyNoteText(id); },
+          'toggle-private': function () { toggleNotePrivate(id); },
           'move-item-up': function () { reorderAction('note', id, -1); },
           'move-item-down': function () { reorderAction('note', id, 1); },
           'upload-file': function () {
@@ -2661,6 +4672,7 @@ window.NoteApp = window.NoteApp || {};
           'download-file': function () { downloadFile(id); },
           'open-file-tab': function () { openFileInTab(id); },
           'rename-file': function () { renameFile(id); },
+          'move-file': function () { moveFile(id); },
           'delete-file': function () { deleteFile(id); },
           'move-item-up': function () { reorderAction('file', id, -1); },
           'move-item-down': function () { reorderAction('file', id, 1); },
@@ -2895,10 +4907,14 @@ window.NoteApp = window.NoteApp || {};
   /** A new note in a specific folder, from the menu rather than from the current view. */
   function newNoteIn(folderId) {
     flushPendingSave();
+    clearSearch();
     App.db.createNote(state.workspaceId, folderId || null, 'Untitled note').then(function (note) {
       if (note.folder_id) expandAncestors(note.folder_id);
+      state.view = 'notes';
       state.activeFileId = null;
       state.activeNoteId = note.id;
+      ensureTab('note', note.id);
+      pushTabHistory('note', note.id);
       state.selection = note.folder_id ? { type: 'folder', id: note.folder_id } : state.selection;
       render();
       focusEditorTitle();
@@ -2928,19 +4944,51 @@ window.NoteApp = window.NoteApp || {};
       util.toast('This note is encrypted and the notebook is locked. Unlock it first.', 'info', 7000);
       return;
     }
-    var text = (note.title ? note.title + '\n\n' : '') + (note.content || '');
-    var done = function () {
-      util.toast('Copied the note text.', 'success');
-      // No read permission needed just to say it worked.
-    };
+    if (note.damaged) {
+      util.toast('This note could not be read, so there is nothing to copy.', 'info');
+      return;
+    }
+    var body = util.noteToPlainText(note.content || '');
+    var text = (note.title && String(note.title).trim() ? String(note.title).trim() + '\n\n' : '') + body;
     var failed = function () {
       util.toast('This browser blocked the clipboard. Open the note and copy from there.', 'error');
     };
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(done).catch(failed);
+      navigator.clipboard.writeText(text).then(function () {
+        util.toast('Copied the note text.', 'success');
+        // No read permission needed just to say it worked.
+      }).catch(failed);
     } else {
       failed();
     }
+  }
+
+  /**
+   * Flip the manual Private flag. One write() (one snapshot) via the db funnel,
+   * then a repaint so the tree, cards, search rows and editor header all agree.
+   * Bulk export skips private notes; per-note copy/download stay allowed.
+   */
+  function toggleNotePrivate(id) {
+    var target = id || state.activeNoteId;
+    if (!target) return;
+    var note = null;
+    try {
+      note = App.db.getNote(target);
+    } catch (err) {
+      note = null;
+    }
+    if (!note) return;
+    var next = note.is_private ? 0 : 1;
+    App.db.setNotePrivate(target, next).then(function () {
+      if (state.currentNote && String(state.currentNote.id) === String(target)) {
+        state.currentNote.is_private = next;
+      }
+      render();
+      util.toast(next ? 'Marked private \u2014 skipped in bulk export.'
+        : 'Made public \u2014 included in bulk export.', 'success');
+    }).catch(function (err) {
+      util.toast('Could not change that note: ' + err.message, 'error');
+    });
   }
 
   /**
@@ -2996,6 +5044,11 @@ window.NoteApp = window.NoteApp || {};
   var narrow = null;
   // The list is the home screen, so the default before anything has rendered is the list.
   var mobilePanePinned = true;
+  // The navigation state the pane was last derived from. render() runs for many
+  // reasons — an autosave, a toast, a rename — and re-deciding the pane on every
+  // one of them would drag the reader out of the pane they chose. Deriving only
+  // when this key changes is what lets a manual switch stick.
+  var mobilePaneKey = null;
 
   function applyMobilePane() {
     if (!dom.layout) return;
@@ -3006,16 +5059,27 @@ window.NoteApp = window.NoteApp || {};
     var next = !!(window.matchMedia && window.matchMedia('(max-width: 820px)').matches);
     if (next === narrow) return;
     narrow = next;
-    // Crossing the breakpoint re-derives the pane: the list, unless something is open —
-    // and the task list counts as open, because it is the pane the reader asked for.
-    // Deciding by the note selection alone left a narrow session looking at the tree with
-    // no way to reach the tasks pane it had just opened.
-    mobilePanePinned = state.view !== 'tasks' && !state.activeNoteId && !state.activeFileId;
-    applyMobilePane();
+    // Crossing the breakpoint re-derives the pane from the one formula, rather than a
+    // second copy of it: the list, unless something is open — and the task list counts
+    // as open, because it is the pane the reader asked for. Deciding by the note
+    // selection alone left a narrow session looking at the tree with no way to reach
+    // the tasks pane it had just opened.
+    mobilePaneKey = null;
+    deriveMobilePane();
   }
 
-  function showMobilePane(pane) {
-    mobilePanePinned = pane === 'list';
+  /**
+   * Re-derive the pane from the navigation state, but only when that state has
+   * actually changed. A manual switch (the header's back control) writes the pin
+   * directly, so it survives every repaint that is not a navigation.
+   */
+  function deriveMobilePane() {
+    var key = state.view + '|' + (state.searchTerm || '') + '|'
+      + (state.activeNoteId || '') + '|' + (state.activeFileId || '');
+    if (key === mobilePaneKey) return;
+    mobilePaneKey = key;
+    mobilePanePinned = state.view !== 'tasks'
+      && (!!state.searchTerm || (!state.activeNoteId && !state.activeFileId));
     applyMobilePane();
   }
 
@@ -3026,16 +5090,77 @@ window.NoteApp = window.NoteApp || {};
     // Right-click: the app's own menu, except inside text fields.
     document.addEventListener('contextmenu', onContextMenu);
 
-    // Keyboard parity for the tree rows, which are focusable divs rather than buttons.
+    // Keyboard parity for the tree rows, tabs and link pills, which are focusable
+    // divs/spans rather than buttons. A press on the tab's own close button is left
+    // to the button itself: its native Enter/Space fires a click the delegated
+    // listener handles.
     document.addEventListener('keydown', function (event) {
-      if (event.key === 'Enter' || event.key === ' ') {
-        var node = event.target.closest ? event.target.closest('.tree__row[data-action], .tree__twisty[data-action]') : null;
+      if ((event.key === 'Enter' || event.key === ' ') && !(event.ctrlKey || event.metaKey || event.altKey)) {
+        if (event.target.closest && event.target.closest('.tab__close[data-action]')) return;
+        // A focused pill follows like a click does: atomic, so Enter/Space can only
+        // ever mean "go there", never "edit inside".
+        var pill = event.target.closest ? event.target.closest('.wikilink[data-title]') : null;
+        if (pill && document.getElementById('note-body')
+            && document.getElementById('note-body').contains(pill)) {
+          event.preventDefault();
+          followWikiPill(pill.getAttribute('data-title'));
+          return;
+        }
+        var node = event.target.closest ? event.target.closest('.tree__row[data-action], .tree__twisty[data-action], .tab[data-action]') : null;
         if (node) {
           event.preventDefault();
           // The actions mirror what a press does: the arrow toggles without selecting, a
-          // folder row selects and toggles, a note or file row opens.
+          // folder row selects and toggles, a note or file row opens, a tab activates.
           var action = node.classList.contains('tree__twisty') ? 'toggle-folder' : node.getAttribute('data-action');
-          ACTIONS[action](node.getAttribute('data-id'));
+          if (ACTIONS[action]) ACTIONS[action](node.getAttribute('data-id'));
+          return;
+        }
+      }
+      // Alt+W closes the tab in front. Ctrl+W is the browser's own close-tab and
+      // cannot be intercepted, so this is the web-safe equivalent.
+      if (event.altKey && !event.ctrlKey && !event.metaKey
+          && event.key.toLowerCase() === 'w'
+          && !App.ui.menuIsOpen() && !document.querySelector('dialog[open]')) {
+        if (state.activeNoteId) { event.preventDefault(); closeTabRef('note:' + state.activeNoteId); return; }
+        if (state.activeFileId) { event.preventDefault(); closeTabRef('file:' + state.activeFileId); return; }
+      }
+      // Alt+Q jumps to the previously active tab (Ctrl+Tab belongs to the browser
+      // and never reaches the page); Alt+Shift+T reopens the last closed tab
+      // (Ctrl+Shift+T is the browser's too). Both stay out of text fields.
+      if (event.altKey && !event.ctrlKey && !event.metaKey
+          && !App.ui.menuIsOpen() && !document.querySelector('dialog[open]')
+          && !isTextContext(event.target)) {
+        if (!event.shiftKey && event.key.toLowerCase() === 'q') {
+          event.preventDefault();
+          jumpToPreviousTab();
+          return;
+        }
+        if (event.shiftKey && event.key.toLowerCase() === 't') {
+          event.preventDefault();
+          reopenClosedTab();
+          return;
+        }
+      }
+      // Ctrl/Cmd+Shift+Left/Right steps through open tabs. Guarded out of text
+      // fields, where the same keys extend the selection word by word.
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey
+          && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')
+          && !App.ui.menuIsOpen() && !document.querySelector('dialog[open]')
+          && !isTextContext(event.target)) {
+        event.preventDefault();
+        cycleTab(event.key === 'ArrowRight' ? 1 : -1);
+        return;
+      }
+      // Alt+Shift+Left/Right moves the tab in front one seat: the keyboard parity
+      // for dragging. Alt+Shift has no browser tab-switch meaning, unlike Ctrl+Tab.
+      if (event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey
+          && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')
+          && !App.ui.menuIsOpen() && !document.querySelector('dialog[open]')) {
+        var activeRef = state.activeNoteId ? 'note:' + state.activeNoteId
+          : state.activeFileId ? 'file:' + state.activeFileId : null;
+        if (activeRef) {
+          event.preventDefault();
+          moveTab(activeRef, event.key === 'ArrowRight' ? 1 : -1);
           return;
         }
       }
@@ -3046,8 +5171,7 @@ window.NoteApp = window.NoteApp || {};
       // own Escape handling covers the panel; this only has to stay out of its way.
       if (event.key === 'Escape' && !App.ui.menuIsOpen()
           && document.activeElement === dom.searchInput && dom.searchInput.value) {
-        dom.searchInput.value = '';
-        state.searchTerm = '';
+        clearSearch();
         render();
         return;
       }
@@ -3081,6 +5205,8 @@ window.NoteApp = window.NoteApp || {};
     });
 
     // ---- editor. Delegated on the container because the editor is re-rendered on open.
+    // The body is contenteditable, so its edits arrive as innerHTML (and from any
+    // child node the caret sits in, hence the closest() check rather than an id match).
     dom.main.addEventListener('input', function (event) {
       var target = event.target;
       if (!target || !state.currentNote) return;
@@ -3088,27 +5214,238 @@ window.NoteApp = window.NoteApp || {};
         state.currentNote.title = target.value;
         state.editorDirty = true;
         setStatus('Unsaved\u2026');
+        paintTabDirty();
         saveOpenNote();
-      } else if (target.id === 'note-body') {
-        state.currentNote.content = target.value;
-        state.editorDirty = true;
-        setStatus('Unsaved\u2026');
-        saveOpenNote();
+      } else if (target.id === 'note-body'
+          || (target.closest && target.closest('#note-body'))) {
+        saveSelection();
+        readEditorBody();
       }
     });
 
-    // Tab inserts a tab character instead of leaving the textarea.
-    dom.main.addEventListener('keydown', function (event) {
-      if (event.key === 'Tab' && event.target && event.target.id === 'note-body') {
+    // Title commit (blur or Enter on the title field): the Deja-vu check runs here and
+    // only here for the editor — deliberately NOT in the autosave above, which fires on
+    // every keystroke burst. The chip is patched in place so focus is undisturbed.
+    dom.main.addEventListener('change', function (event) {
+      var target = event.target;
+      if (!target || target.id !== 'note-title' || !state.currentNote) return;
+      checkDejaVu(state.currentNote.id, target.value);
+      paintDejaVuChip();
+    });
+
+    // The caret the toolbar restores: tracked on every move inside the body, because
+    // pressing a format button focuses the button and the command needs the old range.
+    // The same choke point drives the `[[` completion, which is also a question
+    // about where the caret is.
+    document.addEventListener('selectionchange', function () {
+      var body = document.getElementById('note-body');
+      if (!body) return;
+      try {
+        var sel = window.getSelection();
+        if (sel && sel.rangeCount && body.contains(sel.anchorNode)) saveSelection();
+      } catch (e) { /* best-effort */ }
+      updateLinkSuggest();
+    });
+
+    // Checkbox rows: toggling rewrites the stored HTML. The checked *property* never
+    // serialises, so the attribute is synced first — without this a tick is lost on
+    // reload — then the body autosaves like typed text.
+    dom.main.addEventListener('change', function (event) {
+      var box = event.target;
+      if (!box || box.type !== 'checkbox' || !box.closest || !box.closest('.task-row')) return;
+      if (!state.currentNote) return;
+      if (box.checked) box.setAttribute('checked', '');
+      else box.removeAttribute('checked');
+      readEditorBody();
+    });
+
+    // A pill is a door, not text: clicking one follows it (creating the note when
+    // there is none yet) instead of moving the caret into it. Its hover × is the
+    // one exception: that removes just this occurrence, like Backspace would.
+    dom.main.addEventListener('click', function (event) {
+      var x = event.target && event.target.closest ? event.target.closest('.wikilink__x') : null;
+      if (x) {
+        var host = document.getElementById('note-body');
+        var owner = x.closest ? x.closest('.wikilink') : null;
+        if (host && owner && host.contains(owner) && state.currentNote) {
+          event.preventDefault();
+          removeSingleWikiPill(owner);
+        }
+        return;
+      }
+      var pill = event.target && event.target.closest
+        ? event.target.closest('.wikilink[data-title]') : null;
+      if (!pill) return;
+      var body = document.getElementById('note-body');
+      if (!body || !body.contains(pill)) return;
+      event.preventDefault();
+      followWikiPill(pill.getAttribute('data-title'));
+    });
+
+    /**
+     * Delete exactly the pill that was pressed: the node goes, one side of a
+     * doubled space goes with it, the caret lands where the pill was, and the
+     * save repaints the Links chips. Siblings with the same title stay.
+     */
+    function removeSingleWikiPill(pill) {
+      var body = document.getElementById('note-body');
+      if (!body || !state.currentNote) return;
+      var parent = pill.parentNode;
+      if (!parent) return;
+      var prev = pill.previousSibling;
+      var next = pill.nextSibling;
+      var index = Array.prototype.indexOf.call(parent.childNodes, pill);
+      parent.removeChild(pill);
+      if (prev && prev.nodeType === 3 && next && next.nodeType === 3
+          && / $/.test(prev.nodeValue) && /^ /.test(next.nodeValue)) {
+        next.nodeValue = next.nodeValue.replace(/^ /, '');
+      }
+      try {
+        body.focus();
+        var range = document.createRange();
+        range.setStart(parent, Math.min(index, parent.childNodes.length));
+        range.collapse(true);
+        var sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      } catch (e) { /* caret is best-effort */ }
+      saveSelection();
+      readEditorBody();
+    }
+
+    // Copying keeps the links: pills become `[[Title]]` in the plain-text flavour,
+    // so pasting back (here or anywhere) preserves what a bare title would lose.
+    dom.main.addEventListener('copy', function (event) {
+      var sel = window.getSelection();
+      if (!sel || !sel.rangeCount || !event.clipboardData) return;
+      var body = document.getElementById('note-body');
+      if (!body || !state.currentNote) return;
+      var anchor = sel.anchorNode;
+      var focus = sel.focusNode;
+      if (!anchor || !body.contains(anchor) || !focus || !body.contains(focus)) return;
+      if (sel.isCollapsed) return;
+      try {
+        var holder = document.createElement('div');
+        holder.appendChild(sel.getRangeAt(0).cloneContents());
+        var text = util.noteToPlainText(holder.innerHTML);
+        event.clipboardData.setData('text/plain', text);
+      } catch (e) {
+        return;
+      }
+      event.preventDefault();
+    });
+
+    // Cut places the sanitized selection text on the clipboard and deletes the
+    // selected range manually, so the removed content matches what was copied.
+    dom.main.addEventListener('cut', function (event) {
+      var sel = window.getSelection();
+      if (!sel || !sel.rangeCount || !event.clipboardData) return;
+      var body = document.getElementById('note-body');
+      if (!body || !state.currentNote) return;
+      var anchor = sel.anchorNode;
+      var focus = sel.focusNode;
+      if (!anchor || !body.contains(anchor) || !focus || !body.contains(focus)) return;
+      if (sel.isCollapsed) return;
+      try {
+        var holder = document.createElement('div');
+        holder.appendChild(sel.getRangeAt(0).cloneContents());
+        var text = util.noteToPlainText(holder.innerHTML);
+        event.clipboardData.setData('text/plain', text);
+      } catch (e) {
+        return;
+      }
+      event.preventDefault();
+      try {
+        var range = sel.getRangeAt(0);
+        if (!range.collapsed) range.deleteContents();
+      } catch (e) { /* the clipboard already holds the plain text */ }
+      saveSelection();
+      readEditorBody();
+    });
+
+    // Paste arrives as plain text: styled HTML from the web would otherwise smuggle
+    // fonts, colours and hidden markup into the stored body. A picture is the one thing
+    // that cannot arrive as text, so it is embedded in the note itself as a data: URL,
+    // exactly as a pasted link becomes a pill rather than brackets.
+    //
+    // A picture is also the one paste that is not addressed to whatever holds the caret.
+    // A title, a search box and a task form have nowhere to put one, and a reader who
+    // copies a screenshot while the caret is still in the title means the note, not the
+    // box. So a picture is taken wherever the paste lands while a note is open, and the
+    // text path below still asks for the caret, because text pasted into a field belongs
+    // to that field. Listening on the document rather than on the editor pane is what
+    // allows that: with the caret in the title, the paste never reaches the pane.
+    document.addEventListener('paste', function (event) {
+      if (!state.currentNote || App.ui.menuIsOpen() || document.querySelector('dialog[open]')) return;
+      var body = document.getElementById('note-body');
+      if (!body) return;
+      var pictures = clipboardImages(event.clipboardData);
+      var inline = pictures.length ? null : markupImageUrl(event.clipboardData);
+      if (pictures.length || inline) {
         event.preventDefault();
-        var area = event.target;
-        var start = area.selectionStart;
-        var end = area.selectionEnd;
-        area.value = area.value.slice(0, start) + '\t' + area.value.slice(end);
-        area.selectionStart = area.selectionEnd = start + 1;
-        state.currentNote.content = area.value;
-        state.editorDirty = true;
-        saveOpenNote();
+        restoreSelection();
+        insertPastedImages(body, pictures.length ? pictures : [inline]);
+        return;
+      }
+      var target = event.target;
+      if (!target || (target !== body && !body.contains(target))) return;
+      event.preventDefault();
+      var text = event.clipboardData ? event.clipboardData.getData('text/plain') : '';
+      if (!text) return;
+      restoreSelection();
+      if (typeof document.execCommand === 'function') {
+        document.execCommand('insertText', false, text);
+      } else {
+        body.textContent += text;
+      }
+      saveSelection();
+      readEditorBody();
+    });
+
+    // `[[` completion keys. Capture phase, so Enter/Tab are claimed before the
+    // editor's own Tab handler (bubble, below) turns them into indentation.
+    dom.main.addEventListener('keydown', function (event) {
+      if (!state.linkSuggest) return;
+      var body = event.target && event.target.closest ? event.target.closest('#note-body') : null;
+      // The popup's own buttons answer clicks; keys belong to the editor.
+      if (!body) return;
+      var s = state.linkSuggest;
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        if (!s.items.length) return;
+        event.preventDefault();
+        event.stopPropagation();
+        s.active = (s.active + (event.key === 'ArrowDown' ? 1 : -1) + s.items.length) % s.items.length;
+        paintLinkSuggest();
+      } else if (event.key === 'Enter' || event.key === 'Tab') {
+        // A highlighted match completes; with no match the key keeps its ordinary
+        // meaning (newline, indent) and the list simply closes.
+        if (s.active >= 0 && s.items[s.active]) {
+          event.preventDefault();
+          event.stopPropagation();
+          completeLinkSuggest(s.active);
+        } else {
+          closeLinkSuggest();
+        }
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        closeLinkSuggest();
+      }
+    }, true);
+
+    // Tab inserts indentation instead of leaving the editor. The body keeps
+    // pre-wrapped whitespace, so the tab renders rather than collapsing away.
+    dom.main.addEventListener('keydown', function (event) {
+      var inBody = event.target && event.target.closest
+        ? event.target.closest('#note-body') : null;
+      if (event.key === 'Tab' && inBody) {
+        event.preventDefault();
+        if (state.currentNote && typeof document.execCommand === 'function') {
+          restoreSelection();
+          document.execCommand('insertText', false, '\t');
+          saveSelection();
+          readEditorBody();
+        }
       }
     });
 
@@ -3149,9 +5486,10 @@ window.NoteApp = window.NoteApp || {};
       runSearch(event.target.value.trim());
     });
 
-    // ---- workspace switcher (custom select; the handler is owned here so the widget
+    // ---- workspace switcher (picker dialog; the handlers are owned here so the widget
     // stays presentational)
     App.ui.onWorkspaceChange(dom.workspaceSelect, switchWorkspace);
+    App.ui.onWorkspacePickerOpen(dom.workspaceSelect, openWorkspacePicker);
 
     // ---- file picker. `pendingUploadFolder` is set by the rail button (null) or by a
     // folder's context menu (that folder), and is cleared here so the two cannot cross.
@@ -3172,6 +5510,11 @@ window.NoteApp = window.NoteApp || {};
     });
     window.addEventListener('dragover', function (event) {
       if (!event.dataTransfer) return;
+      // Files only, like the dragenter guard above: an in-app drag (a tab reorder
+      // is effectAllowed 'move') must keep whatever dropEffect its own surface set.
+      // This handler runs at window level, i.e. last, so stamping 'copy' here would
+      // overwrite it and Chrome would refuse the drop as an incompatible effect.
+      if (Array.prototype.indexOf.call(event.dataTransfer.types || [], 'Files') === -1) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = 'copy';
     });
@@ -3183,9 +5526,37 @@ window.NoteApp = window.NoteApp || {};
       event.preventDefault();
       dragDepth = 0;
       App.ui.setDragActive(false);
-      if (event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files.length) {
-        uploadFiles(event.dataTransfer.files, targetFolderId());
+      // Files only, mirroring the dragenter guard: an in-app drag (a selected note's
+      // text, a link) carries no Files type, so it must never reach the uploader even
+      // if the browser synthesises entries for it. preventDefault above still runs, so
+      // such a drop can never navigate the page away either.
+      var types = event.dataTransfer ? event.dataTransfer.types : null;
+      if (!types || Array.prototype.indexOf.call(types, 'Files') === -1) return;
+      if (!event.dataTransfer || !event.dataTransfer.files || !event.dataTransfer.files.length) return;
+      var files = Array.prototype.slice.call(event.dataTransfer.files);
+      // A picture dropped ON the note belongs to the note, exactly as a pasted one does.
+      // Dropping a screenshot into the editor used to file it beside the note, where the
+      // listing draws it as a card of its own and it reads as a second note, and dropping
+      // it again filed a second copy. Anywhere else (the tree, a folder row, the list)
+      // still attaches files, because that is what a folder is for.
+      var body = document.getElementById('note-body');
+      var onNote = !!body && !!state.currentNote
+        && (body.contains(event.target) || (dom.main && dom.main.contains(event.target)));
+      if (onNote) {
+        var pictures = files.filter(looksLikePicture);
+        if (pictures.length) {
+          var rest = files.filter(function (file) { return pictures.indexOf(file) === -1; });
+          restoreSelection();
+          insertPastedImages(body, pictures).then(function (taken) {
+            // A file with no type that proves not to be a picture was not taken by the
+            // note, so it goes to the folder it was dropped on like anything else.
+            if (!taken) uploadFiles(pictures, targetFolderId());
+            if (rest.length) uploadFiles(rest, targetFolderId());
+          });
+          return;
+        }
       }
+      uploadFiles(files, targetFolderId());
     });
 
     // ---- top bar / settings
@@ -3205,12 +5576,109 @@ window.NoteApp = window.NoteApp || {};
     document.getElementById('workspace-rename').addEventListener('click', renameWorkspace);
     document.getElementById('workspace-delete').addEventListener('click', deleteWorkspace);
     document.getElementById('workspace-add').addEventListener('click', addWorkspace);
+    var templateClose = document.getElementById('template-close');
+    if (templateClose) templateClose.addEventListener('click', function () {
+      var dlg = document.getElementById('template-picker');
+      if (dlg && dlg.open) dlg.close();
+    });
+    var templateFilter = document.getElementById('template-filter');
+    if (templateFilter) templateFilter.addEventListener('input', function () {
+      var host = document.getElementById('template-list');
+      if (host) paintTemplateList(host);
+    });
     // #sort-menu is deliberately not wired here: it carries data-action="sort-menu", which
     // the delegated listener above dispatches, and a second listener on the element would run
     // the whole open sequence twice for one press.
 
+    // Middle-click on a tab closes it, matching browser tab muscle memory. The
+    // delegated click listener ignores non-primary buttons, so this needs its own.
+    if (dom.tabs) {
+      dom.tabs.addEventListener('auxclick', function (event) {
+        if (event.button !== 1) return;
+        var tab = event.target.closest ? event.target.closest('.tab[data-id]') : null;
+        if (!tab) return;
+        event.preventDefault();
+        closeTabRef(tab.getAttribute('data-id'));
+      });
+    }
+
+    // ---- tab drag-and-drop: reorder the strip by dragging a tab beside another.
+    // Native HTML5 DnD (no library): the dragged ref rides dataTransfer, the side
+    // comes from the pointer's half of the target tab, and the 2px insertion line
+    // is painted by is-drop-before/after. dom.tabs persists across renders, so one
+    // set of listeners covers every rebuild.
+    if (dom.tabs) {
+      var dragTabRef = null;
+
+      function clearTabDrop() {
+        Array.prototype.forEach.call(
+          dom.tabs.querySelectorAll('.is-drop-before, .is-drop-after'),
+          function (node) { node.classList.remove('is-drop-before', 'is-drop-after'); }
+        );
+      }
+
+      dom.tabs.addEventListener('dragstart', function (event) {
+        var tab = event.target.closest ? event.target.closest('.tab[data-id]') : null;
+        if (!tab) return;
+        dragTabRef = tab.getAttribute('data-id');
+        try {
+          // setData is what starts the drag in Firefox; the ref itself is kept in
+          // dragTabRef because dataTransfer is unreadable until the drop.
+          event.dataTransfer.setData('text/plain', dragTabRef);
+          event.dataTransfer.effectAllowed = 'move';
+        } catch (e) { /* drag still proceeds */ }
+        tab.classList.add('is-dragging');
+      });
+
+      dom.tabs.addEventListener('dragover', function (event) {
+        if (!dragTabRef) return;
+        event.preventDefault();
+        try { event.dataTransfer.dropEffect = 'move'; } catch (e) { /* hint only */ }
+        // Edge auto-scroll: a long strip scrolls under a held tab.
+        try {
+          var strip = dom.tabs.getBoundingClientRect();
+          if (event.clientX - strip.left < 28) dom.tabs.scrollLeft -= 10;
+          else if (strip.right - event.clientX < 28) dom.tabs.scrollLeft += 10;
+        } catch (e) { /* best-effort */ }
+        clearTabDrop();
+        var tab = event.target.closest ? event.target.closest('.tab[data-id]') : null;
+        if (!tab || tab.getAttribute('data-id') === dragTabRef) return;
+        var box = tab.getBoundingClientRect();
+        tab.classList.add(event.clientX < box.left + box.width / 2 ? 'is-drop-before' : 'is-drop-after');
+      });
+
+      dom.tabs.addEventListener('dragleave', function (event) {
+        if (!dom.tabs.contains(event.relatedTarget)) clearTabDrop();
+      });
+
+      dom.tabs.addEventListener('drop', function (event) {
+        if (!dragTabRef) return;
+        event.preventDefault();
+        var tab = event.target.closest ? event.target.closest('.tab[data-id]') : null;
+        var ref = dragTabRef;
+        if (tab && tab.getAttribute('data-id') !== ref) {
+          var box = tab.getBoundingClientRect();
+          reorderTabs(ref, tab.getAttribute('data-id'), event.clientX < box.left + box.width / 2);
+        } else if (!tab) {
+          moveTabToEnd(ref);
+        }
+        clearTabDrop();
+      });
+
+      dom.tabs.addEventListener('dragend', function () {
+        dragTabRef = null;
+        clearTabDrop();
+        Array.prototype.forEach.call(
+          dom.tabs.querySelectorAll('.is-dragging'),
+          function (node) { node.classList.remove('is-dragging'); }
+        );
+      });
+    }
+
     // ---- never lose the last keystrokes
-    window.addEventListener('beforeunload', flushPendingSave);
+    window.addEventListener('beforeunload', function () {
+      flushPendingSave();
+    });
     document.addEventListener('visibilitychange', function () {
       if (document.visibilityState === 'hidden') flushPendingSave();
     });
@@ -3228,6 +5696,7 @@ window.NoteApp = window.NoteApp || {};
     dom.workspaceSelect = document.getElementById('workspace-select');
     dom.layout = document.querySelector('.layout');
     dom.tree = document.getElementById('tree');
+    dom.tabs = document.getElementById('tabs');
     dom.main = document.getElementById('main');
     dom.searchInput = document.getElementById('search');
     dom.fileInput = document.getElementById('file-input');
@@ -3252,6 +5721,380 @@ window.NoteApp = window.NoteApp || {};
     return bootPromise;
   }
 
+  // ------------------------------------------------------------------ pasted pictures
+
+  /** The raster types a pasted picture may claim to be. Anything else is left alone. */
+  var IMAGE_DATA_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp', 'image/avif'];
+  // Past this, a picture is re-encoded at screen size before it goes into the body. The
+  // number is in bytes rather than pixels because what is being managed is the size of the
+  // stored note, which every save rewrites in full.
+  var PICTURE_EMBED_LIMIT = 400 * 1024;
+  var PICTURE_MAX_EDGE = 1400;
+  // What the bytes of a picture look like, for a clipboard that hands one over with no
+  // type or the wrong one. A screenshot tool that writes a temporary file, or a file
+  // copied out of a folder whose extension Windows does not know, arrives this way.
+  var IMAGE_SIGNATURES = [
+    { type: 'image/png', bytes: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] },
+    { type: 'image/jpeg', bytes: [0xFF, 0xD8, 0xFF] },
+    { type: 'image/gif', bytes: [0x47, 0x49, 0x46, 0x38] },
+    { type: 'image/bmp', bytes: [0x42, 0x4D] },
+  ];
+
+  /**
+   * Whether a dropped or pasted file looks like a picture: it is labelled as one, or it
+   * carries no label at all. A file that names itself as something else (a PDF, a zip, a
+   * spreadsheet) is not a picture however it is moved in, so it never takes the note's
+   * picture path and its bytes are never even asked.
+   */
+  function looksLikePicture(file) {
+    var type = String((file && file.type) || '').toLowerCase();
+    return type.indexOf('image/') === 0 || type === '' || type === 'application/octet-stream';
+  }
+
+  /**
+   * The image files on a clipboard event, in the order the browser lists them.
+   *
+   * `items` first, because it is the only place a screenshot appears (Chrome offers a PNG
+   * there and, for a copied file, in `files` as well); `files` is the fallback for browsers
+   * that fill only that. Anything that is not an image is left alone, so a copied fragment
+   * of a web page still arrives as the plain text the handler below turns it into.
+   *
+   * A clipboard can also hand a picture over with no type at all: a file copied out of a
+   * folder whose extension Windows does not know, or a tool that writes a temporary file
+   * and puts that on the clipboard. An unnamed type is taken, and the bytes are asked in
+   * insertPastedImages, which refuses whatever does not prove to be a picture. A type that
+   * is named, and is not an image, is left here, where knowing it costs nothing.
+   */
+  function clipboardImages(data) {
+    var out = [];
+    if (!data) return out;
+    function wanted(type) {
+      return looksLikePicture({ type: type });
+    }
+    var items = data.items || [];
+    for (var i = 0; i < items.length; i++) {
+      var entry = items[i];
+      if (entry.kind === 'file' && wanted(entry.type)) {
+        var picked = entry.getAsFile ? entry.getAsFile() : null;
+        if (picked) out.push(picked);
+      }
+    }
+    if (!out.length && data.files) {
+      for (var j = 0; j < data.files.length; j++) {
+        if (wanted(data.files[j].type)) out.push(data.files[j]);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * A picture that arrived as markup rather than as a file: some sources put the image
+   * in text/html and nothing else in the payload. Only an inline data: URL counts, since
+   * a link to a picture elsewhere is not a picture the note can hold.
+   */
+  function markupImageUrl(data) {
+    if (!data || !data.getData) return null;
+    var markup = '';
+    try { markup = String(data.getData('text/html') || ''); } catch (e) { return null; }
+    if (markup.indexOf('<img') === -1) return null;
+    var match = /<img\b[^>]*\bsrc\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(markup);
+    var url = String((match && (match[2] || match[3] || match[4])) || '');
+    return /^data:image\/(png|jpeg|gif|webp|bmp|avif);base64,/i.test(url) ? url : null;
+  }
+
+  /**
+   * The type the first bytes prove, or null when they are not a picture this can show.
+   *
+   * Only the header is read: sixteen bytes are enough for every signature above, and a
+   * clipboard carrying a 20 MB screenshot should not be copied into memory to find out.
+   */
+  function sniffImageType(file) {
+    return new Promise(function (resolve) {
+      var reader = new FileReader();
+      reader.onload = function () {
+        try {
+          var head = new Uint8Array(reader.result || new ArrayBuffer(0));
+          var ascii = function (at) {
+            return String.fromCharCode(head[at], head[at + 1], head[at + 2], head[at + 3]);
+          };
+          // RIFF....WEBP and ....ftypavif carry their name further in, so they are read
+          // by offset rather than by prefix.
+          if (head.length >= 12 && ascii(0) === 'RIFF' && ascii(8) === 'WEBP') {
+            resolve('image/webp');
+            return;
+          }
+          if (head.length >= 12 && ascii(4) === 'ftyp' && ascii(8) === 'avif') {
+            resolve('image/avif');
+            return;
+          }
+          for (var i = 0; i < IMAGE_SIGNATURES.length; i++) {
+            var signature = IMAGE_SIGNATURES[i];
+            var hit = head.length >= signature.bytes.length;
+            for (var j = 0; hit && j < signature.bytes.length; j++) {
+              if (head[j] !== signature.bytes[j]) hit = false;
+            }
+            if (hit) {
+              resolve(signature.type);
+              return;
+            }
+          }
+          resolve(null);
+        } catch (e) {
+          resolve(null);
+        }
+      };
+      reader.onerror = function () { resolve(null); };
+      reader.readAsArrayBuffer(file.slice(0, 16));
+    });
+  }
+
+  /** One file as a data: URL, wrapped in a promise rather than a callback. */
+  function readAsDataUrl(file) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () { resolve(String(reader.result || '')); };
+      reader.onerror = function () { reject(new Error('the picture could not be read')); };
+      reader.readAsDataURL(file);
+    });
+  }
+  
+  /**
+   * A large picture, redrawn at screen size, or null when it is small enough to keep.
+   *
+   * A 4000 pixel screenshot is a document in its own right, and the body it would be
+   * pasted into is rewritten on every save. Shrinking here is what keeps a notebook of
+   * pictures quick to open, and 1400 pixels is still more than the editor ever shows.
+   */
+  function shrinkPicture(file, type) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file);
+      var image = new Image();
+      function settle(err, value) {
+        URL.revokeObjectURL(url);
+        if (err) reject(err); else resolve(value);
+      }
+      image.onload = function () {
+        try {
+          var edge = Math.max(image.naturalWidth || 0, image.naturalHeight || 0);
+          if (!edge || edge <= PICTURE_MAX_EDGE) { settle(null, null); return; }
+          var scale = PICTURE_MAX_EDGE / edge;
+          var canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round((image.naturalWidth || 0) * scale));
+          canvas.height = Math.max(1, Math.round((image.naturalHeight || 0) * scale));
+          canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+          // PNG keeps its transparency; everything else becomes a JPEG, which is what a
+          // photograph was going to be anyway and a fraction of the bytes.
+          var kind = type === 'image/png' ? 'image/png' : 'image/jpeg';
+          settle(null, canvas.toDataURL(kind, 0.85));
+        } catch (err) {
+          settle(err);
+        }
+      };
+      image.onerror = function () { settle(new Error('the picture could not be decoded')); };
+      image.src = url;
+    });
+  }
+
+  /**
+   * A pasted picture as the data: URL that goes into the body.
+   *
+   * `type` is what the picture is known to be, which is not always what the clipboard
+   * claimed: a payload that is really a PNG but arrived labelled application/octet-stream
+   * would be read back with that label and then refused by the sanitizer, so the prefix
+   * is replaced with the type the bytes proved.
+   */
+  function pictureDataUrl(file, type) {
+    var declared = String(type || file.type || '').toLowerCase();
+    var large = Number(file.size) > PICTURE_EMBED_LIMIT;
+    return (large ? shrinkPicture(file, declared) : Promise.resolve(null)).then(function (shrunk) {
+      if (shrunk) return shrunk;
+      return readAsDataUrl(file).then(function (url) {
+        if (!declared || url.indexOf('data:' + declared) === 0) return url;
+        return url.replace(/^data:[^;,]*/, 'data:' + declared);
+      });
+    });
+  }
+
+  /**
+   * Put each pasted picture into the body at the caret.
+   *
+   * A source is a file from the clipboard or, for a payload that carried its picture as
+   * markup, a data: URL that is already in the form the body stores.
+   *
+   * Into the body and nowhere else: no file row, no folder entry, no second thing in the
+   * sidebar that is really part of a note. The bytes live in the stored body, so the vault
+   * encrypts them with the text around them, an export carries them, and removing the
+   * picture is deleting one word of the note.
+   */
+  function insertPastedImages(body, sources) {
+    var chain = Promise.resolve(0);
+    var inserted = 0;
+    var skipped = 0;
+    sources.forEach(function (source) {
+      chain = chain.then(function () {
+        if (typeof source === 'string') return source;
+        if (IMAGE_DATA_TYPES.indexOf(String(source.type || '').toLowerCase()) !== -1) {
+          return pictureDataUrl(source);
+        }
+        // Not a type this trusts, so the bytes decide. Only a payload that proves to be
+        // a picture is worth keeping; a PDF renamed .png is still not a picture.
+        return sniffImageType(source).then(function (sniffed) {
+          if (!sniffed) {
+            skipped++;
+            return null;
+          }
+          return pictureDataUrl(source, sniffed);
+        });
+      }).then(function (url) {
+        if (!url) return null;
+        var pill = util.buildImagePill(document, url);
+        // At the caret when the caret is still in this body, at the end when it is not,
+        // which is what happens if the reader clicks elsewhere mid-paste.
+        var range = savedRange;
+        if (range && body.contains(range.commonAncestorContainer)) {
+          range.deleteContents();
+          range.insertNode(pill);
+          range.setStartAfter(pill);
+          range.collapse(true);
+          var sel = window.getSelection();
+          if (sel) {
+            sel.removeAllRanges();
+            sel.addRange(range);
+          }
+          savedRange = range.cloneRange();
+        } else {
+          body.appendChild(pill);
+        }
+        inserted++;
+        return null;
+      });
+    });
+    return chain.then(function () {
+      if (!inserted) {
+        util.toast(skipped
+          ? 'That is not a picture this editor can show.'
+          : 'No picture was found to add.', 'error');
+        return false;
+      }
+      saveSelection();
+      readEditorBody();
+      util.toast(inserted === 1
+        ? 'Picture added to the note.'
+        : inserted + ' pictures added to the note.', 'success');
+      return true;
+    }).catch(function (err) {
+      util.toast('Could not add the picture: ' + err.message, 'error', 9000);
+      return false;
+    });
+  }
+
+
+  // ------------------------------------------------------------------ reminders
+
+  var reminderTimer = null;
+
+  /**
+   * Ask for the notification permission, once, on the gesture that sets a reminder.
+   *
+   * Never rejects: an unsupported browser, a refusal, and a requestPermission that throws
+   * all mean the same thing here, which is that the reminder is announced in the app.
+   */
+  function ensureNotifyPermission() {
+    if (typeof Notification === 'undefined') return Promise.resolve('unsupported');
+    if (Notification.permission !== 'default') return Promise.resolve(Notification.permission);
+    try {
+      var asked = Notification.requestPermission();
+      return asked && typeof asked.then === 'function'
+        ? asked.catch(function () { return 'denied'; })
+        : Promise.resolve('default');
+    } catch (err) {
+      return Promise.resolve('denied'); // Safari's callback-only form lands here.
+    }
+  }
+
+  /** Open the task a reminder was about, so the notification leads somewhere. */
+  function openRemindedTask(id) {
+    try { window.focus(); } catch (err) { /* focus is best effort */ }
+    if (!App.db.getTask(id)) return;
+    showTasks(true);
+    editTask(id);
+  }
+
+  /** Say it once: a system notification when the browser allows, an in-app toast when not. */
+  function announceReminder(task) {
+    var body = task.due_at
+      ? 'Due ' + util.formatWhen(task.due_at)
+      : (task.notes ? String(task.notes).slice(0, 140) : 'Reminder');
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      try {
+        var notice = new Notification(task.title || 'Task', {
+          body: body,
+          tag: 'noteapp-task-' + task.id,
+        });
+        notice.onclick = function () { openRemindedTask(task.id); };
+        return;
+      } catch (err) { /* no constructor here: fall through to the toast */ }
+    }
+    util.toast('Reminder: ' + (task.title || 'Task'), 'info', 12000);
+  }
+
+  /**
+   * Announce every reminder that has come due, then stamp it.
+   *
+   * The stamp is written BEFORE the announcement is drawn: a timer that fires again while
+   * the write is in flight must not announce the same task twice, and a reminder recorded
+   * but never drawn is a far smaller failure than one announced in a loop.
+   */
+  function checkReminders() {
+    if (!state.ready || !state.workspaceId) return;
+    var due = [];
+    try {
+      due = App.db.dueReminders();
+    } catch (err) {
+      return;
+    }
+    due.forEach(function (task) {
+      App.db.markReminderFired(task.id).then(function () {
+        announceReminder(task);
+      }).catch(function () { /* unstampable: the next tick tries again */ });
+    });
+  }
+
+  /**
+   * Start watching the clock.
+   *
+   * Thirty seconds and not one, because a background tab throttles timers to about a
+   * minute anyway and a reminder is a minute-granularity promise. The visibility and focus
+   * hooks are what make a laptop opened after lunch announce straight away rather than at
+   * the next tick, and the first check is what makes up for the time the app was closed.
+   */
+  function startReminders() {
+    if (reminderTimer) return;
+    reminderTimer = window.setInterval(checkReminders, 30000);
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) checkReminders();
+    });
+    window.addEventListener('focus', checkReminders);
+    checkReminders();
+  }
+
+  /**
+   * Install the app shell, where there is an origin to install it against.
+   *
+   * The build writes sw.js, manifest.json and the icons beside index.html, so this is a
+   * plain relative registration. It is skipped on file:, where a worker has no origin to
+   * be scoped to and register() throws: a double-clicked copy is already offline, which is
+   * the only thing the worker adds.
+   */
+  function registerServiceWorker() {
+    if (!('serviceWorker' in navigator)) return;
+    if (window.location.protocol === 'file:') return;
+    try {
+      navigator.serviceWorker.register('sw.js').catch(function () {
+        /* an older browser, or a registration the user blocked: never a boot failure */
+      });
+    } catch (err) { /* see above */ }
+  }
   function boot() {
     cacheDom();
     // Icons first: applyTheme() writes into the theme button, and every other glyph on
@@ -3304,6 +6147,13 @@ window.NoteApp = window.NoteApp || {};
     }).then(function () {
       render();
       renderFooter();
+      // After the first paint, so a reminder that came due while the app was closed is
+      // announced against a notebook that is already on screen.
+      startReminders();
+      registerServiceWorker();
+      // Links backfill after the v6 migration: one transaction when needed, silence
+      // otherwise — and never a boot failure, whatever it reports.
+      App.db.rebuildLinks().catch(function () { /* links stay as they were */ });
       if (bootResult && wantsSelfTest()) runSelfTest();
     }).catch(function (err) {
       App.ui.renderEmptyState(dom.main, {
@@ -3386,6 +6236,18 @@ window.NoteApp = window.NoteApp || {};
     render: render,
     newNote: newNote,
     openNote: openNote,
+    openFile: openFile,
+    activateTab: activateTab,
+    closeTabRef: closeTabRef,
+    closeOtherTabs: closeOtherTabs,
+    closeAllTabs: closeAllTabs,
+    cycleTab: cycleTab,
+    moveTab: moveTab,
+    moveTabToEnd: moveTabToEnd,
+    reorderTabs: reorderTabs,
+    setTabPinned: setTabPinned,
+    jumpToPreviousTab: jumpToPreviousTab,
+    reopenClosedTab: reopenClosedTab,
     uploadFiles: uploadFiles,
     exportDatabase: exportDatabase,
   };

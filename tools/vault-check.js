@@ -182,6 +182,18 @@ const submitDialog = () => `(function(){
   return 'clicked';
 })()`;
 
+/** The stepped enable flow owns its footer buttons, so steps move by label. */
+const clickDialogButton = (label) => `(function(){
+  var ds = document.querySelectorAll('dialog[open]');
+  var d = ds[ds.length - 1];
+  if (!d) return 'no dialog';
+  var btns = Array.prototype.slice.call(d.querySelectorAll('.dialog__footer .btn'));
+  var hit = btns.filter(function(b){ return b.textContent.trim() === ${JSON.stringify(label)}; })[0];
+  if (!hit) return 'no button ' + ${JSON.stringify(label)};
+  hit.click();
+  return 'clicked';
+})()`;
+
 (async () => {
   const port = 9800 + Math.floor(Math.random() * 90);
   const child = spawn(browser, [
@@ -359,27 +371,13 @@ const submitDialog = () => `(function(){
       };
     })()`);
     info('enable dialog', enableDialog);
-    log('c.enableAsksTwice', enableDialog ? enableDialog.fields : -1, 2);
+    log('c.enableShowsOneFieldAtATime', enableDialog ? enableDialog.fields : -1, 1);
     log('c.warnsItCannotBeRecovered',
       !!enableDialog && enableDialog.consequences.some((c) => /forgotten password cannot be recovered/i.test(c)), true);
 
-    // A mismatch must be refused before anything is written.
-    await cdp.evaluate(fillPassword(0, PASSWORD));
-    await cdp.evaluate(fillPassword(1, PASSWORD + '-typo'));
-    await cdp.evaluate(submitDialog());
-    await sleep(700);
-    const mismatch = await cdp.evaluate(`(function(){
-      var d = ${DIALOG};
-      var err = d ? d.querySelector('.field__message--error') : null;
-      return { message: err ? err.textContent : null, state: window.NoteApp.db.vaultState() };
-    })()`);
-    log('c.mismatchRefused', mismatch.state, 'off');
-    log('c.mismatchExplained', /do not match/i.test(mismatch.message || ''), true);
-
-    // A short password must be refused too — the rule is stated, not silently applied.
+    // A short password must be refused on step 1 — the rule is stated, not silently applied.
     await cdp.evaluate(fillPassword(0, 'short'));
-    await cdp.evaluate(fillPassword(1, 'short'));
-    await cdp.evaluate(submitDialog());
+    await cdp.evaluate(clickDialogButton('Continue'));
     await sleep(700);
     const tooShort = await cdp.evaluate(`(function(){
       var d = ${DIALOG};
@@ -389,9 +387,34 @@ const submitDialog = () => `(function(){
     log('c.shortPasswordRefused', tooShort.state, 'off');
     log('c.shortPasswordExplained', /at least 8 characters/i.test(tooShort.message || ''), true);
 
+    // A mismatch must be refused before anything is written.
     await cdp.evaluate(fillPassword(0, PASSWORD));
-    await cdp.evaluate(fillPassword(1, PASSWORD));
-    await cdp.evaluate(submitDialog());
+    await cdp.evaluate(clickDialogButton('Continue'));
+    await sleep(500);
+    await cdp.evaluate(fillPassword(0, PASSWORD + '-typo'));
+    await cdp.evaluate(clickDialogButton('Encrypt this notebook'));
+    await sleep(700);
+    const mismatch = await cdp.evaluate(`(function(){
+      var d = ${DIALOG};
+      var err = d ? d.querySelector('.field__message--error') : null;
+      return { message: err ? err.textContent : null, state: window.NoteApp.db.vaultState() };
+    })()`);
+    log('c.mismatchRefused', mismatch.state, 'off');
+    log('c.mismatchExplained', /do not match/i.test(mismatch.message || ''), true);
+
+    // Back keeps the first password, so a typo costs one field, not the whole flow.
+    await cdp.evaluate(clickDialogButton('Back'));
+    await sleep(500);
+    const kept = await cdp.evaluate(`(function(){
+      var d = ${DIALOG};
+      var inp = d ? d.querySelector('input[type="password"]') : null;
+      return inp ? inp.value : null;
+    })()`);
+    log('c.backKeepsTheFirstPassword', kept, PASSWORD);
+    await cdp.evaluate(clickDialogButton('Continue'));
+    await sleep(500);
+    await cdp.evaluate(fillPassword(0, PASSWORD));
+    await cdp.evaluate(clickDialogButton('Encrypt this notebook'));
     // Enabling ends LOCKED: the key that did the sealing is dropped as the last step of the
     // conversion, so the protection starts with the action rather than with the next reload.
     const enabled = await poll(`window.NoteApp.db.vaultState() === 'locked'`, 160, 250);
@@ -993,8 +1016,10 @@ const submitDialog = () => `(function(){
     log('n.settingsOffersTheEnableActionAgain', forcedEnableOpened, 'clicked');
     await sleep(700);
     await cdp.evaluate(fillPassword(0, PASSWORD));
-    await cdp.evaluate(fillPassword(1, PASSWORD));
-    await cdp.evaluate(submitDialog());
+    await cdp.evaluate(clickDialogButton('Continue'));
+    await sleep(500);
+    await cdp.evaluate(fillPassword(0, PASSWORD));
+    await cdp.evaluate(clickDialogButton('Encrypt this notebook'));
     log('n.enableCompletesDespiteTheFailedCompaction',
       await poll(`window.NoteApp.db.vaultState() === 'locked'`, 160, 250), true);
     await sleep(900);

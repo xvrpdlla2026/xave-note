@@ -323,11 +323,28 @@ const reversed = (list) => list.slice().reverse();
       document.querySelectorAll('#main .card--note .card__title'),
       function (n) { return n.textContent; }
     )`);
-    // The rail is the third list the single choice governs, drawn by the workspace switcher.
-    const readRail = () => cdp.evaluate(`Array.prototype.map.call(
-      document.querySelectorAll('#workspace-select option'),
-      function (o) { return o.textContent; }
-    )`);
+    // The rail is the third list the single choice governs, drawn by the workspace
+    // switcher. The switcher is a picker dialog now, not a native select, so the order
+    // is read from its rows: open, read, close.
+    const readRail = () => cdp.evaluate(`(function(){
+      var t = document.querySelector('#workspace-select .ws-trigger');
+      if (!t) return 'no trigger';
+      t.click();
+      return 'opened';
+    })()`).then(async () => {
+      await sleep(400);
+      const rows = await cdp.evaluate(`Array.prototype.map.call(
+        document.querySelectorAll('dialog[open] .ws-row .trash-row__name'),
+        function (n) { return n.textContent; }
+      )`);
+      await cdp.evaluate(`(function(){
+        var b = document.querySelector('dialog[open] .panel__close');
+        if (b) b.click();
+        return 'closed';
+      })()`);
+      await sleep(300);
+      return rows;
+    });
 
     const popupFor = (selector) => cdp.evaluate(`(function(){
       var node = document.querySelector(${JSON.stringify(selector)});
@@ -594,14 +611,17 @@ const reversed = (list) => list.slice().reverse();
     // The workspace switcher is the rail's own list, and the rail is the one list whose rows
     // are not rows: the order lives in the widget, so a move has to rebuild it rather than
     // merely repaint the tree.
-    const switcherState = () => cdp.evaluate(`(function(){
-      var host = document.getElementById('workspace-select');
-      return {
-        options: Array.prototype.map.call(host.querySelectorAll('option'), function (o) { return o.textContent; }),
-        value: host.querySelector('select') ? host.querySelector('select').value : host.value,
-        active: !!host.querySelector('.select__option.is-selected')
-      };
-    })()`);
+    const switcherState = async () => {
+      const options = await readRail();
+      const live = await cdp.evaluate(`(function(){
+        var App = window.NoteApp;
+        return {
+          value: App.app.state.workspaceId,
+          active: !!document.querySelector('#workspace-select .ws-trigger .select__value')
+        };
+      })()`);
+      return { options: options, value: live.value, active: live.active };
+    };
     const beforeMove = await switcherState();
     console.log('     rail before the move: ' + JSON.stringify(beforeMove));
     await popupForSwitcher();

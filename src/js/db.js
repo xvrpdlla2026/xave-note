@@ -235,7 +235,62 @@ window.NoteApp = window.NoteApp || {};
         '  created_at TEXT NOT NULL' +
         ')',
     ],
-  ];
+    [
+      // Migration for wiki links / backlinks (v6).
+      //
+      // Links are keyed by TARGET TITLE, not by target id: a rename then keeps every
+      // link pointing at the note rather than orphaning them all, and an unresolved
+      // [[title]] is simply a row with no note behind it yet — the "click to create"
+      // the interface offers. The source side is an id with ON DELETE CASCADE, so a
+      // permanently deleted note takes its outgoing links with it; a soft-deleted
+      // (trashed) source keeps its rows, and the backlink read filters those out.
+      //
+      // Only titles are stored — never body text — so this table leaks nothing the
+      // notes table does not already hold in the clear when the vault is on.
+      'CREATE TABLE IF NOT EXISTS note_links (' +
+        '  source_note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,' +
+        '  target_norm TEXT NOT NULL,' +
+        '  target_raw TEXT NOT NULL DEFAULT "",' +
+        '  workspace_id TEXT NOT NULL,' +
+        '  PRIMARY KEY (source_note_id, target_norm)' +
+        ')',
+      'CREATE INDEX IF NOT EXISTS idx_links_target ON note_links (workspace_id, target_norm)',
+      'CREATE INDEX IF NOT EXISTS idx_links_source ON note_links (source_note_id)',
+    ],
+  // v7 templates
+  ['CREATE TABLE IF NOT EXISTS templates (id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id INTEGER REFERENCES workspaces(id) ON DELETE CASCADE, name TEXT NOT NULL DEFAULT \'\', content TEXT NOT NULL DEFAULT \'\', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);', 'CREATE INDEX IF NOT EXISTS idx_templates_ws ON templates(workspace_id);'],
+  // v8 retired: revisions removed; stub drops the table so old installs clean up
+  // while the array keeps its length (existing DBs sit at user_version 8).
+  ['DROP TABLE IF EXISTS revisions;', 'DROP INDEX IF EXISTS idx_revisions_note;'],
+  // v9 retired: saved filters (lenses) removed; stub drops the table so old installs
+  // clean up while the array keeps its length (existing DBs sit at user_version 9).
+  ['DROP TABLE IF EXISTS lenses;', 'DROP INDEX IF EXISTS idx_lenses_ws;'],
+  [
+    // Manual Private flag (v10) — replaces the removed Safe-Share auto-block.
+    //
+    // One column, not a scan: a note is private because the reader said so, not
+    // because its text matched a pattern. Bulk export skips private notes;
+    // per-note copy/download stay allowed. Additive only — existing rows default
+    // to 0 (not private) via the column default.
+    'ALTER TABLE notes ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0',
+    'CREATE INDEX IF NOT EXISTS idx_notes_private ON notes (is_private)',
+  ],
+  [
+    // Reminders and recurrence (v11).
+    //
+    // remind_at is an absolute instant rather than an offset from the due date. The form
+    // offers the offset (at the due time, an hour before) and resolves it, but what is
+    // stored is the moment to announce, which is the only thing a timer can compare
+    // against. reminded_at is the stamp that stops a timer from
+    // announcing the same reminder every thirty seconds. recurrence is JSON for one of a
+    // handful of code literals (see RECURRENCE_FREQS), the same rule every other stored
+    // enum here follows: the interface picks one, it can never write SQL.
+    'ALTER TABLE tasks ADD COLUMN remind_at TEXT',
+    'ALTER TABLE tasks ADD COLUMN reminded_at TEXT',
+    'ALTER TABLE tasks ADD COLUMN recurrence TEXT',
+    'CREATE INDEX IF NOT EXISTS idx_tasks_remind ON tasks (remind_at, reminded_at)',
+  ],
+];
 
   var db = null;        // the sql.js Database
   var writeQueue = null; // serialises writes so two rapid saves cannot interleave
@@ -302,6 +357,9 @@ window.NoteApp = window.NoteApp || {};
       // not in; this cannot.
       workspace_name: row.workspace_name || null,
       title: row.title || '',
+      // Manual Private flag (v10): 1 means "skip me in bulk export". Coerced to 0/1
+      // here so callers never see undefined (old SELECTs) or SQLite's loose typing.
+      is_private: Number(row.is_private) ? 1 : 0,
       // Always empty, and deliberately so. Every list query above omits the content column, so
       // this was already '' in practice — but with a vault in play the raw column is a
       // possibility that must not exist: an envelope is base64, and a prose field that carried
@@ -352,6 +410,9 @@ window.NoteApp = window.NoteApp || {};
       due_at: row.due_at || null,
       due_has_time: Number(row.due_has_time) ? 1 : 0,
       priority: Number(row.priority) || 0,
+      remind_at: row.remind_at || null,
+      reminded_at: row.reminded_at || null,
+      recurrence: row.recurrence || null,
       position: Number(row.position) || 0,
       created_at: row.created_at,
       updated_at: row.updated_at,
@@ -378,12 +439,90 @@ window.NoteApp = window.NoteApp || {};
     due_has_time: function (value) { return value ? 1 : 0; },
     priority: function (value) { return clampPriority(value); },
     folder_id: function (value) { return value ? String(value) : null; },
+    remind_at: function (value) { return value ? String(value) : null; },
+    recurrence: function (value) { return normalizeRecurrence(value); },
   };
 
   /** Priority is 0 (normal), 1 (low) or 2 (high); anything else is stored as normal. */
   function clampPriority(value) {
     var n = Number(value);
     return n === 1 || n === 2 ? n : 0;
+  }
+
+  /** The repeat rules that exist. Anything else is stored as no repeat at all. */
+  var RECURRENCE_FREQS = ['daily', 'weekdays', 'weekly', 'monthly', 'yearly'];
+
+  /**
+   * A repeat rule as the JSON this app stores, or null.
+   *
+   * Only the literals above survive and the interval is clamped to a sane range, so a
+   * stored rule can never carry arbitrary text into the date arithmetic and a damaged
+   * value degrades to a plain task rather than throwing on every render.
+   */
+  function normalizeRecurrence(value) {
+    if (!value || typeof value !== 'object') return null;
+    var freq = String(value.freq || '');
+    if (RECURRENCE_FREQS.indexOf(freq) === -1) return null;
+    var interval = Math.max(1, Math.min(99, Math.round(Number(value.interval) || 1)));
+    return JSON.stringify({ freq: freq, interval: interval });
+  }
+
+  /** Read a stored rule back. Never throws: a damaged value means no repeat. */
+  function parseRecurrence(encoded) {
+    if (!encoded) return null;
+    try {
+      var parsed = typeof encoded === 'string' ? JSON.parse(encoded) : encoded;
+      if (!parsed || RECURRENCE_FREQS.indexOf(String(parsed.freq)) === -1) return null;
+      return { freq: String(parsed.freq), interval: Math.max(1, Math.round(Number(parsed.interval) || 1)) };
+    } catch (err) {
+      return null;
+    }
+  }
+
+  /**
+   * The next instant a repeat rule lands on, measured on the local calendar.
+   *
+   * Calendar arithmetic, not milliseconds: a week later is the same wall clock time seven
+   * days on, across a daylight-saving change, and the 31st of a month with no 31st clamps
+   * to that month's last day instead of spilling into the next one.
+   */
+  function nextOccurrence(iso, hasTime, rule) {
+    var base = new Date(iso);
+    if (!iso || isNaN(base.getTime()) || !rule) return null;
+    var step = rule.interval || 1;
+    var next = new Date(base.getTime());
+    var day;
+    var last;
+    if (rule.freq === 'weekdays') {
+      do { next.setDate(next.getDate() + 1); } while (next.getDay() === 0 || next.getDay() === 6);
+    } else if (rule.freq === 'daily') {
+      next.setDate(next.getDate() + step);
+    } else if (rule.freq === 'weekly') {
+      next.setDate(next.getDate() + 7 * step);
+    } else if (rule.freq === 'monthly') {
+      day = next.getDate();
+      next.setDate(1);
+      next.setMonth(next.getMonth() + step);
+      last = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+      next.setDate(Math.min(day, last));
+    } else if (rule.freq === 'yearly') {
+      next.setFullYear(next.getFullYear() + step);
+    } else {
+      return null;
+    }
+    if (!hasTime) next.setHours(0, 0, 0, 0);
+    // A rule whose next date is still behind the one it came from would leave the task
+    // overdue forever, so it moves one more day.
+    if (next.getTime() <= base.getTime()) next.setDate(next.getDate() + 1);
+    return next.toISOString();
+  }
+
+  /** Move a reminder with its task, keeping the distance from the due date it had. */
+  function advanceReminder(remindAt, oldDue, newDue) {
+    if (!remindAt || !oldDue || !newDue) return remindAt || null;
+    var offset = new Date(oldDue).getTime() - new Date(remindAt).getTime();
+    if (isNaN(offset)) return remindAt;
+    return new Date(new Date(newDue).getTime() - offset).toISOString();
   }
 
   // ----------------------------------------------------------------- task queries
@@ -678,6 +817,71 @@ window.NoteApp = window.NoteApp || {};
     var result = (writeQueue || Promise.resolve()).then(task, task);
     writeQueue = result.catch(function () { /* swallow so the chain continues */ });
     return result;
+  }
+
+  /**
+   * Follow a rename: sources naming the old title (exact raw spelling) are
+   * rewritten to the new one. Without this, title-keyed links would orphan on
+   * every rename; the exact-spelling scope is what keeps it from rewriting text
+   * the reader never meant as a link. One chained transaction after the rename
+   * itself — renames are rare, snapshots are not free, and recursion is avoided
+   * by writing directly instead of going back through updateNote.
+   */
+  function propagateRenameWrites(renamedId, oldTitle, newTitle) {
+    var oldNorm = util.normTitle(oldTitle);
+    if (!oldNorm || util.normTitle(newTitle) === oldNorm) return Promise.resolve(false);
+    var sources = query(
+      'SELECT DISTINCT l.source_note_id AS sid FROM note_links l ' +
+      'JOIN notes n ON n.id = l.source_note_id ' +
+      'WHERE l.target_norm = ? AND n.deleted_at IS NULL', [oldNorm]);
+    if (!sources.length) return Promise.resolve(false);
+    var pending = sources.map(function (source) {
+      var body = null;
+      try {
+        var note = API.getNote(source.sid);
+        body = note ? note.content : null;
+      } catch (e) { body = null; }
+      // Locked or damaged bodies cannot be rewritten; their rows keep naming the
+      // old title, which then reads as an unresolved link rather than a lie.
+      if (typeof body !== 'string') return Promise.resolve(null);
+      var raws = query('SELECT target_raw FROM note_links WHERE source_note_id = ? AND target_norm = ?',
+        [source.sid, oldNorm]);
+      var next = body;
+      raws.forEach(function (raw) {
+        next = next.split('[[' + raw.target_raw + ']]').join('[[' + newTitle + ']]');
+      });
+      if (next === body) return Promise.resolve(null);
+      return App.crypto.encrypt(next).then(function (sealed) {
+        return { id: source.sid, sealed: sealed, plain: next };
+      });
+    });
+    return Promise.all(pending).then(function (changed) {
+      changed = changed.filter(Boolean);
+      if (!changed.length) return false;
+      return write(function (run) {
+        var stamp = util.nowIso();
+        changed.forEach(function (item) {
+          run('UPDATE notes SET content = ?, updated_at = ? WHERE id = ?', [item.sealed, stamp, item.id]);
+          if (viewReady) noteText[item.id] = item.plain;
+          refreshLinksInto(run, item.id, item.plain);
+        });
+      }).then(function () { return true; });
+    });
+  }
+
+  /**
+   * Queue one note's link rewrite into an open write(). Module-level (not on the
+   * API) so the note mutations above share it without exposing it.
+   */
+  function refreshLinksInto(run, noteId, plaintext) {
+    if (typeof plaintext !== 'string') return;
+    var owner = queryOne('SELECT workspace_id FROM notes WHERE id = ?', [noteId]);
+    if (!owner) return;
+    run('DELETE FROM note_links WHERE source_note_id = ?', [noteId]);
+    util.extractWikiLinks(plaintext).forEach(function (link) {
+      run('INSERT OR IGNORE INTO note_links (source_note_id, target_norm, target_raw, workspace_id)' +
+        ' VALUES (?, ?, ?, ?)', [noteId, link.norm, link.raw, owner.workspace_id]);
+    });
   }
 
   // ---------------------------------------------------------------- vault state
@@ -1116,6 +1320,25 @@ window.NoteApp = window.NoteApp || {};
 
             applyMigrations();
 
+            // Orphan repair, before any read or seed: a folder whose parent is
+            // missing, deleted, or in another workspace (possible after older
+            // cross-workspace moves) is counted but can never render — re-root
+            // it so it reappears instead of vanishing silently. One snapshot,
+            // and only when orphans actually exist.
+            var orphanCount = 0;
+            try {
+              orphanCount = queryOne(
+                'SELECT COUNT(*) AS n FROM folders WHERE parent_folder_id IS NOT NULL AND deleted_at IS NULL' +
+                ' AND parent_folder_id NOT IN (SELECT p.id FROM folders AS p' +
+                ' WHERE p.deleted_at IS NULL AND p.workspace_id = folders.workspace_id)'
+              ).n || 0;
+            } catch (e) { orphanCount = 0; }
+            var repairPromise = orphanCount ? write(
+              'UPDATE folders SET parent_folder_id = NULL WHERE parent_folder_id IS NOT NULL AND deleted_at IS NULL' +
+              ' AND parent_folder_id NOT IN (SELECT p.id FROM folders AS p' +
+              ' WHERE p.deleted_at IS NULL AND p.workspace_id = folders.workspace_id)'
+            ).catch(function () { return null; }) : Promise.resolve(null);
+
             // The vault flag is read once, here, before anything reads a note: every read path
             // below branches on it, and it must not be discovered halfway through a boot.
             var vault = syncVault();
@@ -1128,7 +1351,9 @@ window.NoteApp = window.NoteApp || {};
             // plaintext body inside a notebook whose bodies are all ciphertext, and would do
             // it in the one state where it cannot be encrypted instead: a locked boot.
             var empty = queryOne('SELECT COUNT(*) AS n FROM workspaces').n === 0;
-            var seedPromise = (!vault && (fresh || empty)) ? seed() : Promise.resolve(null);
+            var seedPromise = repairPromise.then(function () {
+              return (!vault && (fresh || empty)) ? seed() : Promise.resolve(null);
+            });
 
             return seedPromise.then(function () {
               var last = App.prefs.get('lastWorkspaceId', null);
@@ -1308,6 +1533,11 @@ window.NoteApp = window.NoteApp || {};
         run('UPDATE notes SET workspace_id = ? WHERE folder_id IN (' + placeholders + ')', params);
         params = [targetWorkspaceId].concat(ids);
         run('UPDATE files SET workspace_id = ? WHERE folder_id IN (' + placeholders + ')', params);
+        // The moved root becomes a root in the new workspace: its old parent
+        // stayed behind, and keeping the pointer would orphan the whole subtree
+        // (counted in the workspace, unrenderable in the tree). Descendants keep
+        // their parents — those moved along with them.
+        run('UPDATE folders SET parent_folder_id = NULL WHERE id = ?', [folderId]);
       });
     },
 
@@ -1353,16 +1583,36 @@ window.NoteApp = window.NoteApp || {};
     listNotesIn: function (workspaceId, folderId, sort) {
       var order = orderOf('notes', sort) || 'ORDER BY updated_at DESC';
       var rows = folderId
-        ? query('SELECT id, folder_id, workspace_id, title, created_at, updated_at, position FROM notes WHERE folder_id = ? AND deleted_at IS NULL ' + order, [folderId])
-        : query('SELECT id, folder_id, workspace_id, title, created_at, updated_at, position FROM notes WHERE workspace_id = ? AND folder_id IS NULL AND deleted_at IS NULL ' + order, [workspaceId]);
+        ? query('SELECT id, folder_id, workspace_id, title, is_private, created_at, updated_at, position FROM notes WHERE folder_id = ? AND deleted_at IS NULL ' + order, [folderId])
+        : query('SELECT id, folder_id, workspace_id, title, is_private, created_at, updated_at, position FROM notes WHERE workspace_id = ? AND folder_id IS NULL AND deleted_at IS NULL ' + order, [workspaceId]);
       return rows.map(mapNote);
     },
 
     /** Every note in a workspace (used for the "All notes" view and search fallback). */
+    /**
+     * Title prefilter for the Deja-vu check: workspace-scoped LIKEs over the caller's
+     * words. Parameterized only — the words arrive as bound parameters, never as SQL —
+     * and capped at three, which is all the check asks for (the first three significant
+     * words of the committed title). Returns light [{id, title}] rows; the trigram
+     * similarity itself runs in JS over what this returns.
+     */
+    titlesLike: function (workspaceId, words) {
+      var terms = (words || [])
+        .map(function (w) { return String(w || '').trim(); })
+        .filter(function (w) { return w.length > 1; })
+        .slice(0, 3);
+      if (!workspaceId || !terms.length) return [];
+      var clause = terms.map(function () { return "title LIKE ? ESCAPE '\\'"; }).join(' OR ');
+      return query(
+        'SELECT id, title FROM notes WHERE workspace_id = ? AND deleted_at IS NULL AND (' + clause + ')',
+        [workspaceId].concat(terms.map(likeParam))
+      );
+    },
+
     /** Every note in a workspace, for the tree and the All notes listing. */
     listAllNotes: function (workspaceId, sort) {
       return query(
-        'SELECT id, folder_id, workspace_id, title, created_at, updated_at, position FROM notes ' +
+        'SELECT id, folder_id, workspace_id, title, is_private, created_at, updated_at, position FROM notes ' +
           'WHERE workspace_id = ? AND deleted_at IS NULL ' +
           (orderOf('notes', sort) || 'ORDER BY updated_at DESC'),
         [workspaceId]
@@ -1415,8 +1665,8 @@ window.NoteApp = window.NoteApp || {};
       // unlock message instead of writing an empty body in the clear.
       return App.crypto.encrypt('').then(function (empty) {
         return write(
-          'INSERT INTO notes (id, folder_id, workspace_id, title, content, created_at, updated_at, position) ' +
-            'VALUES (?, ?, ?, ?, ?, ?, ?, (' +
+          'INSERT INTO notes (id, folder_id, workspace_id, title, content, is_private, created_at, updated_at, position) ' +
+            'VALUES (?, ?, ?, ?, ?, 0, ?, ?, (' +
             '  SELECT COALESCE(MAX(position), -1) + 1 FROM notes' +
             "  WHERE workspace_id = ? AND COALESCE(folder_id, '') = COALESCE(?, '')" +
             '))',
@@ -1425,13 +1675,25 @@ window.NoteApp = window.NoteApp || {};
         );
       }).then(function () {
         if (viewReady) noteText[id] = '';
-        var row = queryOne('SELECT position FROM notes WHERE id = ?', [id]);
+        var row = queryOne('SELECT position, is_private FROM notes WHERE id = ?', [id]);
         return {
           id: id, folder_id: folderId || null, workspace_id: workspaceId,
-          title: title || 'Untitled note', content: '', created_at: stamp, updated_at: stamp,
+          title: title || 'Untitled note', content: '', is_private: 0,
+          created_at: stamp, updated_at: stamp,
           position: row ? row.position : 0,
         };
       });
+    },
+
+    /**
+     * Flip the manual Private flag. One write() (one snapshot), parameterized —
+     * the flag is 0/1, never interpolated. Bulk export skips private notes;
+     * per-note copy/download stay allowed.
+     */
+    setNotePrivate: function (id, flag) {
+      var value = flag ? 1 : 0;
+      return write('UPDATE notes SET is_private = ?, updated_at = ? WHERE id = ?',
+        [value, util.nowIso(), id]);
     },
 
     /**
@@ -1448,24 +1710,168 @@ window.NoteApp = window.NoteApp || {};
       var sealed = content === null || content === undefined
         ? Promise.resolve(null)
         : App.crypto.encrypt(content);
+      var prevTitle = '';
+      try {
+        var prev = queryOne('SELECT title FROM notes WHERE id = ?', [id]);
+        prevTitle = prev ? prev.title || '' : '';
+      } catch (e) { /* treat as unchanged */ }
       return sealed.then(function (stored) {
-        return write('UPDATE notes SET title = ?, content = COALESCE(?, content), updated_at = ? WHERE id = ?',
-          [title, stored, stamp, id]);
+        return write(function (run) {
+          run('UPDATE notes SET title = ?, content = COALESCE(?, content), updated_at = ? WHERE id = ?',
+            [title, stored, stamp, id]);
+          // Links ride the same transaction: one snapshot for text and graph.
+          refreshLinksInto(run, id, content);
+        });
       }).then(function () {
         // Keep the unlocked view in step with the write, so the next read is the text we
         // already have in hand rather than a decryption round trip for it.
         if (viewReady && typeof content === 'string') noteText[id] = content;
+        // A changed title pulls its incoming links along with it.
+        if (typeof content === 'string' && title !== prevTitle) {
+          return propagateRenameWrites(id, prevTitle, title).then(function () {
+            return { updated_at: stamp };
+          });
+        }
         return { updated_at: stamp };
       });
     },
 
     moveNote: function (id, workspaceId, folderId) {
       return write('UPDATE notes SET folder_id = ?, workspace_id = ?, updated_at = ? WHERE id = ?',
-        [folderId || null, workspaceId, util.nowIso(), id]);
+        [folderId || null, workspaceId, util.nowIso(), id]).then(function (res) {
+          // Links are workspace-scoped, so they follow the note. A second write only
+          // when rows exist — moves are rare, snapshots are not free.
+          var n = queryOne('SELECT COUNT(*) AS n FROM note_links WHERE source_note_id = ?', [id]);
+          if (n && n.n > 0) {
+            return write('UPDATE note_links SET workspace_id = ? WHERE source_note_id = ?',
+              [workspaceId, id]).then(function () { return res; });
+          }
+          return res;
+        });
+    },
+
+    moveFile: function (id, workspaceId, folderId) {
+      return write('UPDATE files SET folder_id = ?, workspace_id = ? WHERE id = ?',
+        [folderId || null, workspaceId, id]);
     },
 
     deleteNote: function (id) {
       return write('UPDATE notes SET deleted_at = ? WHERE id = ?', [util.nowIso(), id]);
+    },
+
+    /**
+     * Bulk writers: one write per op, not one per row. Every write() serialises
+     * the whole database and persists a snapshot, so a per-id loop over 40 notes
+     * would cost 40 snapshots; these cost one, atomically.
+     */
+    bulkMoveNotes: function (ids, workspaceId, folderId) {
+      var list = (ids || []).filter(function (id) { return id !== null && id !== undefined; });
+      if (!list.length) return Promise.resolve(0);
+      var placeholders = list.map(function () { return '?'; }).join(',');
+      var stamp = util.nowIso();
+      return write(function (run) {
+        run('UPDATE notes SET folder_id = ?, workspace_id = ?, updated_at = ? WHERE id IN (' + placeholders + ')',
+          [folderId || null, workspaceId, stamp].concat(list));
+        // Links are workspace-scoped like in moveNote; setting the same value
+        // back when the workspace did not change is a harmless no-op.
+        run('UPDATE note_links SET workspace_id = ? WHERE source_note_id IN (' + placeholders + ')',
+          [workspaceId].concat(list));
+      }).then(function () { return list.length; });
+    },
+
+    bulkDeleteNotes: function (ids) {
+      var list = (ids || []).filter(function (id) { return id !== null && id !== undefined; });
+      if (!list.length) return Promise.resolve(0);
+      var placeholders = list.map(function () { return '?'; }).join(',');
+      return write('UPDATE notes SET deleted_at = ? WHERE id IN (' + placeholders + ')',
+        [util.nowIso()].concat(list)).then(function () { return list.length; });
+    },
+
+    // --------------------------------------------------------------- wiki links
+    /**
+     * Backfill the links table after the v6 migration: one transaction, one
+     * snapshot — and no write at all when there is nothing to store, so a
+     * zero-link notebook never pays a snapshot per boot. Locked bodies are skipped
+     * rather than guessed: their rows stay as they were, which is still correct
+     * because a body cannot change while it is locked.
+     */
+    rebuildLinks: function () {
+      var have = queryOne('SELECT COUNT(*) AS n FROM note_links');
+      if (have && have.n > 0) return Promise.resolve({ built: false });
+      var notes = query('SELECT id, workspace_id, content FROM notes WHERE deleted_at IS NULL');
+      if (!notes.length) return Promise.resolve({ built: false });
+      var vault = queryOne('SELECT id FROM vault WHERE id = 1');
+      var jobs = [];
+      notes.forEach(function (row) {
+        var text = null;
+        if (!App.crypto.isEnvelope(row.content)) text = row.content || '';
+        else if (viewReady && hasOwn(noteText, row.id)) text = noteText[row.id];
+        else return;
+        util.extractWikiLinks(text).forEach(function (link) {
+          jobs.push([row.id, link.norm, link.raw, row.workspace_id]);
+        });
+      });
+      if (!jobs.length) return Promise.resolve({ built: false });
+      return write(function (run) {
+        run('DELETE FROM note_links');
+        jobs.forEach(function (job) {
+          run('INSERT OR IGNORE INTO note_links (source_note_id, target_norm, target_raw, workspace_id)' +
+            ' VALUES (?, ?, ?, ?)', job);
+        });
+      }).then(function () { return { built: true }; });
+    },
+
+    /**
+     * Resolve a normalised title to the note it names, newest first: a duplicate
+     * title resolves to the most recently touched note, which is the one the
+     * reader most likely means.
+     */
+    resolveLinkTarget: function (workspaceId, norm) {
+      var rows = query('SELECT id, title, updated_at FROM notes' +
+        ' WHERE workspace_id = ? AND deleted_at IS NULL ORDER BY updated_at DESC, id ASC',
+        [workspaceId]);
+      for (var i = 0; i < rows.length; i++) {
+        if (util.normTitle(rows[i].title) === norm) return { id: rows[i].id, title: rows[i].title };
+      }
+      return null;
+    },
+
+    /** Outgoing links of one note: [{ raw, norm, noteId|null }]. Null means no note
+     *  carries that title yet — the interface offers to create it. Resolved against
+     *  a single title scan rather than one query per link. */
+    getOutgoingLinks: function (sourceId) {
+      var owner = queryOne('SELECT workspace_id FROM notes WHERE id = ?', [sourceId]);
+      if (!owner) return [];
+      var titles = query('SELECT id, title FROM notes' +
+        ' WHERE workspace_id = ? AND deleted_at IS NULL ORDER BY updated_at DESC, id ASC',
+        [owner.workspace_id]);
+      var byNorm = {};
+      titles.forEach(function (row) {
+        var norm = util.normTitle(row.title);
+        if (norm && !byNorm[norm]) byNorm[norm] = row.id;
+      });
+      return query('SELECT target_norm, target_raw FROM note_links WHERE source_note_id = ?', [sourceId])
+        .map(function (row) {
+          return {
+            raw: row.target_raw, norm: row.target_norm,
+            noteId: byNorm[row.target_norm] || null,
+          };
+        });
+    },
+
+    /** Notes linking TO this one: [{ id, title }], newest first, self-links excluded. */
+    getBacklinks: function (noteId) {
+      var note = queryOne('SELECT workspace_id, title FROM notes WHERE id = ? AND deleted_at IS NULL',
+        [noteId]);
+      if (!note) return [];
+      var norm = util.normTitle(note.title);
+      if (!norm) return [];
+      return query(
+        'SELECT l.source_note_id AS id, n.title AS title FROM note_links l ' +
+        'JOIN notes n ON n.id = l.source_note_id ' +
+        'WHERE l.workspace_id = ? AND l.target_norm = ? AND n.deleted_at IS NULL ' +
+        'AND l.source_note_id != ? ORDER BY n.updated_at DESC',
+        [note.workspace_id, norm, noteId]);
     },
 
     // ----------------------------------------------------------------------- files
@@ -1592,7 +1998,7 @@ window.NoteApp = window.NoteApp || {};
         : 'ORDER BY (due_at IS NULL), due_at ASC, priority DESC, position ASC, id ASC';
       return query(
         'SELECT id, workspace_id, folder_id, title, notes, done, done_at, due_at, due_has_time, ' +
-          'priority, position, created_at, updated_at FROM tasks ' +
+          'priority, position, created_at, updated_at, remind_at, reminded_at, recurrence FROM tasks ' +
           'WHERE workspace_id = ?' + clause.sql + scope + ' ' + order,
         params
       ).map(mapTask);
@@ -1708,7 +2114,7 @@ window.NoteApp = window.NoteApp || {};
      */
     updateTask: function (id, fields) {
       var next = fields || {};
-      var row = queryOne('SELECT workspace_id, folder_id FROM tasks WHERE id = ?', [id]);
+      var row = queryOne('SELECT workspace_id, folder_id, remind_at FROM tasks WHERE id = ?', [id]);
       if (!row) return Promise.resolve(false);
 
       var stamp = util.nowIso();
@@ -1719,6 +2125,12 @@ window.NoteApp = window.NoteApp || {};
         sets.push(column + ' = ?');
         params.push(TASK_EDITABLE[column](next[column]));
       });
+      // A reminder moved to a new time is a reminder not yet given. Without this the row
+      // would keep the stamp from the old time and stay silent at the new one.
+      if (Object.prototype.hasOwnProperty.call(next, 'remind_at')
+        && TASK_EDITABLE.remind_at(next.remind_at) !== (row.remind_at || null)) {
+        sets.push('reminded_at = NULL');
+      }
       if (!sets.length) return Promise.resolve(false);
       sets.push('updated_at = ?');
       params.push(stamp);
@@ -1750,9 +2162,57 @@ window.NoteApp = window.NoteApp || {};
      */
     setTaskDone: function (id, done) {
       var stamp = util.nowIso();
-      var value = done ? 1 : 0;
-      return write('UPDATE tasks SET done = ?, done_at = ?, updated_at = ? WHERE id = ?',
-        [value, value ? stamp : null, stamp, id]);
+      if (!done) {
+        return write('UPDATE tasks SET done = 0, done_at = NULL, updated_at = ? WHERE id = ?', [stamp, id])
+          .then(function () { return { repeated: null }; });
+      }
+      // A repeating task is not finished by ticking it: the tick moves it to its next
+      // occurrence and hands it back to the list. The rule is applied here rather than in
+      // the interface, so the checkbox, the context menu and any future caller all roll
+      // the same way.
+      var row = queryOne('SELECT due_at, due_has_time, recurrence, remind_at FROM tasks WHERE id = ?', [id]);
+      var rule = row ? parseRecurrence(row.recurrence) : null;
+      var next = row && rule && row.due_at ? nextOccurrence(row.due_at, row.due_has_time, rule) : null;
+      if (!next) {
+        return write('UPDATE tasks SET done = 1, done_at = ?, updated_at = ? WHERE id = ?', [stamp, stamp, id])
+          .then(function () { return { repeated: null }; });
+      }
+      // The reminder travels with the due date, keeping the distance the reader chose, and
+      // reminded_at is cleared so the new occurrence is announced in its turn.
+      var remind = advanceReminder(row.remind_at, row.due_at, next);
+      return write(
+        'UPDATE tasks SET done = 0, done_at = NULL, due_at = ?, remind_at = ?, reminded_at = NULL, ' +
+          'updated_at = ? WHERE id = ?',
+        [next, remind, stamp, id]
+      ).then(function () { return { repeated: next }; });
+    },
+
+    /**
+     * The reminders that are due, oldest first, for the notifier started at boot.
+     *
+     * done = 0 because a finished task has nothing to announce, and reminded_at IS NULL
+     * because that stamp is what stops a thirty-second timer announcing itself twice.
+     */
+    dueReminders: function (nowIso) {
+      var now = nowIso || util.nowIso();
+      try {
+        return query(
+          'SELECT id, workspace_id, folder_id, title, notes, done, done_at, due_at, due_has_time, ' +
+            'priority, position, created_at, updated_at, remind_at, reminded_at, recurrence FROM tasks ' +
+            'WHERE done = 0 AND remind_at IS NOT NULL AND remind_at <= ? AND reminded_at IS NULL ' +
+            'ORDER BY remind_at ASC LIMIT 20',
+          [now]
+        ).map(mapTask);
+      } catch (err) {
+        // A notebook from before v11 has no remind_at column: no reminders, no boot failure.
+        return [];
+      }
+    },
+
+    /** Record that a reminder has been announced, so one tick cannot announce it twice. */
+    markReminderFired: function (id, when) {
+      return write('UPDATE tasks SET reminded_at = ? WHERE id = ? AND reminded_at IS NULL',
+        [when || util.nowIso(), id]);
     },
 
     /**
@@ -1795,7 +2255,7 @@ window.NoteApp = window.NoteApp || {};
       // either of them and run-flow asserts the result byte for byte.
       if (!App.crypto.isActive()) {
         var plain = query(
-          'SELECT id, folder_id, workspace_id, title, created_at, updated_at, ' +
+          'SELECT id, folder_id, workspace_id, title, is_private, created_at, updated_at, ' +
         '(SELECT name FROM workspaces WHERE id = notes.workspace_id) AS workspace_name FROM notes ' +
           "WHERE deleted_at IS NULL" + scope + " AND (title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\') " +
           'ORDER BY updated_at DESC LIMIT ?',
@@ -1807,7 +2267,7 @@ window.NoteApp = window.NoteApp || {};
       // Vault on. Titles and file names are not encrypted, so SQL still answers that half in
       // either state — which is what keeps the notebook searchable while it is locked.
       var notes = query(
-        'SELECT id, folder_id, workspace_id, title, created_at, updated_at, ' +
+        'SELECT id, folder_id, workspace_id, title, is_private, created_at, updated_at, ' +
         '(SELECT name FROM workspaces WHERE id = notes.workspace_id) AS workspace_name FROM notes ' +
         "WHERE deleted_at IS NULL" + scope + " AND title LIKE ? ESCAPE '\\' ORDER BY updated_at DESC LIMIT ?",
         scopeArgs.concat([pattern, cap])
@@ -1824,7 +2284,7 @@ window.NoteApp = window.NoteApp || {};
       notes.forEach(function (note) { matched[note.id] = true; });
       var needle = trimmed.toLowerCase();
       var candidates = query(
-        'SELECT id, folder_id, workspace_id, title, created_at, updated_at, ' +
+        'SELECT id, folder_id, workspace_id, title, is_private, created_at, updated_at, ' +
         '(SELECT name FROM workspaces WHERE id = notes.workspace_id) AS workspace_name FROM notes ' +
         'WHERE deleted_at IS NULL' + scope + ' ORDER BY updated_at DESC LIMIT ?',
         scopeArgs.concat([CONTENT_SCAN_CAP])
@@ -2218,7 +2678,7 @@ window.NoteApp = window.NoteApp || {};
         [workspaceId]
       );
       var noteRows = query(
-        'SELECT id, workspace_id, folder_id, title, deleted_at FROM notes WHERE workspace_id = ? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC',
+        'SELECT id, workspace_id, folder_id, title, is_private, deleted_at FROM notes WHERE workspace_id = ? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC',
         [workspaceId]
       );
       var fileRows = query(
@@ -2379,6 +2839,11 @@ window.NoteApp = window.NoteApp || {};
       delete fileBytes[id];
       return write('DELETE FROM files WHERE id = ?', [id]);
     },
+
+    // Templates (v7)
+    listTemplates: function (wsId) { return query('SELECT * FROM templates WHERE workspace_id=? ORDER BY name', [wsId||0]); },
+    saveTemplate: function (id, wsId, name, content) { return write('INSERT INTO templates (id, workspace_id, name, content, created_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET workspace_id=excluded.workspace_id, name=excluded.name, content=excluded.content', [id||null, wsId||0, String(name).trim()||'Untitled', content||'']); },
+    deleteTemplate: function (id) { return write('DELETE FROM templates WHERE id=?', [id]); },
 
     /** Tear the engine down (used by "reset everything" before a reload). */
     destroy: function () {

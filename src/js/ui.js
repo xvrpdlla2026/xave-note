@@ -26,6 +26,64 @@ window.NoteApp = window.NoteApp || {};
     return url;
   }
 
+  /**
+   * Resolve every image pill in a body to a real src.
+   *
+   * The bytes live in the files table (encrypted with the rest of the notebook when the
+   * vault is on), so a stored body carries only the id and the picture is fetched here, on
+   * every render. A file that has been deleted, or one whose bytes are locked behind the
+   * vault, is marked rather than left as a silently broken image.
+   */
+  function hydrateNoteImages(root) {
+    var pills = root.querySelectorAll('img[data-file-id]');
+    Array.prototype.forEach.call(pills, function (img) {
+      var id = img.getAttribute('data-file-id');
+      var resolved = null;
+      try { resolved = App.db.getFileBlob(id); } catch (err) { resolved = null; }
+      if (!resolved || !resolved.blob) {
+        img.classList.add('is-missing');
+        img.removeAttribute('src');
+        img.setAttribute('alt', 'Image unavailable');
+        return;
+      }
+      // makeObjectUrl registers the URL with the list revokeObjectUrls drains on the next
+      // render, so the bytes are re-read each time the editor is built and nothing leaks.
+      img.src = makeObjectUrl(resolved.blob);
+      img.classList.remove('is-missing');
+      if (resolved.filename) img.setAttribute('alt', resolved.filename);
+    });
+  }
+
+  /** 'Every day' and its neighbours, from the stored JSON. A damaged rule says nothing. */
+  function recurrenceLabel(encoded) {
+    var rule = null;
+    try { rule = JSON.parse(encoded); } catch (err) { return ''; }
+    if (!rule || !rule.freq) return '';
+    var ones = {
+      daily: 'Every day',
+      weekdays: 'Every weekday',
+      weekly: 'Every week',
+      monthly: 'Every month',
+      yearly: 'Every year',
+    };
+    var plurals = { daily: 'days', weekdays: 'weekdays', weekly: 'weeks', monthly: 'months', yearly: 'years' };
+    if (!ones[rule.freq]) return '';
+    var count = Number(rule.interval) || 1;
+    return count > 1 ? 'Every ' + count + ' ' + plurals[rule.freq] : ones[rule.freq];
+  }
+
+  /** When a reminder is set for, and whether it has already been given. */
+  function reminderLabel(task) {
+    var when = new Date(task.remind_at);
+    if (isNaN(when.getTime())) return 'Reminder';
+    var time = when.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    var sameDay = when.toDateString() === new Date().toDateString();
+    var text = sameDay
+      ? time
+      : when.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ', ' + time;
+    return (task.reminded_at ? 'Reminded ' : 'Reminder ') + text;
+  }
+
   // ------------------------------------------------------------------ workspace UI
   /**
    * The workspace switcher: a custom select over the native one.
@@ -35,40 +93,424 @@ window.NoteApp = window.NoteApp || {};
    * mid-interaction, since render() runs on every autosave.
    */
   function renderWorkspaceSelect(host, workspaces, currentId) {
-    // Position belongs in the signature because a manual reorder changes which workspace
-    // comes first without changing which workspaces exist: without it, moving one would
-    // reorder the rail and leave the dropdown showing the order it had a moment ago.
-    var signature = workspaces.map(function (ws) {
-      return ws.id + '\u0000' + ws.name + '\u0000' + (ws.position || 0);
-    }).join('\u0001');
-
-    if (host.__signature === signature && host.__select) {
-      host.__select.setValue(currentId, true);
-      host.__select.setDisabled(workspaces.length === 0);
-      return host.__select;
-    }
+    var current = null;
+    workspaces.forEach(function (ws) { if (String(ws.id) === String(currentId)) current = ws; });
+    if (!current && workspaces.length) current = workspaces[0];
+    var label = current ? current.name : 'No workspaces';
 
     host.textContent = '';
-    var widget = App.ui.select({
-      label: 'Workspace',
-      lead: 'database',
-      className: 'select--rail',
-      value: currentId,
-      options: workspaces.map(function (ws) { return { value: ws.id, label: ws.name }; }),
-      onChange: function (value) {
-        if (typeof host.__onChange === 'function') host.__onChange(value);
+    var trigger = el('button', {
+      class: 'select__trigger ws-trigger',
+      type: 'button',
+      'aria-haspopup': 'dialog',
+      title: workspaces.length + (workspaces.length === 1 ? ' workspace' : ' workspaces') + ' \u00b7 switch workspace',
+      onclick: function () {
+        if (typeof host.__onOpenPicker === 'function') host.__onOpenPicker();
       },
-    });
+    }, [
+      el('span', { class: 'select__lead' }, [App.ui.icon('database', 15)]),
+      el('span', { class: 'select__value', text: label }),
+      el('span', { class: 'ws-trigger__count', text: String(workspaces.length) }),
+    ]);
 
-    host.__signature = signature;
-    host.__select = widget;
-    host.appendChild(widget);
-    return widget;
+    host.appendChild(trigger);
+    return trigger;
   }
 
   /** Let app.js own what a workspace change does, without the widget knowing about state. */
   function onWorkspaceChange(host, handler) {
     host.__onChange = handler;
+  }
+
+  /** Let app.js own opening the picker dialog, without the trigger knowing about state. */
+  function onWorkspacePickerOpen(host, handler) {
+    host.__onOpenPicker = handler;
+  }
+
+  /**
+   * The workspace picker: a trash-panel-styled dialog listing every workspace.
+   *
+   * Reuses the panel language (head / tools / list / foot) so switching reads as the
+   * same surface as the trash, but the rows are workspaces: name, contents meta, and
+   * a check on the current one. Built once per open; `paint()` repaints the list and
+   * footer on search, and `__refresh` lets app.js drive it without rebuilding the dialog.
+   */
+  function renderWorkspacePanel(host, ctx) {
+    var workspaces = ctx.workspaces || [];
+    var currentId = ctx.currentId != null ? String(ctx.currentId) : null;
+    var term = String(ctx.term || '').trim().toLowerCase();
+    var countsById = ctx.countsById || {};
+
+    var form = el('div', { class: 'panel ws-panel' });
+
+    var sub = workspaces.length
+      ? workspaces.length + (workspaces.length === 1 ? ' workspace' : ' workspaces') + ' \u00b7 search to filter'
+      : 'No workspaces yet';
+    var closeBtn = el('button', {
+      class: 'btn btn--sm panel__close', type: 'button',
+      title: 'Close (Esc)',
+      'aria-label': 'Close the workspace picker',
+      onclick: function () { ctx.onClose(); },
+    }, [App.ui.icon('close', 13), 'Close']);
+
+    form.appendChild(el('header', { class: 'panel__head' }, [
+      el('span', { class: 'panel__tile', 'aria-hidden': 'true' }, [App.ui.icon('layers')]),
+      el('div', { class: 'panel__heading' }, [
+        el('h2', { id: 'ws-title', class: 'panel__title', text: 'Workspaces' }),
+        el('p', { class: 'panel__sub', text: sub }),
+      ]),
+      closeBtn,
+    ]));
+
+    var searchInput = el('input', {
+      id: 'ws-search',
+      type: 'search',
+      placeholder: 'Filter workspaces',
+      'aria-label': 'Filter workspaces by name',
+      autocomplete: 'off',
+    });
+    searchInput.value = ctx.term || '';
+    searchInput.addEventListener('input', function () { ctx.onSearch(searchInput.value); });
+
+    form.appendChild(el('div', { class: 'panel__tools' }, [
+      el('span', { class: 'ws-tools__hint', text: 'Switch workspace' }),
+      el('span', { class: 'panel__spacer' }),
+      el('div', { class: 'search-field' }, [
+        App.ui.icon('search', 14),
+        searchInput,
+      ]),
+    ]));
+
+    var list = el('div', { class: 'panel__list ws-list', role: 'listbox', 'aria-labelledby': 'ws-title' });
+    form.appendChild(list);
+
+    var foot = el('div', { class: 'panel__foot' });
+    form.appendChild(foot);
+
+    function visible() {
+      return workspaces.filter(function (ws) {
+        if (term && String(ws.name || '').toLowerCase().indexOf(term) === -1) return false;
+        return true;
+      });
+    }
+
+    function wsMeta(ws) {
+      var c = countsById[ws.id];
+      if (!c) return 'workspace';
+      var parts = [];
+      if (c.folders) parts.push(c.folders + ' folder' + (c.folders === 1 ? '' : 's'));
+      parts.push((c.notes || 0) + ' note' + ((c.notes || 0) === 1 ? '' : 's'));
+      if (c.files) parts.push(c.files + ' file' + (c.files === 1 ? '' : 's'));
+      return parts.join(' \u00b7 ') || 'empty workspace';
+    }
+
+    function paint() {
+      var rows = visible();
+      list.textContent = '';
+      if (!rows.length) {
+        list.appendChild(workspaces.length
+          ? el('div', { class: 'trash-empty' }, [
+              el('h3', { text: 'No matches' }),
+              el('p', { text: 'No workspace matches \u201c' + ctx.term + '\u201d.' }),
+            ])
+          : el('div', { class: 'trash-empty' }, [
+              el('h3', { text: 'No workspaces yet' }),
+              el('p', { text: 'Create one to get organised.' }),
+            ]));
+      } else {
+        rows.forEach(function (ws, i) {
+          var active = String(ws.id) === currentId;
+          list.appendChild(el('button', {
+            class: 'ws-row' + (active ? ' is-selected' : ''),
+            type: 'button',
+            role: 'option',
+            'aria-selected': active ? 'true' : 'false',
+            title: ws.name,
+            onclick: function () { ctx.onPick(ws.id); },
+          }, [
+            el('span', { class: 'trash-row__glyph' }, [App.ui.icon('database', 14)]),
+            el('span', { class: 'trash-row__text' }, [
+              el('span', { class: 'trash-row__name', text: ws.name || 'Untitled workspace', title: ws.name || '' }),
+              el('span', { class: 'trash-row__meta' }, [
+                el('span', { text: wsMeta(ws) }),
+              ]),
+            ]),
+            active
+              ? el('span', { class: 'ws-row__check', 'aria-hidden': 'true' }, [App.ui.icon('check', 14)])
+              : null,
+          ]));
+          void i;
+        });
+      }
+
+      foot.textContent = '';
+      var sel = workspaces.filter(function (ws) { return String(ws.id) === currentId; })[0];
+      foot.appendChild(el('p', { class: 'panel__count' }, [
+        document.createTextNode(sel
+          ? 'Current: ' + (sel.name || 'Untitled workspace') + (rows.length !== workspaces.length ? ' \u00b7 ' + rows.length + ' shown' : '')
+          : rows.length + ' shown'),
+      ]));
+      foot.appendChild(el('button', {
+        class: 'btn btn--sm', type: 'button',
+        onclick: function () { ctx.onNew(); },
+      }, [App.ui.icon('layers', 12), 'New workspace']));
+      foot.appendChild(el('button', {
+        class: 'btn btn--primary', type: 'button',
+        onclick: function () { ctx.onClose(); },
+      }, ['Back to workspace']));
+    }
+
+    paint();
+
+    host.__refresh = function (next) {
+      workspaces = next.workspaces || workspaces;
+      currentId = next.currentId != null ? String(next.currentId) : currentId;
+      ctx.term = next.term;
+      term = String(next.term || '').trim().toLowerCase();
+      countsById = next.countsById || countsById;
+      if (document.activeElement !== searchInput) searchInput.value = next.term || '';
+      var headSub = form.querySelector('.panel__sub');
+      if (headSub) {
+        headSub.textContent = workspaces.length
+          ? workspaces.length + (workspaces.length === 1 ? ' workspace' : ' workspaces') + ' \u00b7 search to filter'
+          : 'No workspaces yet';
+      }
+      paint();
+    };
+
+    host.textContent = '';
+    host.appendChild(form);
+  }
+
+  /**
+   * The move picker: the same trash-panel surface as the workspace picker, but the
+   * destinations are folder cards in grids, grouped per workspace. `mode` decides the
+   * cards: 'place' lists every workspace with its root and folders (notes and files
+   * can live anywhere), 'workspace' lists workspaces alone (a folder moves as a whole
+   * subtree, so a folder is never its own destination). A card press moves immediately
+   * — like the workspace picker there is no separate confirm step, and moving back is
+   * the undo.
+   */
+  function renderMovePanel(host, ctx) {
+    var mode = ctx.mode || 'place';
+    var workspaces = ctx.workspaces || [];
+    var foldersByWs = ctx.foldersByWs || {};
+    var countsByWs = ctx.countsByWs || {};
+    var currentWsId = ctx.currentWsId != null ? String(ctx.currentWsId) : null;
+    var currentFolderId = ctx.currentFolderId != null ? String(ctx.currentFolderId) : null;
+    var term = String(ctx.term || '').trim().toLowerCase();
+    var view = ctx.view || 'all';
+
+    var form = el('div', { class: 'panel' });
+
+    var closeBtn = el('button', {
+      class: 'btn btn--sm panel__close', type: 'button',
+      title: 'Close (Esc)',
+      'aria-label': 'Close without moving',
+      onclick: function () { ctx.onClose(); },
+    }, [App.ui.icon('close', 13), 'Close']);
+
+    form.appendChild(el('header', { class: 'panel__head' }, [
+      el('span', { class: 'panel__tile', 'aria-hidden': 'true' }, [App.ui.icon(ctx.icon || 'layers')]),
+      el('div', { class: 'panel__heading' }, [
+        el('h2', { id: 'move-title', class: 'panel__title', text: ctx.title || 'Move' }),
+        el('p', { class: 'panel__sub', text: ctx.sub || '' }),
+      ]),
+      closeBtn,
+    ]));
+
+    var searchInput = el('input', {
+      id: 'move-search',
+      type: 'search',
+      placeholder: 'Filter destinations',
+      'aria-label': 'Filter destinations by name',
+      autocomplete: 'off',
+    });
+    searchInput.value = ctx.term || '';
+    searchInput.addEventListener('input', function () { ctx.onSearch(searchInput.value); });
+
+    // View filter, straight from the trash panel: one segmented control grouping the
+    // destinations, so workspaces and folders are one press apart. Workspace mode has
+    // only workspaces to show, so it keeps the plain hint instead of a one-sided filter.
+    var filters = null;
+    if (mode === 'place') {
+      filters = App.ui.radioGroup({
+        name: 'move-view',
+        value: view,
+        options: [
+          { value: 'all', label: 'All', badge: 0 },
+          { value: 'workspace', label: 'Workspaces', badge: 0 },
+          { value: 'folder', label: 'Folders', badge: 0 },
+        ],
+        onChange: function (value) { ctx.onView(value); },
+      });
+    }
+
+    form.appendChild(el('div', { class: 'panel__tools' }, [
+      filters || el('span', { class: 'ws-tools__hint', text: 'Choose destination' }),
+      el('span', { class: 'panel__spacer' }),
+      el('div', { class: 'search-field' }, [
+        App.ui.icon('search', 14),
+        searchInput,
+      ]),
+    ]));
+
+    var list = el('div', { class: 'panel__list', role: 'listbox', 'aria-labelledby': 'move-title' });
+    form.appendChild(list);
+
+    var foot = el('div', { class: 'panel__foot' });
+    form.appendChild(foot);
+
+    function match(name) {
+      return !term || String(name || '').toLowerCase().indexOf(term) !== -1;
+    }
+
+    function wsTotals(ws) {
+      var c = countsByWs[ws.id];
+      if (!c) return 'workspace';
+      var parts = [];
+      if (c.folders) parts.push(c.folders + ' folder' + (c.folders === 1 ? '' : 's'));
+      parts.push((c.notes || 0) + ' note' + ((c.notes || 0) === 1 ? '' : 's'));
+      if (c.files) parts.push(c.files + ' file' + (c.files === 1 ? '' : 's'));
+      return parts.join(' \u00b7 ') || 'empty workspace';
+    }
+
+    function wsNameOf(wsId) {
+      var hit = workspaces.filter(function (w) { return String(w.id) === String(wsId); })[0];
+      return hit ? hit.name : 'Workspace';
+    }
+
+    // One destination card, in the main pane's own card language: glyph plus title, and
+    // the workspace totals on a root card, where the title alone cannot say how full
+    // the place is. The current home carries the same is-active ring a selected card
+    // in the pane does, so "where it is now" reads identically on both surfaces.
+    // `flatWs` names the workspace on the card itself, for the flat filtered views where
+    // no group heading is there to say it.
+    function destCard(wsId, folder, isCurrent, flatWs) {
+      var isRoot = !folder;
+      var meta = isRoot
+        ? 'Workspace root \u00b7 ' + wsTotals({ id: wsId })
+        : (flatWs ? wsNameOf(wsId) : null);
+      return el('button', {
+        class: 'card' + (isRoot ? '' : ' card--folder') + (isCurrent ? ' is-active' : ''),
+        type: 'button',
+        role: 'option',
+        'aria-selected': isCurrent ? 'true' : 'false',
+        title: isRoot ? wsNameOf(wsId) + ' \u2014 workspace root' : (folder.name || 'Untitled folder'),
+        onclick: function () { ctx.onPick(wsId, folder ? folder.id : null); },
+      }, [
+        el('span', { class: 'card__glyph' }, [App.ui.icon(isRoot ? 'database' : 'folder')]),
+        el('span', { class: 'card__title', text: isRoot ? wsNameOf(wsId) : (folder.name || 'Untitled folder') }),
+        meta ? el('span', { class: 'card__meta', text: meta }) : null,
+      ]);
+    }
+
+    /** Push the destination totals into the filter chips' own badges. */
+    function paintFilterCounts(totals) {
+      if (!filters) return;
+      filters.inputs.forEach(function (input) {
+        var item = input.parentNode;
+        var badge = item ? item.querySelector('.segmented__badge') : null;
+        if (badge) badge.textContent = String(totals[input.value] || 0);
+      });
+    }
+
+    function paint() {
+      list.textContent = '';
+      var shown = 0;
+      // Badge totals name the whole destination set, not the filtered view — like trash.
+      var totals = { all: 0, workspace: 0, folder: 0 };
+      workspaces.forEach(function (ws) {
+        totals.workspace += 1;
+        if (mode === 'place') totals.folder += (foldersByWs[ws.id] || []).length;
+      });
+      totals.all = totals.workspace + totals.folder;
+      paintFilterCounts(totals);
+      if (filters) filters.setValue(view);
+
+      // A single-kind view shares one flat grid — every card already names itself, so a
+      // group heading per workspace would be one heading per card. All keeps the grouped
+      // layout, where the headings are what tell the workspaces apart.
+      function flatGrid(cards) {
+        if (!cards.length) return;
+        var grid = el('div', { class: 'card-grid' });
+        cards.forEach(function (card) { grid.appendChild(card); });
+        list.appendChild(grid);
+        shown += cards.length;
+      }
+
+      if (mode === 'workspace' || (mode === 'place' && view === 'workspace')) {
+        var roots = [];
+        workspaces.forEach(function (ws) {
+          if (!match(ws.name)) return;
+          roots.push(destCard(ws.id, null, String(ws.id) === currentWsId));
+        });
+        flatGrid(roots);
+      } else if (mode === 'place' && view === 'folder') {
+        var flat = [];
+        workspaces.forEach(function (ws) {
+          (foldersByWs[ws.id] || []).forEach(function (f) {
+            if (!match(f.name)) return;
+            flat.push(destCard(ws.id, f,
+              String(ws.id) === currentWsId && String(f.id) === currentFolderId, true));
+          });
+        });
+        flatGrid(flat);
+      } else {
+        workspaces.forEach(function (ws) {
+          var folders = (foldersByWs[ws.id] || []).filter(function (f) { return match(f.name); });
+          var showRoot = !term || match(ws.name);
+          if (!folders.length && !showRoot) return;
+          list.appendChild(el('h3', { class: 'panel__group' }, [
+            el('span', { text: ws.name }),
+            el('span', { class: 'panel__group-count', text: String(folders.length + (showRoot ? 1 : 0)) }),
+          ]));
+          var grid = el('div', { class: 'card-grid' });
+          if (showRoot) {
+            grid.appendChild(destCard(ws.id, null,
+              String(ws.id) === currentWsId && currentFolderId === null));
+            shown += 1;
+          }
+          folders.forEach(function (f) {
+            grid.appendChild(destCard(ws.id, f,
+              String(ws.id) === currentWsId && String(f.id) === currentFolderId));
+            shown += 1;
+          });
+          list.appendChild(grid);
+        });
+      }
+      if (!shown) {
+        list.appendChild(el('div', { class: 'trash-empty' }, [
+          el('h3', { text: 'No matches' }),
+          el('p', { text: 'No destination matches \u201c' + ctx.term + '\u201d.' }),
+        ]));
+      }
+
+      foot.textContent = '';
+      foot.appendChild(el('p', { class: 'panel__count' }, [
+        document.createTextNode(ctx.footNote || (shown === 1 ? '1 destination' : shown + ' destinations')),
+      ]));
+      foot.appendChild(el('button', {
+        class: 'btn btn--primary', type: 'button',
+        onclick: function () { ctx.onClose(); },
+      }, ['Back to workspace']));
+    }
+
+    paint();
+
+    host.__refresh = function (next) {
+      workspaces = next.workspaces || workspaces;
+      foldersByWs = next.foldersByWs || foldersByWs;
+      countsByWs = next.countsByWs || countsByWs;
+      ctx.term = next.term;
+      term = String(next.term || '').trim().toLowerCase();
+      if (next.view) view = next.view;
+      if (document.activeElement !== searchInput) searchInput.value = next.term || '';
+      paint();
+    };
+
+    host.textContent = '';
+    host.appendChild(form);
   }
 
   // ------------------------------------------------------------------ sort menu
@@ -180,9 +622,6 @@ window.NoteApp = window.NoteApp || {};
 
     if (!model.folders.length && !model.rootNotes.length && !model.rootFiles.length) {
       frag.appendChild(el('p', { class: 'tree__hint', text: 'No folders yet. Create one to get organised.' }));
-      host.textContent = '';
-      host.appendChild(frag);
-      return;
     }
 
     // Folders first, then the loose items that sit at the workspace root. Without this
@@ -275,7 +714,10 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function rootRow(model) {
-    var active = model.selection.type === 'all';
+    // The root names the workspace scope, not the open item: it carries the highlight
+    // only when nothing is open. An open note or file carries its own row instead, so
+    // the tree never names two places at once.
+    var active = model.selection.type === 'all' && !model.activeNoteId && !model.activeFileId;
     var total = model.counts.notes + model.counts.files;
     return el('div', {
       class: 'tree__row tree__row--root' + (active ? ' is-active' : ''),
@@ -373,7 +815,10 @@ window.NoteApp = window.NoteApp || {};
       .filter(function (f) { return (f.parent_folder_id || null) === parentId; })
       .forEach(function (folder) {
         var expanded = !!model.expanded[folder.id];
-        var active = model.selection.type === 'folder' && model.selection.id === folder.id;
+        // Exclusive highlight: when a note or file is open it owns the selection,
+        // so its parent folder stays unhighlighted. Matches rootRow's guard.
+        var active = model.selection.type === 'folder' && model.selection.id === folder.id
+          && !model.activeNoteId && !model.activeFileId;
         var direct = counts[folder.id] || 0;
 
         frag.appendChild(el('div', {
@@ -425,6 +870,82 @@ window.NoteApp = window.NoteApp || {};
           }
         }
       });
+  }
+
+  // ------------------------------------------------------------------ open tabs
+  /**
+   * The open-tabs strip above the main pane. Pure rendering: app.js hands a list of
+   * plain tab descriptors and owns every behaviour through the delegated
+   * [data-action] listener (`activate-tab` / `close-tab`), exactly like the tree.
+   *
+   * ctx: { tabs: [{ kind: 'note'|'file', id, title, glyph, dirty, active, pinned }], hidden }
+   * Hidden when there are no tabs or the task list is in front; the host keeps the
+   * `is-hidden` class so no empty strip reserves space.
+   */
+  function renderTabs(host, ctx) {
+    var tabs = (ctx && ctx.tabs) || [];
+    if (!tabs.length || (ctx && ctx.hidden)) {
+      host.classList.add('is-hidden');
+      host.textContent = '';
+      return;
+    }
+    host.classList.remove('is-hidden');
+    host.textContent = '';
+    var frag = document.createDocumentFragment();
+    tabs.forEach(function (t) {
+      var label = t.title || (t.kind === 'file' ? 'Untitled file' : 'Untitled note');
+      // Pinned tabs are icon-only: the glyph plus the tooltip carry the name, and
+      // there is no close button — unpin (or Close from the menu) to remove one.
+      var tab = el('div', {
+        class: 'tab' + (t.active ? ' is-active' : '') + (t.pinned ? ' is-pinned' : ''),
+        role: 'tab',
+        tabindex: '0',
+        draggable: 'true',
+        'aria-selected': t.active ? 'true' : 'false',
+        'aria-label': label + (t.pinned ? ' (pinned)' : ''),
+        dataset: {
+          action: 'activate-tab',
+          id: t.kind + ':' + t.id,
+          kind: t.kind,
+          ctx: 'tab',
+          ctxLabel: label,
+        },
+        // The trailing hint names the affordance a hover alone cannot: tabs reorder
+        // by drag, and by Move left/right on the right-click menu.
+        title: label + (t.pinned ? ' \u00b7 pinned' : '')
+          + (t.dirty ? ' \u00b7 unsaved changes' : '') + ' \u00b7 drag to reorder',
+      });
+      if (t.kind === 'file') {
+        tab.appendChild(el('span', { class: 'tab__glyph', text: t.glyph || 'FILE' }));
+      } else {
+        var icon = App.ui.icon('note', 12);
+        if (icon) {
+          try { icon.classList.add('tab__glyph'); } catch (e) { /* svg without classList */ }
+          tab.appendChild(icon);
+        }
+      }
+      tab.appendChild(el('span', { class: 'tab__label', text: label }));
+      if (t.dirty) tab.appendChild(el('span', { class: 'tab__dot', 'aria-hidden': 'true' }));
+      if (!t.pinned) {
+        tab.appendChild(el('button', {
+          class: 'tab__close',
+          type: 'button',
+          dataset: { action: 'close-tab', id: t.kind + ':' + t.id, kind: t.kind },
+          'aria-label': 'Close ' + label,
+          title: 'Close ' + label,
+          text: '\u00d7',
+        }));
+      }
+      frag.appendChild(tab);
+    });
+    host.appendChild(frag);
+    // Keep the active tab in view without moving the page: horizontal scroll only.
+    try {
+      var active = host.querySelector('.tab.is-active');
+      if (active && typeof active.scrollIntoView === 'function') {
+        active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      }
+    } catch (e) { /* scroll is best-effort */ }
   }
 
   // ------------------------------------------------------------------ folder pane
@@ -505,20 +1026,42 @@ window.NoteApp = window.NoteApp || {};
     if (ctx.notes.length) {
       frag.appendChild(paneSection('Notes', ctx.notes.length));
       var noteCards = el('div', { class: 'card-grid' });
+      var bulk = ctx.bulkSelected || [];
       ctx.notes.forEach(function (note) {
-        var preview = (note.content || '').replace(/\s+/g, ' ').trim();
-        if (preview.length > 150) preview = preview.slice(0, 150) + '\u2026';
-        noteCards.appendChild(el('button', {
-          class: 'card card--note' + (note.id === ctx.activeNoteId ? ' is-active' : ''),
-          type: 'button',
-          dataset: {
-            action: 'open-note', id: note.id, ctx: 'note',
-            ctxLabel: note.title && note.title.trim() ? note.title : 'Untitled note',
-          },
+        // No body snippet here: list queries deliberately omit the content column
+        // (see mapNote in db.js, content is always ''), so any preview derived
+        // from note.content would always read "Empty note". Cards show title + date
+        // only — never a body-derived line.
+        var isChecked = bulk.indexOf(note.id) !== -1;
+        // The card stays a real <button> (free keyboard + screen-reader
+        // behaviour); the checkbox is a sibling overlay, never nested inside it.
+        // The stopPropagation below is belt-and-braces — the delegated handler
+        // resolves closest('[data-action]'), which a sibling checkbox never
+        // reaches — and keeps the click from ever being read as a card press.
+        var box = App.ui.checkbox({
+          hideLabel: true,
+          checked: isChecked,
+          className: 'card__check',
+          label: 'Select ' + (note.title && note.title.trim() ? note.title : 'Untitled note'),
+          onChange: function (checked) { if (ctx.onToggleBulk) ctx.onToggleBulk(note.id, checked); },
+        });
+        box.addEventListener('click', function (event) { event.stopPropagation(); });
+        noteCards.appendChild(el('div', {
+          class: 'card-wrap' + (isChecked ? ' is-selected' : ''),
+          dataset: { noteId: note.id },
         }, [
-          el('span', { class: 'card__title', text: note.title && note.title.trim() ? note.title : 'Untitled note' }),
-          el('span', { class: 'card__snippet', text: preview || 'Empty note' }),
-          el('span', { class: 'card__meta', text: util.formatWhen(note.updated_at) }),
+          box,
+          el('button', {
+            class: 'card card--note' + (note.id === ctx.activeNoteId ? ' is-active' : ''),
+            type: 'button',
+            dataset: {
+              action: 'open-note', id: note.id, ctx: 'note',
+              ctxLabel: note.title && note.title.trim() ? note.title : 'Untitled note',
+            },
+          }, [
+            el('span', { class: 'card__title', text: note.title && note.title.trim() ? note.title : 'Untitled note' }),
+            el('span', { class: 'card__meta', text: util.formatWhen(note.updated_at) }),
+          ]),
         ]));
       });
       frag.appendChild(noteCards);
@@ -553,6 +1096,20 @@ window.NoteApp = window.NoteApp || {};
           el('button', { class: 'btn btn--primary', type: 'button', dataset: { action: 'new-note' } }, ['New note']),
           el('button', { class: 'btn btn--ghost', type: 'button', dataset: { action: 'upload-file' } }, ['Upload file']),
         ]),
+      ]));
+    }
+
+    // Bulk bar: only while cards are checked. Sticky to the pane's bottom so it
+    // never scrolls away from the list it acts on; one filled primary, the
+    // destructive action quiet, matching the pane-actions hierarchy.
+    var bulkCount = (ctx.bulkSelected || []).length;
+    if (bulkCount) {
+      frag.appendChild(el('div', { class: 'bulk-bar', role: 'toolbar', 'aria-label': 'Bulk actions' }, [
+        el('span', { class: 'bulk-bar__count', text: bulkCount + ' selected' }),
+        el('button', { class: 'btn btn--sm', type: 'button', dataset: { action: 'bulk-move' } }, ['Move…']),
+        el('button', { class: 'btn btn--sm', type: 'button', dataset: { action: 'bulk-export' } }, ['Export .md']),
+        el('button', { class: 'btn btn--sm btn--danger-ghost', type: 'button', dataset: { action: 'bulk-delete' } }, ['Delete…']),
+        el('button', { class: 'btn btn--sm btn--ghost', type: 'button', dataset: { action: 'bulk-clear' } }, ['Clear']),
       ]));
     }
 
@@ -679,15 +1236,70 @@ window.NoteApp = window.NoteApp || {};
       'aria-label': 'Note title',
       spellcheck: 'false',
     });
-    var textarea = el('textarea', {
+    // One quiet row of formatting commands between the title and the body. Letters,
+    // not glyphs: at 12px a "B" and an "I" are legible where a stroked path would be
+    // a smudge, and the highlight button wears the yellow it applies. Every command
+    // is a data-action the delegated listener owns; app.js restores the caret first,
+    // because the press itself moves focus out of the body.
+    var fmtBar = el('div', { class: 'fmt-bar', role: 'toolbar', 'aria-label': 'Text formatting' }, [
+      el('button', { class: 'fmt-btn fmt-btn--b', type: 'button', dataset: { action: 'fmt-bold' }, title: 'Bold (Ctrl+B)', 'aria-label': 'Bold' }, ['B']),
+      el('button', { class: 'fmt-btn fmt-btn--i', type: 'button', dataset: { action: 'fmt-italic' }, title: 'Italic (Ctrl+I)', 'aria-label': 'Italic' }, ['I']),
+      el('button', { class: 'fmt-btn fmt-btn--h', type: 'button', dataset: { action: 'fmt-highlight' }, title: 'Highlight yellow', 'aria-label': 'Highlight yellow' }, ['H']),
+      el('button', { class: 'fmt-btn', type: 'button', dataset: { action: 'fmt-bullets' }, title: 'Bullet list', 'aria-label': 'Bullet list' }, ['\u2630']),
+      el('button', { class: 'fmt-btn', type: 'button', dataset: { action: 'fmt-checkbox' }, title: 'Insert checkbox', 'aria-label': 'Insert checkbox' }, ['\u2611']),
+      el('button', { class: 'fmt-btn fmt-btn--clear', type: 'button', dataset: { action: 'fmt-clear' }, title: 'Clear formatting', 'aria-label': 'Clear formatting' }, ['A']),
+      el('button', { class: 'fmt-btn', type: 'button', dataset: { action: 'save-as-template' }, title: 'Save as template', 'aria-label': 'Save as template' }, ['T']),
+    ]);
+
+    // The body is a rich editor, so formatting renders in place. Stored HTML is
+    // sanitized on the way in; legacy plain-text bodies are escaped with their line
+    // breaks kept. The .value shim keeps plain-text readers working (test drivers
+    // included): get returns the rendered text, set replaces the contents as text.
+    var body = el('div', {
       id: 'note-body',
       class: 'editor__body',
-      placeholder: 'Start writing\u2026',
+      contenteditable: 'true',
+      role: 'textbox',
       'aria-label': 'Note content',
+      'aria-multiline': 'true',
       spellcheck: 'true',
+      dataset: { placeholder: 'Start writing\u2026' },
     });
-    // .value is used rather than markup so note text is never parsed as HTML.
-    textarea.value = ctx.note.content || '';
+    var rawBody = ctx.note.content || '';
+    body.innerHTML = util.isRichHtml(rawBody)
+      ? util.sanitizeRichHtml(rawBody)
+      : (rawBody ? util.escapeHtml(rawBody).replace(/\n/g, '<br>') : '');
+    // Links read as pills, not brackets: hand-typed or imported `[[Title]]` runs
+    // become pill widgets, and pills without a note behind them wear the missing
+    // style the Links chips below already use.
+    util.linkifyWikiText(body);
+    hydrateNoteImages(body);
+    if (ctx.links && ctx.links.outgoing) {
+      var resolved = {};
+      ctx.links.outgoing.forEach(function (link) {
+        if (link.noteId) resolved[link.norm] = true;
+      });
+      Array.prototype.forEach.call(body.querySelectorAll('.wikilink'), function (pill) {
+        // Stored before pills carried the hover remove: normalise on every render.
+        util.ensureWikiPillX(pill);
+        // The textContent fallback sheds the hover remove's own glyph.
+        var title = pill.getAttribute('data-title')
+          || String(pill.textContent || '').replace(/\u00d7$/, '');
+        var norm = util.normTitle(title);
+        if (!resolved[norm]) pill.classList.add('is-missing');
+        // Stored before pills carried menu metadata: normalise on every render.
+        pill.setAttribute('data-ctx', 'wikilink');
+        pill.setAttribute('data-ctx-label', title);
+        pill.setAttribute('data-resolved', resolved[norm] ? 'true' : 'false');
+      });
+    }
+    try {
+      Object.defineProperty(body, 'value', {
+        configurable: true,
+        get: function () { return body.innerText; },
+        set: function (v) { body.textContent = String(v === null || v === undefined ? '' : v); },
+      });
+    } catch (e) { /* readers fall back to innerText */ }
 
     var meta = el('div', { class: 'editor__meta' }, [
       el('span', { id: 'note-status', class: 'editor__status', text: 'Saved' }),
@@ -707,8 +1319,136 @@ window.NoteApp = window.NoteApp || {};
       ]),
     ]);
 
+    var dejavuChip = ctx.dejavu && ctx.dejavu.matches && ctx.dejavu.matches.length
+      ? renderDejavuChip(ctx.dejavu)
+      : null;
+
     host.textContent = '';
-    host.appendChild(el('div', { class: 'editor' }, [titleInput, textarea, toolbar]));
+    host.appendChild(el('div', { class: 'editor' }, [
+      titleInput, dejavuChip, fmtBar, body, toolbar, renderNoteLinks(ctx.links),
+    ]));
+  }
+
+  /**
+   * The wiki graph under the editor: outgoing `[[links]]` and the notes linking
+   * back here. Both render as chips in the breadcrumb's own language (accent text
+   * that navigates). A link with no note behind it offers to create one — that is
+   * the whole point of writing a link first. Null when there is nothing to show,
+   * so a linkless note gains no new chrome at all.
+   *
+   * ctx: { outgoing: [{ raw, norm, noteId|null }], backlinks: [{ id, title }] }
+   */
+  function renderNoteLinks(links) {
+    if (!links) return null;
+    var outgoing = links.outgoing || [];
+    var backlinks = links.backlinks || [];
+    if (!outgoing.length && !backlinks.length) return null;
+    var wrap = el('div', { class: 'links' });
+    if (outgoing.length) {
+      wrap.appendChild(el('h3', { class: 'links__head' }, [
+        el('span', { text: 'Links' }),
+        el('span', { class: 'pane-section__count', text: String(outgoing.length) }),
+      ]));
+      var out = el('div', { class: 'links__row' });
+      // Every outgoing chip carries its own remove control: a link is body text,
+      // and editing the body is the only other way to delete one. The id on both
+      // actions carries the percent-encoded title, because a title may contain
+      // anything — including the ':' other actions split their ids on.
+      outgoing.forEach(function (link) {
+        var chip = link.noteId
+          ? el('button', {
+              class: 'link-chip', type: 'button',
+              dataset: { action: 'open-note', id: link.noteId, ctx: 'note', ctxLabel: link.raw },
+              title: 'Open \u201c' + link.raw + '\u201d',
+              text: link.raw,
+            })
+          : el('button', {
+              class: 'link-chip link-chip--missing', type: 'button',
+              dataset: { action: 'create-linked-note', id: encodeURIComponent(link.raw) },
+              title: 'Create note \u201c' + link.raw + '\u201d',
+            }, ['+\u2009', link.raw]);
+        out.appendChild(el('span', { class: 'link-chip-wrap' }, [
+          chip,
+          el('button', {
+            class: 'link-x', type: 'button',
+            dataset: { action: 'remove-outgoing-link', id: encodeURIComponent(link.raw) },
+            'aria-label': 'Remove link to ' + link.raw,
+            title: 'Remove link to \u201c' + link.raw + '\u201d (keeps the note)',
+            text: '\u00d7',
+          }),
+        ]));
+      });
+      wrap.appendChild(out);
+    }
+    if (backlinks.length) {
+      wrap.appendChild(el('h3', { class: 'links__head' }, [
+        el('span', { text: 'Linked from' }),
+        el('span', { class: 'pane-section__count', text: String(backlinks.length) }),
+      ]));
+      var back = el('div', { class: 'links__row' });
+      backlinks.forEach(function (hit) {
+        back.appendChild(el('button', {
+          class: 'link-chip', type: 'button',
+          dataset: { action: 'open-note', id: hit.id, ctx: 'note', ctxLabel: hit.title },
+          title: 'Open \u201c' + hit.title + '\u201d',
+          text: hit.title,
+        }));
+      });
+      wrap.appendChild(back);
+    }
+    return wrap;
+  }
+
+  /**
+   * The Deja-vu chip: a silent row under the editor title naming the suspected
+   * duplicate(s). Open jumps to the match; "Not a duplicate" records a persistent
+   * ignore. Pure rendering — app.js owns the check and the ignore store.
+   */
+  function renderDejavuChip(dejavu) {
+    var matches = (dejavu && dejavu.matches) || [];
+    if (!matches.length) return null;
+    var wrap = el('div', { class: 'dejavu', role: 'status' }, [
+      el('span', { class: 'dejavu__label', text: matches.length === 1 ? 'Possible duplicate: ' : 'Possible duplicates: ' }),
+    ]);
+    matches.forEach(function (match) {
+      wrap.appendChild(el('button', {
+        class: 'link-chip', type: 'button',
+        dataset: { action: 'dejavu-open', id: match.id, ctx: 'note', ctxLabel: match.title },
+        title: 'Open \u201c' + match.title + '\u201d',
+        text: match.title,
+      }));
+      wrap.appendChild(el('button', {
+        class: 'btn btn--sm btn--ghost', type: 'button',
+        dataset: { action: 'dejavu-dismiss', id: match.id },
+        title: 'Not a duplicate of \u201c' + match.title + '\u201d \u2014 never suggest this again',
+        text: 'Not a duplicate',
+      }));
+    });
+    return wrap;
+  }
+
+  /**
+   * The `[[` completion list: a floating card of title matches. Pure list — app.js
+   * owns position, keyboard walk and what a pick does, exactly like the menus.
+   */
+  function renderLinkSuggest(items, activeIdx) {
+    var list = el('div', {
+      class: 'link-suggest', role: 'listbox', 'aria-label': 'Link to note',
+    });
+    if (!items.length) {
+      list.appendChild(el('div', { class: 'link-suggest__empty', text: 'No matching note \u2014 keep typing' }));
+    }
+    items.forEach(function (item, i) {
+      list.appendChild(el('button', {
+        class: 'link-suggest__item' + (i === activeIdx ? ' is-active' : ''),
+        type: 'button',
+        role: 'option',
+        'aria-selected': i === activeIdx ? 'true' : 'false',
+        dataset: { action: 'link-suggest-pick', id: String(i) },
+        title: item.title,
+      }, [el('span', { class: 'link-suggest__title', text: item.title })]));
+    });
+    return list;
   }
 
   // ------------------------------------------------------------------ file preview
@@ -724,7 +1464,10 @@ window.NoteApp = window.NoteApp || {};
       }));
     } else if (ctx.previewUrl && util.isImageMime(file.mime_type)) {
       // Reassigned to the object URL generated by app.js from the stored BLOB.
-      body.appendChild(el('img', { class: 'preview__image', src: ctx.previewUrl, alt: file.filename }));
+      // Not draggable: dragging the preview out and dropping it back would re-upload
+      // the same bytes as a new file, and a drag ghost is the wrong affordance for an
+      // image that lives here. Download stays the way out.
+      body.appendChild(el('img', { class: 'preview__image', src: ctx.previewUrl, alt: file.filename, draggable: 'false' }));
     } else {
       body.appendChild(el('div', { class: 'preview__placeholder' }, [
         el('span', { class: 'preview__glyph', text: util.fileGlyph(file.filename, file.mime_type) }),
@@ -738,6 +1481,7 @@ window.NoteApp = window.NoteApp || {};
     var actions = el('div', { class: 'preview__actions' }, ctx.locked
       ? [
         el('button', { class: 'btn btn--ghost', type: 'button', dataset: { action: 'rename-file', id: file.id } }, ['Rename']),
+        el('button', { class: 'btn btn--ghost', type: 'button', dataset: { action: 'move-file', id: file.id } }, ['Move']),
         el('button', { class: 'btn btn--danger-ghost', type: 'button', dataset: { action: 'delete-file', id: file.id } }, ['Delete']),
       ]
       : [
@@ -746,6 +1490,7 @@ window.NoteApp = window.NoteApp || {};
         // from file:// documents, so app.js falls back to downloading when that fails.
         el('button', { class: 'btn', type: 'button', dataset: { action: 'open-file-tab', id: file.id } }, ['Open in new tab']),
         el('button', { class: 'btn btn--ghost', type: 'button', dataset: { action: 'rename-file', id: file.id } }, ['Rename']),
+        el('button', { class: 'btn btn--ghost', type: 'button', dataset: { action: 'move-file', id: file.id } }, ['Move']),
         el('button', { class: 'btn btn--danger-ghost', type: 'button', dataset: { action: 'delete-file', id: file.id } }, ['Delete']),
       ]);
 
@@ -952,7 +1697,7 @@ window.NoteApp = window.NoteApp || {};
     }
   }
 
-  /** Drive the drop-target highlight class from anywhere. */
+  /** Drive the body-level file-drag flag (dropzone overlay) from anywhere. */
   function setDragActive(active) {
     document.body.classList.toggle('is-dragging', !!active);
   }
@@ -1353,6 +2098,13 @@ window.NoteApp = window.NoteApp || {};
         class: 'btn btn--rail', type: 'button', dataset: { action: 'upload-file' },
         title: 'Attach files to this workspace',
       }, [App.ui.icon('upload', 13.5), 'Upload']));
+      // The third create action sits in the same row rather than on a line of its own:
+      // a full-width button under two half-width ones read as a different kind of thing,
+      // and the row is where a create action belongs.
+      ctx.actions.appendChild(el('button', {
+        class: 'btn btn--rail', type: 'button', dataset: { action: 'new-from-template' },
+        title: 'New note from a template',
+      }, [App.ui.icon('copy', 13.5), 'Template']));
     }
 
     var storage = ctx.storage;
@@ -1456,6 +2208,7 @@ window.NoteApp = window.NoteApp || {};
         { label: 'Open in a new tab', icon: 'external', onclick: cfg.on('open-file-tab') },
         { sep: true },
         { label: 'Rename\u2026', icon: 'pencil', shortcut: 'F2', onclick: cfg.on('rename-file') },
+        { label: 'Move to another folder\u2026', icon: 'layers', onclick: cfg.on('move-file') },
       ];
       reorderMenuItems(cfg.reorder).forEach(function (group) {
         group.forEach(function (item) { items.push(item); });
@@ -1512,6 +2265,7 @@ window.NoteApp = window.NoteApp || {};
 
     var items = [
       { label: 'Rename\u2026', icon: 'pencil', shortcut: 'F2', onclick: cfg.on('rename-note') },
+      { label: 'Move to another folder\u2026', icon: 'layers', onclick: cfg.on('move-note') },
       { label: 'Copy the note text', icon: 'copy', onclick: cfg.on('copy-note') },
     ];
     reorderMenuItems(cfg.reorder).forEach(function (group) {
@@ -1611,6 +2365,19 @@ function renderTopbarViews(host, ctx) {
     el('span', { class: 'view-btn__label', text: 'Tasks' }),
     el('span', { class: 'tree__badge', text: String(ctx.open) }),
   ]));
+
+  // Spawner is the one other place the workspace can be read from, so it sits beside the
+  // task list rather than in the rail, where the rows are what the notebook holds.
+  host.appendChild(el('button', {
+    class: 'view-btn' + (ctx.view === 'spawner' ? ' is-active' : ''),
+    type: 'button',
+    dataset: { action: 'view-spawner' },
+    'aria-label': 'Spawner, ask the local model about this notebook',
+    title: 'Spawner: talk to the local model about what is here',
+  }, [
+    glyph('layers', 'view-btn__glyph'),
+    el('span', { class: 'view-btn__label', text: 'Spawner' }),
+  ]));
 }
 
 /**
@@ -1695,6 +2462,21 @@ function taskRow(task, ctx) {
     meta.appendChild(el('span', {
       class: 'task-chip task-chip--' + bucket,
       text: dueLabel(task, ctx.bounds),
+    }));
+  }
+  // A repeat rule is the one fact about a task that is invisible everywhere else: it only
+  // shows itself the moment the task is ticked, so the row says it outright.
+  if (task.recurrence) {
+    meta.appendChild(el('span', {
+      class: 'task-chip',
+      title: 'Repeating task',
+      text: recurrenceLabel(task.recurrence),
+    }));
+  }
+  if (task.remind_at) {
+    meta.appendChild(el('span', {
+      class: 'task-chip task-chip--reminder' + (task.reminded_at ? ' is-fired' : ''),
+      text: reminderLabel(task),
     }));
   }
   // A task can outlive its project: a deleted folder is stamped rather than erased, so a
@@ -1897,7 +2679,14 @@ function renderTasks(host, ctx) {
 App.ui = Object.assign(App.ui || {}, {
     renderWorkspaceSelect: renderWorkspaceSelect,
     onWorkspaceChange: onWorkspaceChange,
+    onWorkspacePickerOpen: onWorkspacePickerOpen,
+    renderWorkspacePanel: renderWorkspacePanel,
+    renderMovePanel: renderMovePanel,
     renderTree: renderTree,
+    renderTabs: renderTabs,
+    renderNoteLinks: renderNoteLinks,
+    renderDejavuChip: renderDejavuChip,
+    renderLinkSuggest: renderLinkSuggest,
     renderFolderView: renderFolderView,
     renderTasks: renderTasks,
     renderTopbarViews: renderTopbarViews,

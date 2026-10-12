@@ -59,6 +59,10 @@ window.NoteApp = window.NoteApp || {};
     note: ['M6 4.5h7.5L18.5 9.5V19a0.5 0.5 0 0 1-0.5 0.5H6a0.5 0.5 0 0 1-0.5-0.5V5a0.5 0.5 0 0 1 0.5-0.5Z', 'M13 4.5V10h5.5', 'M8.5 13.5h6'],
     file: ['M13.5 3.5H7a1 1 0 0 0-1 1v15a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V8Z', 'M13.5 3.5V8H18'],
     layers: ['M12 3.5 3.5 8.5 12 13.5l8.5-5Z', 'M3.5 13 12 18l8.5-5'],
+    copy: [
+      'M9.5 9.5h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z',
+      'M5.5 15.5H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8.5a2 2 0 0 1 2 2v.5',
+    ],
     warning: ['M12 4.5 21 19.5H3Z', 'M12 10.5v4.5', 'M12 17.6h.01'],
     info: ['M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17Z', 'M12 11.5v5', 'M12 8.2h.01'],
     database: ['M12 3.5c4.4 0 8 1.2 8 2.6S16.4 8.7 12 8.7 4 7.5 4 6.1 7.6 3.5 12 3.5Z', 'M4 6.1v5.8c0 1.4 3.6 2.6 8 2.6s8-1.2 8-2.6V6.1', 'M4 11.9v6c0 1.4 3.6 2.6 8 2.6s8-1.2 8-2.6v-6'],
@@ -843,6 +847,10 @@ window.NoteApp = window.NoteApp || {};
     if (c.mixed) input.indeterminate = true;
     if (c.name) input.name = c.name;
     if (c.value !== undefined) input.value = String(c.value);
+    // With the visible label hidden, the wrapping <label> has no text at all and
+    // the control would be announced unnamed. The same string becomes its
+    // accessible name instead of being discarded.
+    if (c.hideLabel && c.label) input.setAttribute('aria-label', c.label);
 
     if (typeof c.onChange === 'function') {
       input.addEventListener('change', function () { c.onChange(input.checked, input); });

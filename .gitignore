@@ -5,7 +5,10 @@ tools/shots/
 # Generated single-file app. Rebuild with `node tools/build.js`.
 # Kept out of version control because it embeds a 640 KB base64 WASM binary,
 # which would make every source diff unreviewable.
-index.html
+# Anchored to the repo root on purpose: an unanchored `index.html` also matches
+# src/index.html, which is the build's INPUT — ignoring it left the markup shell
+# out of history entirely, so a fresh clone could not run the build.
+/index.html
 
 # Timestamped local snapshot of the app: kept on disk, not in history.
 _backup_*/
