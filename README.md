@@ -386,6 +386,9 @@ both migrations in order.
   Two paths still walk payload bytes: **Settings then Export** inlines every payload into the
   exported `.db`, which is what makes a backup complete, and a vault conversion moves payloads
   in and out of the database once per toggle.
+- A database that once held payloads inline keeps their pages free rather than gone, so the
+  sweep reads the freelist on load and vacuums whenever a meaningful amount is free. A notebook
+  that grew under the old layout returns to its metadata size on the next load.
 - Uploading a file the folder already holds is detected by comparing the size plus the first and
   last 64 KB, not every byte. Files that agree on all three are reported as duplicates, which is
   the intended reading of "you already uploaded this".

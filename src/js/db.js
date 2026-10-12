@@ -603,6 +603,18 @@ var vaultBusy = false;
     });
   }
 
+  function freeBytes() {
+    try {
+      var free = db.exec('PRAGMA freelist_count');
+      var size = db.exec('PRAGMA page_size');
+      var count = free && free[0] && free[0].values[0] ? Number(free[0].values[0][0]) : 0;
+      var page = size && size[0] && size[0].values[0] ? Number(size[0].values[0][0]) : 0;
+      return count * page;
+    } catch (err) {
+      return 0;
+    }
+  }
+
   function sweepInlineBlobs() {
     var rows = query('SELECT id, blob_data FROM files WHERE blob_data IS NOT NULL');
     var moved = 0;
@@ -618,7 +630,7 @@ var vaultBusy = false;
     }).then(function () {
       return dropOrphanBlobs();
     }).then(function () {
-      if (!moved) return moved;
+      if (!moved && freeBytes() < 262144) return moved;
       try { rawRun('VACUUM'); } catch (err) {  }
       return App.storage.save(db.export()).then(function () { return moved; });
     });
@@ -1640,6 +1652,14 @@ var vaultBusy = false;
       }, function (err) {
         sweeping = false;
         throw err;
+      });
+    },
+
+    reclaim: function () {
+      var before = db.export().length;
+      var freed = freeBytes();
+      return API.sweep().then(function (moved) {
+        return { before: before, after: db.export().length, freed: freed, moved: moved };
       });
     },
 
