@@ -1626,7 +1626,7 @@ var vaultBusy = false;
       var chains = API.folderChains(workspaceId);
       var out = {};
       Object.keys(chains).forEach(function (id) {
-        out[id] = chains[id].map(function (step) { return step.name; }).join(' / ');
+        out[id] = chains[id].map(function (step) { return step.name; }).join(' > ');
       });
       return out;
     },

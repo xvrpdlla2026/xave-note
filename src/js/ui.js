@@ -792,7 +792,7 @@ window.NoteApp = window.NoteApp || {};
     var heading = ctx.kind === 'all' ? 'All notes' : ctx.folderName;
     var subtitle = ctx.kind === 'all'
       ? 'Everything in ' + ctx.workspaceName
-      : (ctx.path && ctx.path.indexOf(' / ') !== -1 ? ctx.path : 'Folder');
+      : (ctx.path && ctx.path.indexOf(' > ') !== -1 ? ctx.path : 'Folder');
 
     var viewToggle = App.ui.radioGroup({
       name: 'pane-view',
@@ -1002,7 +1002,7 @@ window.NoteApp = window.NoteApp || {};
     var frag = document.createDocumentFragment();
     var steps = chain || [];
     function separator() {
-      return el('span', { class: 'crumb__sep', text: ' / ' });
+      return el('span', { class: 'crumb__sep', text: ' > ' });
     }
     steps.forEach(function (step, index) {
       if (index) frag.appendChild(separator());
@@ -1720,7 +1720,7 @@ window.NoteApp = window.NoteApp || {};
       var inside = ctx.folderCounts ? ctx.folderCounts[item.id] : null;
       meta.push(el('span', { text: inside ? inside + ' item' + (inside === 1 ? '' : 's') + ' inside' : 'empty folder' }));
     } else if (origin && ctx.cascadeIds && ctx.cascadeIds.indexOf(item.id) !== -1) {
-      meta.push(el('span', { text: 'folder \u201c' + origin.split(' / ').pop() + '\u201d also deleted' }));
+      meta.push(el('span', { text: 'folder \u201c' + origin.split(' > ').pop() + '\u201d also deleted' }));
     } else if (origin) {
       meta.push(el('span', { text: 'from ' + origin }));
     }
