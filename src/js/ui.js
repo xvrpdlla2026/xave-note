@@ -2366,18 +2366,6 @@ function renderTopbarViews(host, ctx) {
     el('span', { class: 'tree__badge', text: String(ctx.open) }),
   ]));
 
-  // Spawner is the one other place the workspace can be read from, so it sits beside the
-  // task list rather than in the rail, where the rows are what the notebook holds.
-  host.appendChild(el('button', {
-    class: 'view-btn' + (ctx.view === 'spawner' ? ' is-active' : ''),
-    type: 'button',
-    dataset: { action: 'view-spawner' },
-    'aria-label': 'Spawner, ask the local model about this notebook',
-    title: 'Spawner: talk to the local model about what is here',
-  }, [
-    glyph('layers', 'view-btn__glyph'),
-    el('span', { class: 'view-btn__label', text: 'Spawner' }),
-  ]));
 }
 
 /**

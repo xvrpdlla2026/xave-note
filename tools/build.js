@@ -30,7 +30,7 @@ const SQLJS_VERSION = '1.10.3';
 const CDN = `https://cdnjs.cloudflare.com/ajax/libs/sql.js/${SQLJS_VERSION}`;
 
 /** Script order matters: each file attaches to window.NoteApp in dependency order. */
-const SCRIPTS = ['js/util.js', 'js/trigram.js', 'js/storage.js', 'js/crypto.js', 'js/db.js', 'js/components.js', 'js/ui.js', 'js/spawner.js', 'js/app.js'];
+const SCRIPTS = ['js/util.js', 'js/trigram.js', 'js/storage.js', 'js/crypto.js', 'js/db.js', 'js/components.js', 'js/ui.js', 'js/app.js'];
 
 const read = (p) => fs.readFileSync(p, 'utf8');
 
@@ -84,7 +84,7 @@ function build() {
     '<!--',
     '  Local-first note taking app — single-file build.',
     '  GENERATED FILE: edit the sources in src/ and run `node tools/build.js`.',
-    '  Bundle contents: style.css + js/{util,trigram,storage,crypto,db,components,ui,spawner,app}.js + vendored sql.js engine.',
+    '  Bundle contents: style.css + js/{util,trigram,storage,crypto,db,components,ui,app}.js + vendored sql.js engine.',
     '-->',
     html
       .replace('/*__CSS__*/', () => css)

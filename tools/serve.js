@@ -5,10 +5,8 @@
  *   node tools/serve.js [--port 8181] [--no-open]
  *
  * The app itself needs no server: index.html inlines its engine and its styles, so a
- * double click runs the whole notebook. Spawner does need one. A page opened from a file:
- * address sends "Origin: null", Ollama rejects that origin, and the only server side way
- * to accept it is to allow every origin. Served over http://127.0.0.1 the origin is one
- * Ollama already trusts, so the model is reachable and nothing had to be widened.
+ * double click runs the whole notebook. It is here for the installable-app files: a page
+ * opened from a file: address has no origin to register a worker against.
  *
  * Standard library only. It binds to the loopback interface and serves files from this
  * folder, so the only thing reachable from the address is the app itself.

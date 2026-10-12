@@ -1496,18 +1496,6 @@ window.NoteApp = window.NoteApp || {};
       return;
     }
 
-    // Spawner is a view of the whole notebook rather than a place inside it, the same way
-    // the task list is. It takes the pane and leaves the tree selection alone, so leaving it
-    // puts the reader back on the note or folder they were looking at.
-    if (state.view === 'spawner') {
-      App.spawner.render(dom.main, {
-        workspaceId: state.workspaceId,
-        activeNoteId: state.activeNoteId,
-        render: render,
-      });
-      return;
-    }
-
     if (state.activeNoteId) {
       var note = App.db.getNote(state.activeNoteId);
       if (note) {
@@ -1711,13 +1699,6 @@ window.NoteApp = window.NoteApp || {};
       state.taskScrollReset = true;
       state.railFocus = true;
     }
-    render();
-  }
-
-  /** Show the Spawner, or hand the pane back to the notebook. */
-  function showSpawner(on) {
-    flushPendingSave();
-    state.view = on ? 'spawner' : 'notes';
     render();
   }
 
@@ -4472,7 +4453,6 @@ window.NoteApp = window.NoteApp || {};
     // Pressing the rail's task row again hands the pane back to the notebook. A view that
     // could only be entered and never left would make the rail row a one-way door.
     'view-tasks': function () { showTasks(state.view !== 'tasks'); },
-    'view-spawner': function () { showSpawner(state.view !== 'spawner'); },
     // The Add button beside the quick-add field: the same filing, reached by hand.
     'add-task': function () { addTaskFromQuickAdd(); },
     'task-edit': function (id) { editTask(id); },
