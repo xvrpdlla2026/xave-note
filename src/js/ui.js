@@ -846,8 +846,8 @@ window.NoteApp = window.NoteApp || {};
       return el('div', { class: 'card-grid card-grid--' + section + (list ? ' card-grid--list' : '') });
     }
 
-    if (list && ((ctx.subfolders || []).length || ctx.notes.length || ctx.files.length)) {
-      frag.appendChild(el('div', { class: 'card-grid card-grid--list' }, [
+    if ((ctx.subfolders || []).length || ctx.notes.length || ctx.files.length) {
+      frag.appendChild(el('div', { class: 'card-grid' + (list ? ' card-grid--list' : '') }, [
         el('div', { class: 'card-list__head', 'aria-hidden': 'true' }, [
           el('div', { class: 'card card--head' }, [
             el('span', { class: 'card-list__cell', text: '' }),
@@ -883,7 +883,6 @@ window.NoteApp = window.NoteApp || {};
           class: 'card-wrap' + (isChecked ? ' is-selected' : ''),
           dataset: { noteId: note.id },
         }, [
-          el('span', { class: 'card__pad', 'aria-hidden': 'true' }),
           el('button', {
             class: 'card card--note' + (note.id === ctx.activeNoteId ? ' is-active' : '')
               + (isFocused(ctx, 'note', note.id) ? ' is-focused' : ''),
@@ -893,6 +892,7 @@ window.NoteApp = window.NoteApp || {};
               ctxLabel: note.title && note.title.trim() ? note.title : 'Untitled note',
             },
           }, [
+            el('span', { class: 'card__glyph' }, [App.ui.icon('note')]),
             el('span', { class: 'card__title', text: note.title && note.title.trim() ? note.title : 'Untitled note' }),
             el('span', { class: 'card__gap', 'aria-hidden': 'true' }),
             el('span', { class: 'card__meta', text: util.formatWhen(note.updated_at) }),
