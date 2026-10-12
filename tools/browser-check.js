@@ -283,14 +283,11 @@ async function withBrowser(fn) {
 /** Export the page's live in-memory database to disk (the "Export .db" path). */
 async function writeExportDump(cdp, target) {
   const live = await cdp.send('Runtime.evaluate', {
-    expression: `(function(){
-      try {
-        var b = window.NoteApp.db.exportBytes();
-        var s = '';
-        for (var i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, Math.min(i + 0x8000, b.length)));
-        return 'DUMP:' + btoa(s);
-      } catch (e) { return 'ERR ' + e.message; }
-    })()`,
+    expression: `window.NoteApp.db.exportSnapshot().then(function (b) {
+      var s = '';
+      for (var i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, Math.min(i + 0x8000, b.length)));
+      return 'DUMP:' + btoa(s);
+    }, function (e) { return 'ERR ' + e.message; })`,
     awaitPromise: true,
     returnByValue: true,
   });

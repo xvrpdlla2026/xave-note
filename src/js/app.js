@@ -42,7 +42,6 @@ window.NoteApp = window.NoteApp || {};
 
   var dom = {};            
   var uploadQueue = Promise.resolve(); 
-  var currentPreviewUrl = null;        
   var trashPanel = null;               
   var wsPickerPanel = null;            
   var movePanel = null;                
@@ -1226,7 +1225,6 @@ window.NoteApp = window.NoteApp || {};
 
   function renderMainPane(treeModel) {
     App.ui.revokeObjectUrls();
-    currentPreviewUrl = null;
 
     if (state.view === 'tasks') {
       renderTasksPane();
@@ -1256,22 +1254,10 @@ window.NoteApp = window.NoteApp || {};
       var meta = App.db.getFileMeta(state.activeFileId);
       if (meta) {
         state.currentFile = meta;
-        var previewUrl = null;
         var fileLocked = App.db.locked();
-        if (!fileLocked && util.isImageMime(meta.mime_type)) {
-          try {
-            var resolved = App.db.getFileBlob(meta.id);
-            if (resolved) {
-              previewUrl = App.ui.makeObjectUrl(resolved.blob);
-              currentPreviewUrl = previewUrl;
-            }
-          } catch (err) {
-            util.toast('Preview failed: ' + err.message, 'error');
-          }
-        }
         App.ui.renderFilePreview(dom.main, {
           file: meta,
-          previewUrl: previewUrl,
+          previewLoader: fileLocked ? null : function () { return App.db.getFileBlob(meta.id); },
           locked: fileLocked,
           chain: meta.folder_id ? App.db.folderChains(state.workspaceId)[meta.folder_id] : [],
         });
@@ -2539,26 +2525,14 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function downloadFile(id) {
-    var resolved;
-    try {
-      resolved = App.db.getFileBlob(id);
-    } catch (err) {
+    App.db.getFileBlob(id).then(function (resolved) {
+      if (resolved) writeBlobDownload(resolved);
+    }, function (err) {
       util.toast('Could not read the file: ' + err.message, 'error');
-      return;
-    }
-    if (!resolved) return;
-    writeBlobDownload(resolved);
+    });
   }
 
   function openFileInTab(id) {
-    var resolved;
-    try {
-      resolved = App.db.getFileBlob(id);
-    } catch (err) {
-      util.toast('Could not read the file: ' + err.message, 'error');
-      return;
-    }
-    if (!resolved) return;
     var openResolved = function (target) {
       var url = URL.createObjectURL(target.blob);
       var win = null;
@@ -2575,7 +2549,11 @@ window.NoteApp = window.NoteApp || {};
       }
       setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
     };
-    openResolved(resolved);
+    App.db.getFileBlob(id).then(function (resolved) {
+      if (resolved) openResolved(resolved);
+    }, function (err) {
+      util.toast('Could not read the file: ' + err.message, 'error');
+    });
   }
 
   function renameFile(id) {
@@ -2625,30 +2603,47 @@ window.NoteApp = window.NoteApp || {};
 
   function moveFile(id) { openMovePanel('file', id); }
 
-  function duplicateAttachment(workspaceId, folderId, name, bytes) {
+  function attachmentProbe(blob) {
+    var head = Math.min(65536, blob.size);
+    return Promise.all([
+      blob.slice(0, head).arrayBuffer(),
+      blob.slice(Math.max(0, blob.size - head)).arrayBuffer(),
+    ]);
+  }
+
+  function sameAttachment(ours, theirs) {
+    for (var i = 0; i < ours.length; i++) {
+      var a = new Uint8Array(ours[i]);
+      var b = new Uint8Array(theirs[i]);
+      if (a.length !== b.length) return false;
+      for (var j = 0; j < a.length; j++) {
+        if (a[j] !== b[j]) return false;
+      }
+    }
+    return true;
+  }
+
+  function duplicateAttachment(workspaceId, folderId, name, payload) {
+    var file = payload && typeof payload.slice === 'function' ? payload : new Blob([payload]);
+    var size = file.size;
     var rows = App.db.listFilesIn(workspaceId, folderId || null) || [];
     var same = rows.filter(function (row) {
-      return row.filename === name && Number(row.size) === bytes.length;
+      return row.filename === name && Number(row.size) === size;
     });
+    if (!same.length) return Promise.resolve(null);
+    var mine = attachmentProbe(file);
     var chain = Promise.resolve(null);
     same.forEach(function (row) {
       chain = chain.then(function (found) {
         if (found) return found;
-        var stored = null;
-        try {
-          stored = App.db.getFileBlob(row.id);
-        } catch (e) {
-          return null;
-        }
-        if (!stored || !stored.blob || typeof stored.blob.arrayBuffer !== 'function') return null;
-        return stored.blob.arrayBuffer().then(function (buffer) {
-          var other = new Uint8Array(buffer);
-          if (other.length !== bytes.length) return null;
-          for (var i = 0; i < other.length; i++) {
-            if (other[i] !== bytes[i]) return null;
-          }
-          return row;
-        }).catch(function () {
+        return App.db.getFileBlob(row.id).then(function (stored) {
+          if (!stored || !stored.blob || stored.blob.size !== size) return null;
+          return attachmentProbe(stored.blob).then(function (theirs) {
+            return mine.then(function (ours) {
+              return sameAttachment(ours, theirs) ? row : null;
+            });
+          });
+        }, function () {
           return null;
         });
       });
@@ -2669,24 +2664,21 @@ window.NoteApp = window.NoteApp || {};
 
     files.forEach(function (file) {
       uploadQueue = uploadQueue.then(function () {
-        return file.arrayBuffer().then(function (buffer) {
-          var bytes = new Uint8Array(buffer);
-          return duplicateAttachment(state.workspaceId, folderId, file.name, bytes).then(function (already) {
-            if (already) {
-              repeated++;
-              if (!repeatedName) repeatedName = file.name;
-              return null;
-            }
-            return App.db.addFile(
-              state.workspaceId,
-              folderId || null,
-              file.name,
-              file.type || guessMime(file.name),
-              bytes
-            ).then(function () {
-              added++;
-              if (!addedName) addedName = file.name;
-            });
+        return duplicateAttachment(state.workspaceId, folderId, file.name, file).then(function (already) {
+          if (already) {
+            repeated++;
+            if (!repeatedName) repeatedName = file.name;
+            return null;
+          }
+          return App.db.addFile(
+            state.workspaceId,
+            folderId || null,
+            file.name,
+            file.type || guessMime(file.name),
+            file
+          ).then(function () {
+            added++;
+            if (!addedName) addedName = file.name;
           });
         });
       }).then(function () {
@@ -2909,14 +2901,11 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function exportDatabase() {
-    var bytes;
-    try {
-      bytes = App.db.exportBytes();
-    } catch (err) {
+    App.db.exportSnapshot().then(function (bytes) {
+      downloadDatabase(bytes);
+    }, function (err) {
       util.toast('Export failed: ' + err.message, 'error');
-      return;
-    }
-    downloadDatabase(bytes);
+    });
   }
 
   function downloadDatabase(bytes) {
@@ -4901,6 +4890,7 @@ window.NoteApp = window.NoteApp || {};
     bootPromise = App.db.init().then(function (result) {
       bootResult = result;
       state.ready = true;
+      window.setTimeout(function () { App.db.sweep().catch(function () {  }); }, 2500);
       state.workspaceId = result.lastWorkspaceId;
       var asked = App.prefs.get('askedPersistence', false);
       if (!asked) {

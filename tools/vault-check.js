@@ -121,9 +121,10 @@ const DUPLICATE_BODY = 'identical plaintext ' + MARKER_NOTE;
 const FILE_TEXT = 'binary-fixture::' + MARKER_FILE + '::end';
 const FILE_NAME = 'vault-fixture-' + STAMP + '.bin';
 
-/** Count non-overlapping occurrences of a UTF-8 ASCII marker inside the exported bytes. */
-const countBytes = (marker) => `(function(){
-  var bytes = window.NoteApp.db.exportBytes();
+/** Count non-overlapping occurrences of a UTF-8 ASCII marker inside the exported bytes.
+ *  The snapshot export inlines the attachment sidecar, so a payload parked in IndexedDB is
+ *  scanned here too: a scan of the SQLite bytes alone would report the same clean zero. */
+const countBytes = (marker) => `window.NoteApp.db.exportSnapshot().then(function (bytes) {
   var needle = new TextEncoder().encode(${JSON.stringify(marker)});
   var hits = 0;
   outer: for (var i = 0; i + needle.length <= bytes.length; i++) {
@@ -132,7 +133,7 @@ const countBytes = (marker) => `(function(){
     i += needle.length - 1;
   }
   return { hits: hits, size: bytes.length };
-})()`;
+})`;
 
 /** Values the check reads back from the page in one round trip. */
 const STATE = `(function(){
@@ -463,10 +464,11 @@ const clickDialogButton = (label) => `(function(){
 
     // ------------------------------------------------- (d) envelope marker in the column
     log('d.storedContentIsEnvelope', encryptedRead.stored.indexOf('enc:v1:'), 0);
-    const fileStored = await cdp.evaluate(`(function(){
-      var v = window.NoteApp.db.storedFileValue(${JSON.stringify(fixture.fileId)});
-      return { type: typeof v, prefix: typeof v === 'string' ? v.slice(0, 7) : '(bytes)' };
-    })()`);
+    const fileStored = await cdp.evaluate(`window.NoteApp.storage.getBlob(${JSON.stringify(fixture.fileId)}).then(function (stored) {
+      if (!stored) return { type: 'none', prefix: '(none)' };
+      if (stored.type !== 'application/x-noteapp-sealed') return { type: stored.type, prefix: '(bytes)' };
+      return stored.text().then(function (text) { return { type: 'sealed', prefix: text.slice(0, 7) }; });
+    })`);
     info('stored file value', fileStored);
     log('d.storedFileIsEnvelope', fileStored.prefix, 'enc:v1:');
 
@@ -475,9 +477,17 @@ const clickDialogButton = (label) => `(function(){
     // bytes, with the same SQL the accessors run. A lying accessor cannot make this pass — and
     // the title, which is stored in the clear, is read through the same connection, so the
     // reader is proven to be reading the real notes table rather than returning nothing.
+    const snapshotB64 = await cdp.evaluate(`window.NoteApp.db.exportSnapshot().then(function (bytes) {
+      var parts = [];
+      for (var i = 0; i < bytes.length; i += 0x8000) parts.push(String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)));
+      return btoa(parts.join(''));
+    })`);
     const rawTables = await cdp.evaluate(`(function(){
       return initSqlJs().then(function (SQL) {
-        var raw = new SQL.Database(window.NoteApp.db.exportBytes());
+        var bin = atob(${JSON.stringify(snapshotB64)});
+        var bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        var raw = new SQL.Database(bytes);
         function cell(sql, id) {
           var stmt = raw.prepare(sql);
           stmt.bind([id]);
@@ -597,11 +607,9 @@ const clickDialogButton = (label) => `(function(){
     await shot('36-vault-locked', 1440, 900);
 
     // A locked file preview: no bytes, and the pane says why.
-    const lockedFilePane = await cdp.evaluate(`(function(){
-      var App = window.NoteApp;
-      var blob = App.db.getFileBlob(${JSON.stringify(fixture.fileId)});
-      return { blob: blob === null ? null : 'returned', state: App.db.vaultState() };
-    })()`);
+    const lockedFilePane = await cdp.evaluate(`window.NoteApp.db.getFileBlob(${JSON.stringify(fixture.fileId)}).then(function (blob) {
+      return { blob: blob === null ? null : 'returned', state: window.NoteApp.db.vaultState() };
+    })`);
     log('f.getFileBlobReturnsNullWhileLocked', lockedFilePane.blob, null);
     await cdp.evaluate(invokeAction('open-file', fixture.fileId));
     await sleep(700);
@@ -755,9 +763,7 @@ const clickDialogButton = (label) => `(function(){
     log('g.notMarkedLocked', decoded.locked, false);
 
     // ------------------------------------------------------------ (h) file preview works
-    const fileRoundTrip = await cdp.evaluate(`(function(){
-      var App = window.NoteApp;
-      var resolved = App.db.getFileBlob(${JSON.stringify(fixture.fileId)});
+    const fileRoundTrip = await cdp.evaluate(`window.NoteApp.db.getFileBlob(${JSON.stringify(fixture.fileId)}).then(function (resolved) {
       if (!resolved) return { ok: false };
       return resolved.blob.arrayBuffer().then(function (buf) {
         var bytes = new Uint8Array(buf);
@@ -766,7 +772,7 @@ const clickDialogButton = (label) => `(function(){
         for (var i = 0; same && i < bytes.length; i++) { if (bytes[i] !== expected[i]) same = false; }
         return { ok: same, size: bytes.length, expected: expected.length, mime: resolved.mime_type, name: resolved.filename };
       });
-    })()`);
+    })`);
     info('file round trip', fileRoundTrip);
     log('h.fileBytesRoundTripExactly', fileRoundTrip.ok, true);
     log('h.fileSizeUnchanged', fileRoundTrip.size, FILE_TEXT.length);
@@ -953,12 +959,11 @@ const clickDialogButton = (label) => `(function(){
     log('j.fileMarkerBackInRawBytes', restoredFile.hits > 0, true);
     log('j.noEnvelopeMarkerLeftAnywhere', noEnvelopes.hits, 0);
 
-    const readAfterDisable = await cdp.evaluate(`(function(){
+    const readAfterDisable = await cdp.evaluate(`window.NoteApp.db.getFileBlob(${JSON.stringify(fixture.fileId)}).then(function (file) {
       var n = window.NoteApp.db.getNote(${JSON.stringify(fixture.noteId)});
       var stored = window.NoteApp.db.storedContent(${JSON.stringify(fixture.noteId)});
-      var file = window.NoteApp.db.getFileBlob(${JSON.stringify(fixture.fileId)});
       return { content: n.content, stored: stored, fileReturned: !!file, locked: !!n.locked };
-    })()`);
+    })`);
     log('j.getNoteReturnsPlaintextAgain', readAfterDisable.content, NOTE_BODY);
     log('j.storedContentIsPlaintextAgain', readAfterDisable.stored, NOTE_BODY);
     log('j.nothingLockedWhenOff', readAfterDisable.locked, false);

@@ -589,7 +589,8 @@ input, textarea, select { font: inherit; }
   height: 32px;
   padding: 0;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-bottom: 0;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   background: var(--bg-raised);
   color: var(--text-muted);
   cursor: pointer;
@@ -1794,6 +1795,28 @@ mark {
   max-height: 62vh;
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-md);
+}
+
+.preview__video {
+  display: block;
+  width: 100%;
+  max-height: 62vh;
+  background: #000;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+}
+
+.preview__audio {
+  display: block;
+  width: 100%;
+  max-width: 520px;
+  margin: 6px 0;
+}
+
+.preview__loading {
+  padding: 10px 0;
+  color: var(--text-muted);
+  font-size: 13px;
 }
 
 .preview__placeholder {

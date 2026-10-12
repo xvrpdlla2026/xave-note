@@ -5,7 +5,8 @@ window.NoteApp = window.NoteApp || {};
 
   var IDB_NAME = 'note-app';
   var IDB_STORE = 'kv';
-  var IDB_VERSION = 1;
+  var IDB_BLOBS = 'blobs';
+  var IDB_VERSION = 2;
 
   var SNAPSHOT_KEY = 'sqlite-snapshot-v1';
 
@@ -51,6 +52,7 @@ window.NoteApp = window.NoteApp || {};
       req.onupgradeneeded = function () {
         var db = req.result;
         if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
+        if (!db.objectStoreNames.contains(IDB_BLOBS)) db.createObjectStore(IDB_BLOBS);
       };
       req.onsuccess = function () { resolve(req.result); };
       req.onerror = function () { reject(req.error || new Error('indexedDB.open failed')); };
@@ -63,10 +65,10 @@ window.NoteApp = window.NoteApp || {};
     });
   }
 
-  function idbRequest(db, mode, fn) {
+  function idbRequest(db, mode, fn, storeName) {
     return new Promise(function (resolve, reject) {
-      var tx = db.transaction(IDB_STORE, mode);
-      var store = tx.objectStore(IDB_STORE);
+      var tx = db.transaction(storeName || IDB_STORE, mode);
+      var store = tx.objectStore(storeName || IDB_STORE);
       var request = fn(store);
       var result;
       if (request) {
@@ -183,6 +185,64 @@ window.NoteApp = window.NoteApp || {};
       return saveToLocalStorage(bytes);
     },
 
+    putBlob: function (id, blob) {
+      return openIdb().then(function (db) {
+        return idbRequest(db, 'readwrite', function (store) { return store.put(blob, id); }, IDB_BLOBS);
+      }, function (err) {
+        idbRefused = true;
+        idbHandle = null;
+        throw err;
+      });
+    },
+
+    getBlob: function (id) {
+      if (idbRefused) return Promise.resolve(null);
+      return openIdb()
+        .then(function (db) {
+          return idbRequest(db, 'readonly', function (store) { return store.get(id); }, IDB_BLOBS);
+        })
+        .catch(function () { return null; });
+    },
+
+    deleteBlob: function (id) {
+      if (idbRefused) return Promise.resolve(false);
+      return openIdb()
+        .then(function (db) {
+          return idbRequest(db, 'readwrite', function (store) { return store.delete(id); }, IDB_BLOBS);
+        })
+        .then(function () { return true; }, function () { return false; });
+    },
+
+    deleteBlobs: function (ids) {
+      if (idbRefused || !ids || !ids.length) return Promise.resolve(false);
+      return openIdb()
+        .then(function (db) {
+          return idbRequest(db, 'readwrite', function (store) {
+            ids.forEach(function (id) { store.delete(id); });
+            return null;
+          }, IDB_BLOBS);
+        })
+        .then(function () { return true; }, function () { return false; });
+    },
+
+    blobKeys: function () {
+      if (idbRefused) return Promise.resolve([]);
+      return openIdb()
+        .then(function (db) {
+          return idbRequest(db, 'readonly', function (store) { return store.getAllKeys(); }, IDB_BLOBS);
+        })
+        .then(function (keys) { return keys || []; }, function () { return []; });
+    },
+
+    clearBlobs: function () {
+      if (idbRefused) return Promise.resolve(false);
+      return openIdb()
+        .then(function (db) {
+          return idbRequest(db, 'readwrite', function (store) { return store.clear(); }, IDB_BLOBS);
+        })
+        .then(function () { return true; }, function () { return false; });
+    },
+
     clear: function () {
       var steps = [];
       if (!idbRefused) {
@@ -191,6 +251,11 @@ window.NoteApp = window.NoteApp || {};
             return idbRequest(db, 'readwrite', function (store) {
               store.delete(SNAPSHOT_KEY);
               return store.delete(VAULT_KEY);
+            });
+          })
+          .then(function () {
+            return openIdb().then(function (db) {
+              return idbRequest(db, 'readwrite', function (store) { return store.clear(); }, IDB_BLOBS);
             });
           })
           .catch(function () {  }));

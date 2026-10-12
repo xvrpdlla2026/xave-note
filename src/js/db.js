@@ -529,6 +529,11 @@ window.NoteApp = window.NoteApp || {};
 
   var CONTENT_SCAN_CAP = 2000;
 
+var SEALED_TYPE = 'application/x-noteapp-sealed';
+var SqlCtor = null;
+var sweeping = false;
+var vaultBusy = false;
+
   function vaultRow() {
     return queryOne(
       'SELECT salt, iterations, check_iv, check_ct, created_at FROM vault WHERE id = ?',
@@ -555,6 +560,68 @@ window.NoteApp = window.NoteApp || {};
       return Promise.resolve(step(item)).then(next);
     }
     return next();
+  }
+
+  function storedBlob(data) {
+    if (typeof data === 'string' && App.crypto.isEnvelope(data)) return new Blob([data], { type: SEALED_TYPE });
+    return new Blob([blobBytes(data)], { type: 'application/octet-stream' });
+  }
+
+  function sidecarIds() {
+    return query('SELECT id FROM files WHERE blob_data IS NULL').map(function (row) { return row.id; });
+  }
+
+  function inlineSidecarBlobs() {
+    var ids = sidecarIds();
+    if (!ids.length) return Promise.resolve(0);
+    var moved = 0;
+    return eachSeries(ids, function (id) {
+      return App.storage.getBlob(id).then(function (blob) {
+        if (!blob) return null;
+        var store = function (value) {
+          rawRun('UPDATE files SET blob_data = ? WHERE id = ?', [value, id]);
+          moved++;
+          return App.storage.deleteBlob(id);
+        };
+        if (blob.type === SEALED_TYPE) return blob.text().then(store);
+        return blob.arrayBuffer().then(function (buffer) { return store(new Uint8Array(buffer)); });
+      });
+    }).then(function () {
+      if (!moved) return moved;
+      return App.storage.save(db.export()).then(function () { return moved; });
+    });
+  }
+
+  function dropOrphanBlobs() {
+    return App.storage.blobKeys().then(function (keys) {
+      if (!keys.length) return 0;
+      var live = {};
+      sidecarIds().forEach(function (id) { live[id] = true; });
+      var orphans = keys.filter(function (key) { return !live[key]; });
+      if (!orphans.length) return 0;
+      return App.storage.deleteBlobs(orphans).then(function () { return orphans.length; });
+    });
+  }
+
+  function sweepInlineBlobs() {
+    var rows = query('SELECT id, blob_data FROM files WHERE blob_data IS NOT NULL');
+    var moved = 0;
+    return eachSeries(rows, function (row) {
+      var data = row.blob_data;
+      if (data === null || data === undefined) return null;
+      var blob = storedBlob(data);
+      if (!blob.size) return null;
+      return App.storage.putBlob(row.id, blob).then(function () {
+        rawRun('UPDATE files SET blob_data = NULL WHERE id = ?', [row.id]);
+        moved++;
+      });
+    }).then(function () {
+      return dropOrphanBlobs();
+    }).then(function () {
+      if (!moved) return moved;
+      try { rawRun('VACUUM'); } catch (err) {  }
+      return App.storage.save(db.export()).then(function () { return moved; });
+    });
   }
 
   function vaultTotals() {
@@ -665,19 +732,15 @@ window.NoteApp = window.NoteApp || {};
     });
   }
 
-  function compact() {
-    rawRun('VACUUM');
-    return App.storage.save(db.export());
-  }
-
-  function compactQuietly(report) {
+  function reclaimSpace(report, warn) {
     var attempt;
     try {
-      attempt = compact();
+      attempt = sweepInlineBlobs();
     } catch (err) {
       attempt = Promise.reject(err);
     }
     return attempt.then(function () { return report; }, function (err) {
+      if (!warn) return report;
       report.compactionFailed = true;
       App.util.toast('The notebook is encrypted, but the space that held the previous '
         + 'unencrypted copy could not be reclaimed (' + err.message + '), so that earlier copy '
@@ -773,6 +836,7 @@ window.NoteApp = window.NoteApp || {};
             throw new Error('sql.js failed to load');
           }
           return initSqlJs({ locateFile: function () { return wasmUri; } }).then(function (SQL) {
+      SqlCtor = SQL.Database;
             var fresh = false;
             if (loaded.bytes && loaded.bytes.length) {
               try {
@@ -1193,26 +1257,43 @@ window.NoteApp = window.NoteApp || {};
       return rows.map(mapFileMeta);
     },
 
-    addFile: function (workspaceId, folderId, filename, mimeType, bytes) {
+    addFile: function (workspaceId, folderId, filename, mimeType, payload) {
       var id = util.uuid();
       var stamp = util.nowIso();
-      var plain = bytes ? bytes.length : 0;
-      return App.crypto.encryptBytes(bytes).then(function (stored) {
+      var type = mimeType || 'application/octet-stream';
+      var asFile = !!(payload && typeof payload.size === 'number' && typeof payload.slice === 'function');
+      var plain = asFile ? payload.size : (payload ? payload.length : 0);
+      var sealed = null;
+      var source;
+      if (App.crypto.isActive()) {
+        source = App.crypto.encryptBytes(payload).then(function (stored) {
+          sealed = stored;
+          return new Blob([stored], { type: SEALED_TYPE });
+        });
+      } else {
+        source = Promise.resolve(asFile ? payload : new Blob([payload], { type: 'application/octet-stream' }));
+      }
+      return source.then(function (blob) {
+        return App.storage.putBlob(id, blob).then(function () { return null; }, function () { return blob; });
+      }).then(function (unsaved) {
+        if (!unsaved) return null;
+        if (sealed !== null) return sealed;
+        return unsaved.arrayBuffer().then(function (buffer) { return new Uint8Array(buffer); });
+      }).then(function (inline) {
         return write(
           'INSERT INTO files (id, folder_id, workspace_id, filename, mime_type, blob_data, size, created_at, position) ' +
             'VALUES (?, ?, ?, ?, ?, ?, ?, ?, (' +
             '  SELECT COALESCE(MAX(position), -1) + 1 FROM files' +
             "  WHERE workspace_id = ? AND COALESCE(folder_id, '') = COALESCE(?, '')" +
             '))',
-          [id, folderId || null, workspaceId, filename, mimeType || 'application/octet-stream', stored, plain, stamp,
+          [id, folderId || null, workspaceId, filename, type, inline, plain, stamp,
             workspaceId, folderId || null],
         );
       }).then(function () {
-        if (viewReady) fileBytes[id] = bytes;
         var row = queryOne('SELECT position FROM files WHERE id = ?', [id]);
         return {
           id: id, folder_id: folderId || null, workspace_id: workspaceId, filename: filename,
-          mime_type: mimeType, size: bytes.length, created_at: stamp,
+          mime_type: type, size: plain, created_at: stamp,
           position: row ? row.position : 0,
         };
       });
@@ -1225,24 +1306,37 @@ window.NoteApp = window.NoteApp || {};
 
     getFileBlob: function (id) {
       var row = queryOne('SELECT filename, mime_type, blob_data FROM files WHERE id = ? AND deleted_at IS NULL', [id]);
-      if (!row) return null;
-      var data = row.blob_data;
-      var bytes;
-      if (typeof data === 'string' && App.crypto.isEnvelope(data)) {
-        if (!viewReady) return null;
-        bytes = hasOwn(fileBytes, id) ? fileBytes[id] : null;
-        if (!bytes) {
-          throw new Error('"' + row.filename + '" is stored encrypted and could not be read back. It may be damaged.');
-        }
-      } else {
-        bytes = blobBytes(data);
-      }
+      if (!row) return Promise.resolve(null);
       var type = row.mime_type || 'application/octet-stream';
-      return {
-        filename: row.filename,
-        mime_type: type,
-        blob: new Blob([bytes], { type: type }),
+      var pack = function (blob) {
+        return { filename: row.filename, mime_type: type, blob: blob };
       };
+      var data = row.blob_data;
+      if (data === null || data === undefined) {
+        return App.storage.getBlob(id).then(function (stored) {
+          if (!stored) return null;
+          if (stored.type === SEALED_TYPE) {
+            return stored.text().then(function (text) {
+              return App.crypto.decryptBytes(text).then(function (bytes) {
+                return pack(new Blob([bytes], { type: type }));
+              }, function (err) {
+                if (!viewReady) return null;
+                throw err;
+              });
+            });
+          }
+          return pack(stored.slice(0, stored.size, type));
+        });
+      }
+      if (typeof data === 'string' && App.crypto.isEnvelope(data)) {
+        return App.crypto.decryptBytes(data).then(function (bytes) {
+          return pack(new Blob([bytes], { type: type }));
+        }, function (err) {
+          if (!viewReady) return null;
+          throw err;
+        });
+      }
+      return Promise.resolve(pack(new Blob([blobBytes(data)], { type: type })));
     },
 
     renameFile: function (id, filename) {
@@ -1509,6 +1603,46 @@ window.NoteApp = window.NoteApp || {};
       return db.export();
     },
 
+    exportSnapshot: function () {
+      var ids = sidecarIds();
+      if (!ids.length) return Promise.resolve(db.export());
+      var copy = new SqlCtor(db.export());
+      return eachSeries(ids, function (id) {
+        return App.storage.getBlob(id).then(function (stored) {
+          if (!stored) return null;
+          if (stored.type === SEALED_TYPE) {
+            return stored.text().then(function (text) {
+              copy.run('UPDATE files SET blob_data = ? WHERE id = ?', [text, id]);
+            });
+          }
+          return stored.arrayBuffer().then(function (buffer) {
+            copy.run('UPDATE files SET blob_data = ? WHERE id = ?', [new Uint8Array(buffer), id]);
+          });
+        });
+      }).then(function () {
+        var bytes = copy.export();
+        copy.close();
+        return bytes;
+      }, function (err) {
+        try { copy.close(); } catch (e) {  }
+        throw err;
+      });
+    },
+
+    sweep: function () {
+      if (sweeping || vaultBusy) return Promise.resolve(0);
+      sweeping = true;
+      return API.pendingWrites().then(function () {
+        return sweepInlineBlobs();
+      }).then(function (moved) {
+        sweeping = false;
+        return moved;
+      }, function (err) {
+        sweeping = false;
+        throw err;
+      });
+    },
+
     pendingWrites: function () {
       return writeQueue || Promise.resolve();
     },
@@ -1540,7 +1674,9 @@ window.NoteApp = window.NoteApp || {};
       var plan = null;
       var committed = false;
 
+      vaultBusy = true;
       return API.pendingWrites()
+        .then(function () { return inlineSidecarBlobs(); })
         .then(function () { return App.crypto.beginEnrollment(password); })
         .then(function (row) {
           vault = row;
@@ -1574,7 +1710,7 @@ window.NoteApp = window.NoteApp || {};
           fileBytes = plan.fileBytes;
           viewReady = true;
           var report = { notes: plan.notes.length, files: plan.files.length, compactionFailed: false };
-          return compactQuietly(report);
+          return reclaimSpace(report, true);
         })
         .catch(function (err) {
           if (committed) throw err;
@@ -1583,7 +1719,9 @@ window.NoteApp = window.NoteApp || {};
           fileBytes = {};
           viewReady = false;
           throw err;
-        });
+        })
+        .then(function (value) { vaultBusy = false; return value; },
+          function (err) { vaultBusy = false; throw err; });
     },
 
     unlockVault: function (password, onProgress) {
@@ -1647,7 +1785,9 @@ window.NoteApp = window.NoteApp || {};
       var wasReady = viewReady;
       var committed = false;
 
+      vaultBusy = true;
       return API.pendingWrites()
+        .then(function () { return inlineSidecarBlobs(); })
         .then(function () { return App.crypto.unlock(row, password); })
         .then(function () { return planDecryption(onProgress); })
         .then(function (result) {
@@ -1675,7 +1815,7 @@ window.NoteApp = window.NoteApp || {};
           viewReady = false;
           forgetSession();
           var report = { notes: plan.notes.length, files: plan.files.length };
-          return compact().then(function () { return report; }, function () { return report; });
+          return reclaimSpace(report, false);
         })
         .catch(function (err) {
           if (committed) throw err;
@@ -1686,7 +1826,9 @@ window.NoteApp = window.NoteApp || {};
             viewReady = false;
           }
           throw err;
-        });
+        })
+        .then(function (value) { vaultBusy = false; return value; },
+          function (err) { vaultBusy = false; throw err; });
     },
 
     storedContent: function (id) {
@@ -1820,11 +1962,15 @@ window.NoteApp = window.NoteApp || {};
 
     permanentDeleteFolder: function (id) {
       var ids = API.descendantFolderIdsAll(id);
+      var placeholders = ids.map(function () { return '?'; }).join(',');
+      var fileIds = query('SELECT id FROM files WHERE folder_id IN (' + placeholders + ')', ids)
+        .map(function (row) { return row.id; });
       return write(function (run) {
-        var placeholders = ids.map(function () { return '?'; }).join(',');
         run('DELETE FROM notes WHERE folder_id IN (' + placeholders + ')', ids);
         run('DELETE FROM files WHERE folder_id IN (' + placeholders + ')', ids);
         run('DELETE FROM folders WHERE id IN (' + placeholders + ')', ids);
+      }).then(function (result) {
+        return App.storage.deleteBlobs(fileIds).then(function () { return result; }, function () { return result; });
       });
     },
 
@@ -1835,7 +1981,9 @@ window.NoteApp = window.NoteApp || {};
 
     permanentDeleteFile: function (id) {
       delete fileBytes[id];
-      return write('DELETE FROM files WHERE id = ?', [id]);
+      return write('DELETE FROM files WHERE id = ?', [id]).then(function (result) {
+        return App.storage.deleteBlob(id).then(function () { return result; }, function () { return result; });
+      });
     },
 
     listTemplates: function (wsId) { return query('SELECT * FROM templates WHERE workspace_id=? ORDER BY name', [wsId||0]); },
@@ -1847,6 +1995,7 @@ window.NoteApp = window.NoteApp || {};
       noteText = {};
       fileBytes = {};
       viewReady = false;
+      App.storage.clearBlobs();
       if (db) {
         try { db.close(); } catch (err) {  }
         db = null;

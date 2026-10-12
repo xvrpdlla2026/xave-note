@@ -19,21 +19,28 @@ window.NoteApp = window.NoteApp || {};
     return url;
   }
 
+  function markImageMissing(img) {
+    img.classList.add('is-missing');
+    img.removeAttribute('src');
+    img.setAttribute('alt', 'Image unavailable');
+  }
+
   function hydrateNoteImages(root) {
     var pills = root.querySelectorAll('img[data-file-id]');
     Array.prototype.forEach.call(pills, function (img) {
       var id = img.getAttribute('data-file-id');
-      var resolved = null;
-      try { resolved = App.db.getFileBlob(id); } catch (err) { resolved = null; }
-      if (!resolved || !resolved.blob) {
-        img.classList.add('is-missing');
-        img.removeAttribute('src');
-        img.setAttribute('alt', 'Image unavailable');
-        return;
-      }
-      img.src = makeObjectUrl(resolved.blob);
-      img.classList.remove('is-missing');
-      if (resolved.filename) img.setAttribute('alt', resolved.filename);
+      App.db.getFileBlob(id).then(function (resolved) {
+        if (!img.isConnected) return;
+        if (!resolved || !resolved.blob) {
+          markImageMissing(img);
+          return;
+        }
+        img.src = makeObjectUrl(resolved.blob);
+        img.classList.remove('is-missing');
+        if (resolved.filename) img.setAttribute('alt', resolved.filename);
+      }, function () {
+        if (img.isConnected) markImageMissing(img);
+      });
     });
   }
 
@@ -1236,9 +1243,25 @@ window.NoteApp = window.NoteApp || {};
     return list;
   }
 
+  function previewMedia(mime, filename) {
+    var type = String(mime || '').toLowerCase();
+    if (type.indexOf('video/') === 0) {
+      return el('video', { class: 'preview__video', controls: 'controls', playsinline: 'playsinline', preload: 'metadata' });
+    }
+    if (type.indexOf('audio/') === 0) {
+      return el('audio', { class: 'preview__audio', controls: 'controls', preload: 'metadata' });
+    }
+    if (type.indexOf('image/') === 0) {
+      return el('img', { class: 'preview__image', alt: filename, draggable: 'false' });
+    }
+    return null;
+  }
+
   function renderFilePreview(host, ctx) {
     var file = ctx.file;
     var body = el('div', { class: 'preview__body' });
+
+    var media = !ctx.locked && ctx.previewLoader ? previewMedia(file.mime_type, file.filename) : null;
 
     if (ctx.locked) {
       body.appendChild(lockNotice({
@@ -1246,8 +1269,20 @@ window.NoteApp = window.NoteApp || {};
         body: 'Its contents are sealed with your notebook password, so there is nothing to show '
           + 'yet. The name, type and size above are not encrypted.',
       }));
-    } else if (ctx.previewUrl && util.isImageMime(file.mime_type)) {
-      body.appendChild(el('img', { class: 'preview__image', src: ctx.previewUrl, alt: file.filename, draggable: 'false' }));
+    } else if (media) {
+      var pending = el('div', { class: 'preview__loading', text: 'Loading preview…' });
+      body.appendChild(pending);
+      body.appendChild(media);
+      Promise.resolve(ctx.previewLoader()).then(function (resolved) {
+        if (!media.isConnected) return;
+        if (!resolved || !resolved.blob) throw new Error('no blob');
+        pending.remove();
+        media.src = makeObjectUrl(resolved.blob);
+      }, function () {
+        if (!media.isConnected) return;
+        media.remove();
+        pending.textContent = 'This preview could not be loaded. Download it instead.';
+      });
     } else {
       body.appendChild(el('div', { class: 'preview__placeholder' }, [
         el('span', { class: 'preview__glyph', text: util.fileGlyph(file.filename, file.mime_type) }),

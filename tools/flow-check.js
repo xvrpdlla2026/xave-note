@@ -72,7 +72,7 @@ window.__FLOW__ = function () {
       var files = App.db.listFilesIn(ws.id, null);
       log('files', files.length);
       if (files.length) {
-        var resolved = App.db.getFileBlob(files[0].id);
+        var resolved = await App.db.getFileBlob(files[0].id);
         log('blobBytes', resolved ? resolved.blob.size : -1);
       }
       log('searchHits', App.db.search(ws.id, 'flow', 20).notes.length);
@@ -113,7 +113,7 @@ window.__FLOW__ = function () {
       var files = App.db.listFilesIn(ws.id, null);
       log('filesRestored', files.length);
       if (files.length) {
-        var resolved = App.db.getFileBlob(files[0].id);
+        var resolved = await App.db.getFileBlob(files[0].id);
         log('blobBytesRestored', resolved ? resolved.blob.size : -1);
       }
       log('searchRestored', App.db.search(ws.id, 'flow', 20).notes.length);
