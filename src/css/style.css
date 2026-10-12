@@ -1555,42 +1555,95 @@ svg.tree__glyph--note { font-size: 14.5px; }
    unchanged, a wrapper holding a real button and its checkbox, so bulk select, the context
    menu and the active state all keep working and the whole change stays a class on the grid.
    The checkbox leaves its corner overlay for the head of the row: on a 32px row an overlay
-   would sit on top of the metadata sharing that line. */
+   would sit on top of the metadata sharing that line. Rows in a section are a grid with the
+   same tracks, so a name, a size and a date line up down the table the way a file manager's
+   columns do, and the header row is a row of that same grid, which is what keeps it in
+   register with the values under it. */
+.card__meta--split { display: flex; align-items: baseline; gap: 6px; }
+.card-list__head { display: none; }
 .card-grid--list {
+  --check-col: 22px;
+  --check-gap: 9px;
+  --col-size: 92px;
+  --col-when: 132px;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
+}
+.card-grid--list .card-list__head {
+  display: flex;
+  align-items: center;
+  gap: var(--check-gap);
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--border);
+}
+.card-grid--list .card-list__spacer { flex: 0 0 var(--check-col); }
+.card-grid--list .card-list__head .card { flex: 1 1 auto; }
+.card-list__cell {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .card-grid--list .card-wrap {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: var(--check-gap);
 }
 .card-grid--list .card__check {
   position: static;
-  flex: 0 0 auto;
+  flex: 0 0 var(--check-col);
+  width: var(--check-col);
+  justify-content: center;
   padding: 0;
   background: none;
   box-shadow: none;
 }
 .card-grid--list .card {
-  flex: 1 1 auto;
-  width: auto;
-  flex-direction: row;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
+  column-gap: 14px;
   min-height: 0;
   padding: 7px 11px;
+  border-color: transparent;
   border-radius: var(--radius-sm);
+  background: transparent;
   box-shadow: none;
 }
-.card-grid--list .card:hover { transform: none; }
-/* A row is too shallow for a gradient to read as anything but a smudge; the folder keeps its
-   identity in the colour of its glyph, which is what tells it from a note at this size. */
-.card-grid--list .card--folder { background: var(--bg-raised); }
+.card-grid--list.card-grid--folders .card { grid-template-columns: 22px minmax(0, 1fr); }
+.card-grid--list.card-grid--notes .card { grid-template-columns: minmax(0, 1fr) var(--col-when); }
+.card-grid--list.card-grid--files .card { grid-template-columns: 22px minmax(0, 1fr) var(--col-size) var(--col-when); }
+.card-grid--list .card:hover { transform: none; background: var(--bg-hover); }
+.card-grid--list .card.is-active,
+.card-grid--list .card-wrap.is-selected .card {
+  border-color: transparent;
+  background: var(--accent-soft);
+  box-shadow: none;
+}
+.card-grid--list > .card { width: 100%; }
+.card-grid--list .card-wrap .card { flex: 1 1 auto; min-width: 0; }
 .card-grid--list .card__glyph { flex: 0 0 auto; }
-.card-grid--list .card__title { flex: 1 1 auto; min-width: 0; }
-.card-grid--list .card__meta { flex: 0 0 auto; margin-top: 0; padding-top: 0; }
+.card-grid--list .card__title { min-width: 0; }
+.card-grid--list .card__meta { margin-top: 0; padding-top: 0; }
+.card-grid--list .card--head {
+  padding: 2px 11px 6px;
+  border-color: transparent;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  cursor: default;
+  color: var(--text-faint);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+.card-grid--list .card--head:hover { background: none; box-shadow: none; }
+.card-grid--list .card__sep { display: none; }
+.card-grid--list.card-grid--files .card__meta { display: contents; }
+.card-grid--list.card-grid--files .card__size { text-align: right; }
+.card-grid--list.card-grid--files .card-list__cell--num { text-align: right; }
 
 /* ---------------------------------------------------------------- editor */
 /* The editor fills the pane instead of growing past it, and the note body is the one part

@@ -1021,16 +1021,29 @@ window.NoteApp = window.NoteApp || {};
       ]));
     }
 
-    // One grid per section, in whichever arrangement the pane is in. The two arrangements
-    // are one class apart because the markup is identical either way; see .card-grid--list.
-    function cardGrid() {
-      return el('div', { class: 'card-grid' + (list ? ' card-grid--list' : '') });
+    function cardGrid(section) {
+      var labels = section === 'notes'
+        ? ['Name', 'Modified']
+        : section === 'files'
+          ? ['', 'Name', 'Size', 'Modified']
+          : ['', 'Name'];
+      var grid = el('div', { class: 'card-grid card-grid--' + section + (list ? ' card-grid--list' : '') });
+      grid.appendChild(el('div', { class: 'card-list__head', 'aria-hidden': 'true' }, [
+        section === 'notes' ? el('span', { class: 'card-list__spacer' }) : null,
+        el('div', { class: 'card card--head' }, labels.map(function (label, i) {
+          return el('span', {
+            class: 'card-list__cell' + (section === 'files' && i === 2 ? ' card-list__cell--num' : ''),
+            text: label,
+          });
+        })),
+      ]));
+      return grid;
     }
 
     // Subfolders are listed here too, so a selected folder is navigable without the sidebar.
     if (ctx.subfolders && ctx.subfolders.length) {
       frag.appendChild(paneSection('Subfolders', ctx.subfolders.length));
-      var grid = cardGrid();
+      var grid = cardGrid('folders');
       ctx.subfolders.forEach(function (folder) {
         grid.appendChild(el('button', {
           class: 'card card--folder',
@@ -1046,7 +1059,7 @@ window.NoteApp = window.NoteApp || {};
 
     if (ctx.notes.length) {
       frag.appendChild(paneSection('Notes', ctx.notes.length));
-      var noteCards = cardGrid();
+      var noteCards = cardGrid('notes');
       var bulk = ctx.bulkSelected || [];
       ctx.notes.forEach(function (note) {
         // No body snippet here: list queries deliberately omit the content column
@@ -1090,7 +1103,7 @@ window.NoteApp = window.NoteApp || {};
 
     if (ctx.files.length) {
       frag.appendChild(paneSection('Files', ctx.files.length));
-      var fileCards = cardGrid();
+      var fileCards = cardGrid('files');
       ctx.files.forEach(function (file) {
         fileCards.appendChild(el('button', {
           class: 'card card--file' + (file.id === ctx.activeFileId ? ' is-active' : ''),
@@ -1099,7 +1112,11 @@ window.NoteApp = window.NoteApp || {};
         }, [
           el('span', { class: 'card__glyph', text: util.fileGlyph(file.filename, file.mime_type) }),
           el('span', { class: 'card__title', text: file.filename }),
-          el('span', { class: 'card__meta', text: util.formatBytes(file.size) + ' \u00b7 ' + util.formatWhen(file.created_at) }),
+          el('span', { class: 'card__meta card__meta--split' }, [
+            el('span', { class: 'card__size', text: util.formatBytes(file.size) }),
+            el('span', { class: 'card__sep', 'aria-hidden': 'true', text: '\u00b7' }),
+            el('span', { class: 'card__when', text: util.formatWhen(file.created_at) }),
+          ]),
         ]));
       });
       frag.appendChild(fileCards);
