@@ -1003,9 +1003,10 @@ window.NoteApp = window.NoteApp || {};
         if (blob && node.isConnected) node.src = makeObjectUrl(blob);
       }).catch(function () {});
     } else if (preview.pdf) {
+      var hash = names.pdfChrome === false ? '#toolbar=0&navpanes=0&view=FitH' : '';
       node = el('iframe', { class: names.pdf || 'pane-preview__pdf', title: preview.title });
       load().then(function (blob) {
-        if (blob && node.isConnected) node.src = makeObjectUrl(blob);
+        if (blob && node.isConnected) node.src = makeObjectUrl(blob) + hash;
       }).catch(function () {});
     } else if (preview.docx || preview.xlsx || preview.text) {
       var host = el('div', { class: 'pane-preview__doc' });
@@ -1074,7 +1075,7 @@ window.NoteApp = window.NoteApp || {};
         return App.db.getFileBlob(preview.id).then(function (stored) {
           return stored ? stored.blob : null;
         });
-      });
+      }, { pdfChrome: false });
       thumb.appendChild(inline || el('div', { class: 'pane-preview__glyph' }, [App.ui.icon('file', 26)]));
       body = el('div', { class: 'pane-preview__stack' }, [
         thumb,
