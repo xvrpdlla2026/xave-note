@@ -3941,6 +3941,21 @@ window.NoteApp = window.NoteApp || {};
     openNote(id);
   }
 
+  function revealPaneItem(kind, id, parentId) {
+    if (!id) return;
+    flushPendingSave();
+    state.view = 'notes';
+    state.selection = parentId ? { type: 'folder', id: parentId } : { type: 'all', id: null };
+    state.activeNoteId = null;
+    state.activeFileId = null;
+    state.focused = { kind: kind, id: id };
+    state.bulkSelected = [];
+    state.bulkKinds = {};
+    state.bulkAnchor = null;
+    if (parentId) state.expanded[parentId] = true;
+    render();
+  }
+
   function focusPaneItem(kind, id, selectionMoved) {
     var same = state.focused && state.focused.kind === kind && String(state.focused.id) === String(id);
     state.focused = { kind: kind, id: id };
@@ -3987,32 +4002,32 @@ window.NoteApp = window.NoteApp || {};
     if (target.kind === 'folder') {
       var folder = treeModel.folders.filter(function (f) { return f.id === target.id; })[0];
       if (!folder) return null;
-      var lines = [];
+      var items = [];
       var total = 0;
-      (function walk(id, prefix) {
+      (function walk(id, depth) {
         var kids = [];
         treeModel.folders.forEach(function (f) {
-          if (f.parent_folder_id === id) kids.push({ label: f.name, kind: 'folder', id: f.id });
+          if (f.parent_folder_id === id) kids.push({ name: f.name, kind: 'folder', id: f.id });
         });
         (treeModel.notesByFolder[id] || []).forEach(function (n) {
-          kids.push({ label: n.title && n.title.trim() ? n.title : 'Untitled note', kind: 'note', id: n.id });
+          kids.push({ name: n.title && n.title.trim() ? n.title : 'Untitled note', kind: 'note', id: n.id });
         });
         (treeModel.filesByFolder[id] || []).forEach(function (f) {
-          kids.push({ label: f.filename, kind: 'file', id: f.id });
+          kids.push({ name: f.filename, kind: 'file', id: f.id });
         });
         total += kids.length;
-        kids.forEach(function (kid, i) {
-          if (lines.length >= 200) return;
-          var last = i === kids.length - 1;
-          lines.push(prefix + (last ? '\u2514\u2500 ' : '\u251c\u2500 ') + kid.label);
-          if (kid.kind === 'folder') walk(kid.id, prefix + (last ? '   ' : '\u2502  '));
+        kids.forEach(function (kid) {
+          if (items.length >= 200) return;
+          items.push({ kind: kid.kind, id: kid.id, name: kid.name, depth: depth, parent: id });
+          if (kid.kind === 'folder') walk(kid.id, depth + 1);
         });
-      })(folder.id, '');
+      })(folder.id, 0);
       return {
         kind: 'folder',
         title: folder.name,
-        lines: lines,
+        items: items,
         total: total,
+        focused: state.focused,
         bytes: App.db.subtreeBytes(state.workspaceId)[folder.id] || 0,
       };
     }
@@ -5579,6 +5594,7 @@ window.NoteApp = window.NoteApp || {};
     jumpToPreviousTab: jumpToPreviousTab,
     reopenClosedTab: reopenClosedTab,
     uploadFiles: uploadFiles,
+    revealPaneItem: revealPaneItem,
     exportDatabase: exportDatabase,
   };
 

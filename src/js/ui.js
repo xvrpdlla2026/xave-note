@@ -993,8 +993,26 @@ window.NoteApp = window.NoteApp || {};
     var many = preview.kind === 'many';
     var body;
     if (preview.kind === 'folder') {
-      body = preview.lines.length
-        ? el('pre', { class: 'pane-preview__tree', text: preview.lines.join('\n') })
+      var tree = el('div', { class: 'pane-preview__tree' });
+      (preview.items || []).forEach(function (item) {
+        var active = preview.focused && preview.focused.kind === item.kind
+          && String(preview.focused.id) === String(item.id);
+        var row = el('button', {
+          class: 'pane-preview__node' + (active ? ' is-active' : ''),
+          type: 'button',
+          title: item.name,
+        }, [
+          App.ui.icon(item.kind === 'folder' ? 'folder' : (item.kind === 'note' ? 'note' : 'file'), 13),
+          el('span', { text: item.name }),
+        ]);
+        row.style.paddingLeft = (6 + item.depth * 14) + 'px';
+        row.addEventListener('click', function () {
+          App.app.revealPaneItem(item.kind, item.id, item.parent);
+        });
+        tree.appendChild(row);
+      });
+      body = tree.childNodes.length
+        ? tree
         : el('p', { class: 'pane-preview__empty', text: 'This folder is empty.' });
     } else if (preview.kind === 'note') {
       body = preview.text
