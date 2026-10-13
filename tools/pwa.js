@@ -65,9 +65,9 @@ function encodePng(width, height, rgba) {
 }
 
 /**
- * The app mark: an accent tile holding a two-tone X monogram, from the same geometry as
- * the favicon in src/index.html. Sampled three times per axis, because the tile corners
- * and the stroke ends are curves and a hard-edged 512 shows its stair steps.
+ * The app mark: an accent tile holding an x monogram over a writing line, from the same
+ * geometry as the favicon in src/index.html. Sampled three times per axis, because the tile
+ * corners and the stroke ends are curves and a hard-edged 512 shows its stair steps.
  */
 function appIcon(size) {
   const SUB = 3;
@@ -76,8 +76,9 @@ function appIcon(size) {
   const radius = 6 * unit;
   const accent = [59, 78, 222]; // #3b4ede, the indigo default
   const strokes = [
-    { x1: 7, y1: 7, x2: 15, y2: 15, alpha: 1 },
-    { x1: 15, y1: 7, x2: 7, y2: 15, alpha: 0.55 },
+    { x1: 7.4, y1: 5.8, x2: 14.6, y2: 13, alpha: 1 },
+    { x1: 14.6, y1: 5.8, x2: 7.4, y2: 13, alpha: 1 },
+    { x1: 7.2, y1: 17, x2: 14.8, y2: 17, alpha: 1 },
   ];
   const half = 1.1; // half of the 2.2 stroke width on the 22 unit grid
   const inTile = (x, y) => {

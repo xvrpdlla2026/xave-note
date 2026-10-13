@@ -3405,12 +3405,10 @@ window.NoteApp = window.NoteApp || {};
     if (!accent || !inverse) return;
     var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 22 22">' +
       '<rect width="22" height="22" rx="6" fill="' + accent + '"/>' +
-      '<rect x="5.5" y="5.5" width="2" height="11" rx="1" fill="' + inverse + '"/>' +
-      '<g fill="' + inverse + '" opacity="0.55">' +
-        '<rect x="9.5" y="5.5" width="7" height="1"/>' +
-        '<rect x="9.5" y="8.5" width="7" height="1"/>' +
-        '<rect x="9.5" y="11.5" width="7" height="1"/>' +
-        '<rect x="9.5" y="14.5" width="7" height="1"/>' +
+      '<g fill="' + inverse + '">' +
+        '<rect x="5.9" y="8.3" width="10.2" height="2.2" rx="1.1" transform="rotate(45 11 9.4)"/>' +
+        '<rect x="5.9" y="8.3" width="10.2" height="2.2" rx="1.1" transform="rotate(-45 11 9.4)"/>' +
+        '<rect x="6.2" y="16" width="9.6" height="2" rx="1"/>' +
       '</g>' +
     '</svg>';
     link.setAttribute('href', 'data:image/svg+xml,' + encodeURIComponent(svg));
