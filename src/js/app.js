@@ -3414,6 +3414,14 @@ window.NoteApp = window.NoteApp || {};
     link.setAttribute('href', 'data:image/svg+xml,' + encodeURIComponent(svg));
   }
 
+  function applyManifest() {
+    if (window.location.protocol === 'file:') return;
+    var link = document.createElement('link');
+    link.rel = 'manifest';
+    link.href = 'manifest.json';
+    document.head.appendChild(link);
+  }
+
   function applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
     App.prefs.set('theme', theme);
@@ -5470,6 +5478,7 @@ window.NoteApp = window.NoteApp || {};
   }
   function boot() {
     cacheDom();
+    applyManifest();
     bootstrapIcons();
     applyTheme(App.prefs.get('theme', window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
     applyPalette(App.prefs.get('palette', 'indigo'));
