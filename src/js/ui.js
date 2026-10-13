@@ -1000,11 +1000,16 @@ window.NoteApp = window.NoteApp || {};
         : el('p', { class: 'pane-preview__empty', text: 'This note is empty.' });
     } else if (preview.kind === 'file') {
       var thumb = el('div', { class: 'pane-preview__thumb' });
-      if (preview.image) {
-        var img = el('img', { class: 'pane-preview__image', alt: preview.title });
-        thumb.appendChild(img);
+      if (preview.image || preview.video || preview.audio) {
+        var media = el(preview.image ? 'img' : (preview.video ? 'video' : 'audio'), {
+          class: preview.image ? 'pane-preview__image' : (preview.video ? 'pane-preview__video' : 'pane-preview__audio'),
+          alt: preview.image ? preview.title : null,
+          controls: preview.image ? null : true,
+          preload: preview.image ? null : 'metadata',
+        });
+        thumb.appendChild(media);
         App.db.getFileBlob(preview.id).then(function (stored) {
-          if (stored && stored.blob) img.src = URL.createObjectURL(stored.blob);
+          if (stored && stored.blob) media.src = URL.createObjectURL(stored.blob);
         }).catch(function () {});
       } else {
         thumb.appendChild(el('div', { class: 'pane-preview__glyph' }, [App.ui.icon('file', 26)]));

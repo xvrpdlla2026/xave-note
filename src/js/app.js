@@ -4025,6 +4025,8 @@ window.NoteApp = window.NoteApp || {};
         bytes: meta.size || 0,
         when: meta.created_at,
         image: /^image\//.test(meta.mime_type || ''),
+        video: /^video\//.test(meta.mime_type || ''),
+        audio: /^audio\//.test(meta.mime_type || ''),
       };
     }
     var note = App.db.getNote(target.id);

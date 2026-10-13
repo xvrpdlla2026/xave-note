@@ -1272,7 +1272,10 @@ svg.tree__glyph--note { font-size: 14.5px; }
   .pane-preview__text { max-height: 460px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .pane-preview__empty { margin: 0; font-size: 12px; color: var(--text-faint); }
   .pane-preview__stack { display: flex; flex-direction: column; gap: 12px; }
-  .pane-preview__image { width: 100%; border-radius: 6px; border: 1px solid var(--border); }
+  .pane-preview__image,
+  .pane-preview__video { width: 100%; border-radius: 6px; border: 1px solid var(--border); }
+  .pane-preview__video { background: #000; }
+  .pane-preview__audio { width: 100%; }
   .pane-preview__glyph {
     display: flex;
     align-items: center;
