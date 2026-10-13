@@ -4194,6 +4194,10 @@ window.NoteApp = window.NoteApp || {};
       var type = entryNode.getAttribute('data-ctx');
       var id = entryNode.getAttribute('data-id');
       var label = entryNode.getAttribute('data-ctx-label') || '';
+      if (type === 'workspace' && !id) {
+        openWorkspaceMenu(event.clientX, event.clientY);
+        return;
+      }
       var overrides = {};
       var entryDone = false;
       var entryPrivate = false;
@@ -4289,9 +4293,13 @@ window.NoteApp = window.NoteApp || {};
       return;
     }
 
-    App.ui.menuOpen({
-      x: event.clientX,
-      y: event.clientY,
+    openWorkspaceMenu(event.clientX, event.clientY);
+  }
+
+  function openWorkspaceMenu(x, y) {
+    App.ui.openMenu({
+      x: x,
+      y: y,
       title: 'This workspace',
       items: [
         { label: 'New note', icon: 'note', onclick: function () { newNote(); } },
