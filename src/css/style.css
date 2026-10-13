@@ -790,23 +790,24 @@ body.is-resizing * { user-select: none; -webkit-user-select: none; }
   position: absolute;
   left: var(--tree-indent);
   top: calc(-1 * var(--tree-gap) - 1px); bottom: calc(-1 * var(--tree-gap) - 1px);
-  width: calc(var(--tree-inset) + var(--tree-chevron) / 2 + 5px + var(--indent, 0px) - 2 * var(--tree-indent));
+  width: calc(var(--tree-inset) + var(--tree-chevron) / 2 + 13px + var(--indent, 0px) - 2 * var(--tree-indent));
   background-image:
+    linear-gradient(var(--border), var(--border)),
     linear-gradient(var(--border), var(--border)),
     repeating-linear-gradient(
       to right,
       var(--border) 0 1px,
       transparent 1px var(--tree-indent)
     );
-  background-repeat: no-repeat, no-repeat;
-  background-size: 1px 100%, max(0px, calc(100% - 5px)) 100%;
-  background-position: right 4px top, left top;
+  background-repeat: no-repeat, no-repeat, no-repeat;
+  background-size: 1px 100%, 12px 1px, max(0px, calc(100% - 13px)) 100%;
+  background-position: right 12px top, right 1px center, left top;
   pointer-events: none;}
 .tree__row--nested.tree__row--group-start::after {
   top: calc(-1 * var(--tree-group) - 1px);
 }
 .tree__row--nested.tree__row--group-end::after {
-  background-size: 1px 50%, max(0px, calc(100% - 5px)) 100%;}
+  background-size: 1px 50%, 12px 1px, max(0px, calc(100% - 13px)) 100%;}
 .tree__row--nested:hover::after { opacity: 0.5; }
 
 .tree__row--folder .tree__label { font-weight: 520; }
