@@ -111,6 +111,8 @@ window.NoteApp = window.NoteApp || {};
       if (config.hideHeader && config.title) dialogAttrs['aria-label'] = config.title;
       else dialogAttrs['aria-labelledby'] = titleId;
 
+      config.consequences = config.consequences == null || Array.isArray(config.consequences) ? config.consequences : [config.consequences];
+
       var node = el('dialog', dialogAttrs);
 
       var form = el('form', { class: 'dialog__form', novalidate: 'novalidate' });
@@ -140,7 +142,7 @@ window.NoteApp = window.NoteApp || {};
 
       if (config.consequences && config.consequences.length) {
         var list = el('ul', { class: 'dialog__consequences' });
-        config.consequences.forEach(function (line) { list.appendChild(el('li', { text: line })); });
+        (Array.isArray(config.consequences) ? config.consequences : [config.consequences]).forEach(function (line) { list.appendChild(el('li', { text: line })); });
         body.appendChild(list);
       }
 

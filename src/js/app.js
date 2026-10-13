@@ -3642,7 +3642,7 @@ window.NoteApp = window.NoteApp || {};
       var label = ((rows[at] && rows[at].name)) || 'Untitled';
       App.ui.confirm({
         title: 'Delete template?',
-        consequences: '“' + label + '” will be permanently removed. Notes made from it are untouched.',
+        consequences: ['“' + label + '” will be permanently removed. Notes made from it are untouched.'],
         confirmLabel: 'Delete',
         danger: true,
       }).then(function (ok) {
