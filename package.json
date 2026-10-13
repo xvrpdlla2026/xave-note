@@ -1,5 +1,5 @@
 {
-  "name": "notebook-local-first",
+  "name": "xave",
   "version": "1.0.0",
   "private": true,
   "description": "Local-first note taking app: vanilla HTML/CSS/JS, SQLite compiled to WebAssembly, persisted to IndexedDB, offline-capable from a single index.html.",

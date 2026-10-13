@@ -1,6 +1,6 @@
 {
-  "name": "Notebook",
-  "short_name": "Notebook",
+  "name": "Xave",
+  "short_name": "Xave",
   "description": "Offline note taking with SQLite (WASM), stored in the browser.",
   "start_url": ".",
   "scope": ".",

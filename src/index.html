@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Notebook</title>
+<title>Xave</title>
 <meta name="description" content="Offline note taking with SQLite (WASM) and IndexedDB. No server, no account.">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="theme-color" content="#3b4ede">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Notebook">
-<link id="app-icon" rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2022%2022'%3E%3Crect%20width='22'%20height='22'%20rx='6'%20fill='%233b4ede'/%3E%3Crect%20x='5.5'%20y='5.5'%20width='2'%20height='11'%20rx='1'%20fill='%23ffffff'/%3E%3Cg%20fill='%23ffffff'%20opacity='0.55'%3E%3Crect%20x='9.5'%20y='5.5'%20width='7'%20height='1'/%3E%3Crect%20x='9.5'%20y='8.5'%20width='7'%20height='1'/%3E%3Crect%20x='9.5'%20y='11.5'%20width='7'%20height='1'/%3E%3Crect%20x='9.5'%20y='14.5'%20width='7'%20height='1'/%3E%3C/g%3E%3C/svg%3E">
+<meta name="apple-mobile-web-app-title" content="Xave">
+<link id="app-icon" rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2022%2022'%3E%3Crect%20width='22'%20height='22'%20rx='6'%20fill='%233b4ede'/%3E%3Cg%20stroke='%23ffffff'%20stroke-width='2.2'%20stroke-linecap='round'%20fill='none'%3E%3Cpath%20d='M7%207%2015%2015'/%3E%3Cpath%20d='M15%207%207%2015'%20opacity='0.55'/%3E%3C/g%3E%3C/svg%3E">
 <script>
   try {
     var t = JSON.parse(localStorage.getItem('noteapp.pref.theme'));
@@ -35,8 +35,13 @@
   </button>
 
   <div class="topbar__brand">
-    <span class="topbar__logo" aria-hidden="true"></span>
-    <span class="topbar__name">Notebook</span>
+    <span class="topbar__logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+        <path d="M7.6 7.6 16.4 16.4"></path>
+        <path d="M16.4 7.6 7.6 16.4" opacity="0.55"></path>
+      </svg>
+    </span>
+    <span class="topbar__name">Xave</span>
   </div>
 
   <div class="topbar__search">

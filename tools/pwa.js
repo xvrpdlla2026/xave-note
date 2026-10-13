@@ -65,9 +65,9 @@ function encodePng(width, height, rgba) {
 }
 
 /**
- * The app mark: an accent tile holding a cursor bar and four note lines, from the same
- * geometry as the favicon in src/index.html. Sampled three times per axis, because the
- * tile corners and the bar ends are curves and a hard-edged 512 shows its stair steps.
+ * The app mark: an accent tile holding a two-tone X monogram, from the same geometry as
+ * the favicon in src/index.html. Sampled three times per axis, because the tile corners
+ * and the stroke ends are curves and a hard-edged 512 shows its stair steps.
  */
 function appIcon(size) {
   const SUB = 3;
@@ -75,11 +75,11 @@ function appIcon(size) {
   const pad = size * 0.02;
   const radius = 6 * unit;
   const accent = [59, 78, 222]; // #3b4ede, the indigo default
-  const bars = [[5, 5, 7, 17]];
-  for (let i = 0; i < 4; i++) {
-    const top = 5 + i * 3.1;
-    bars.push([9, top, i === 3 ? 15 : 17, top + 1.45]);
-  }
+  const strokes = [
+    { x1: 7, y1: 7, x2: 15, y2: 15, alpha: 1 },
+    { x1: 15, y1: 7, x2: 7, y2: 15, alpha: 0.55 },
+  ];
+  const half = 1.1; // half of the 2.2 stroke width on the 22 unit grid
   const inTile = (x, y) => {
     if (x < pad || y < pad || x > size - pad || y > size - pad) return false;
     const cx = Math.min(Math.max(x, pad + radius), size - pad - radius);
@@ -88,9 +88,19 @@ function appIcon(size) {
     const dy = y - cy;
     return dx * dx + dy * dy <= radius * radius;
   };
-  const inBar = (x, y) => bars.some((bar) => (
-    x >= bar[0] * unit && x <= bar[2] * unit && y >= bar[1] * unit && y <= bar[3] * unit
-  ));
+  const inStroke = (x, y) => {
+    for (const s of strokes) {
+      const vx = (s.x2 - s.x1) * unit;
+      const vy = (s.y2 - s.y1) * unit;
+      const px = x - s.x1 * unit;
+      const py = y - s.y1 * unit;
+      const t = Math.max(0, Math.min(1, (px * vx + py * vy) / (vx * vx + vy * vy)));
+      const dx = px - vx * t;
+      const dy = py - vy * t;
+      if (Math.sqrt(dx * dx + dy * dy) <= half * unit) return s.alpha;
+    }
+    return 0;
+  };
   const rgba = Buffer.alloc(size * size * 4);
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
@@ -102,7 +112,7 @@ function appIcon(size) {
           const py = y + (sy + 0.5) / SUB;
           if (!inTile(px, py)) continue;
           tile++;
-          if (inBar(px, py)) bar++;
+          bar += inStroke(px, py);
         }
       }
       if (!tile) continue; // outside the tile stays transparent
@@ -121,8 +131,8 @@ function appIcon(size) {
 /** The web app manifest. Relative urls, so it works from a subdirectory too. */
 function manifest() {
   return JSON.stringify({
-    name: "Notebook",
-    short_name: "Notebook",
+    name: "Xave",
+    short_name: "Xave",
     description: "Offline note taking with SQLite (WASM), stored in the browser.",
     start_url: ".",
     scope: ".",

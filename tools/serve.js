@@ -70,6 +70,6 @@ server.on('error', (error) => {
 
 server.listen(PORT, '127.0.0.1', () => {
   const url = 'http://127.0.0.1:' + PORT + '/index.html';
-  console.log('Notebook served at ' + url + '  (Ctrl+C stops it)');
+  console.log('Xave served at ' + url + '  (Ctrl+C stops it)');
   if (OPEN) spawn('cmd', ['/c', 'start', '', url], { detached: true, stdio: 'ignore' }).unref();
 });

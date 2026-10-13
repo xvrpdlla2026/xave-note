@@ -1,4 +1,4 @@
-# Notebook — a local-first note app on SQLite (WASM) + IndexedDB
+# Xave: a local-first note app on SQLite (WASM) + IndexedDB
 
 A single-page note-taking app with **no backend, no account, and no build tooling needed to
 run it**. Open `index.html` in a browser and it works — including offline.

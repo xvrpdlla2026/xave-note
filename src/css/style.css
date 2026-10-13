@@ -319,33 +319,7 @@ input, textarea, select { font: inherit; }
   font-size: 0;
   line-height: 1;
 }
-.topbar__logo::before {
-  content: "";
-  width: 2px;
-  height: 11px;
-  margin-right: 2px;
-  border-radius: 1px;
-  background: currentColor;
-}
-.topbar__logo::after {
-  content: "";
-  width: 7px;
-  height: 11px;
-  border-radius: 1px;
-  background:
-    linear-gradient(
-      to bottom,
-      currentColor 0 1px,
-      transparent 1px 3px,
-      currentColor 3px 4px,
-      transparent 4px 6px,
-      currentColor 6px 7px,
-      transparent 7px 9px,
-      currentColor 9px 10px,
-      transparent 10px
-    );
-  opacity: 0.55;
-}
+.topbar__logo svg { width: 14px; height: 14px; display: block; }
 
 .topbar__name {
   font-size: 13.5px;
