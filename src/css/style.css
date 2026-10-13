@@ -339,8 +339,9 @@ input, textarea, select { font: inherit; }
 
 .topbar__search {
   position: relative;
-  justify-self: center;
-  width: min(calc(100% - 32px), 520px);
+  justify-self: start;
+  width: min(calc(100% - 40px), 460px);
+  margin-left: 16px;
 }
 
 .topbar__search .icon {
