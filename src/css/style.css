@@ -801,6 +801,7 @@ body.is-resizing * { user-select: none; -webkit-user-select: none; }
 .tree__row--nested.tree__row--group-start::after {
   top: calc(-1 * var(--tree-group) - 1px);
 }
+.tree__row--nested.tree__row--group-end::after { bottom: 0; }
 .tree__row--nested:hover::after { opacity: 0.5; }
 
 .tree__row--folder .tree__label { font-weight: 520; }

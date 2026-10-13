@@ -538,7 +538,20 @@ window.NoteApp = window.NoteApp || {};
       frag.appendChild(fileRow(host, file, model.activeFileId, 0, isBoundary));
     });
     host.textContent = '';
+    markGroupEnds(frag);
     host.appendChild(frag);
+  }
+
+  function markGroupEnds(frag) {
+    var rows = frag.children;
+    for (var i = 0; i < rows.length; i += 1) {
+      var row = rows[i];
+      if (!row.classList || !row.classList.contains('tree__row--nested')) continue;
+      var next = rows[i + 1];
+      var depth = parseFloat(row.style.getPropertyValue('--indent')) || 0;
+      var nextDepth = next ? (parseFloat(next.style.getPropertyValue('--indent')) || 0) : -1;
+      if (nextDepth < depth) row.classList.add('tree__row--group-end');
+    }
   }
 
   function countDirectItems(model) {
