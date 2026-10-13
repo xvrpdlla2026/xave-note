@@ -984,7 +984,7 @@ window.NoteApp = window.NoteApp || {};
     var column = el('div', { class: 'pane-split__main' });
     column.appendChild(frag);
     var preview = ctx.preview;
-    var wide = !!(preview && (preview.docx || preview.xlsx || preview.pdf || preview.text));
+    var wide = !!(preview && (preview.docx || preview.xlsx || preview.csv || preview.pdf || preview.text));
     host.appendChild(el('div', { class: 'pane-split' + (wide ? ' pane-split--wide' : '') }, [column, previewPanel(preview)]));
   }
 
@@ -1008,7 +1008,7 @@ window.NoteApp = window.NoteApp || {};
       load().then(function (blob) {
         if (blob && node.isConnected) node.src = makeObjectUrl(blob) + hash;
       }).catch(function () {});
-    } else if (preview.docx || preview.xlsx || preview.text) {
+    } else if (preview.docx || preview.xlsx || preview.csv || preview.text) {
       var host = el('div', { class: 'pane-preview__doc' });
       host.appendChild(el('p', { class: 'pane-preview__empty', text: 'Reading\u2026' }));
       node = names.doc ? el('div', { class: names.doc }, [host]) : host;

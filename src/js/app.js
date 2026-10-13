@@ -3987,7 +3987,7 @@ window.NoteApp = window.NoteApp || {};
       .trim();
   }
 
-  var TEXT_EXTENSIONS = ['.txt', '.md', '.markdown', '.csv', '.tsv', '.json', '.log', '.yml', '.yaml', '.ini', '.xml', '.html', '.css', '.js', '.ts'];
+  var TEXT_EXTENSIONS = ['.txt', '.md', '.markdown', '.json', '.log', '.yml', '.yaml', '.ini', '.xml', '.html', '.css', '.js', '.ts'];
 
   function filePreviewFor(meta) {
     var mime = meta.mime_type || '';
@@ -4005,6 +4005,7 @@ window.NoteApp = window.NoteApp || {};
       pdf: mime === 'application/pdf' || ext === '.pdf',
       docx: ext === '.docx' || mime.indexOf('wordprocessingml') !== -1,
       xlsx: ext === '.xlsx' || mime.indexOf('spreadsheetml') !== -1,
+      csv: ext === '.csv' || ext === '.tsv',
       text: /^text\//.test(mime) || TEXT_EXTENSIONS.indexOf(ext) !== -1,
     };
   }

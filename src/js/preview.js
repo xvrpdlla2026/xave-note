@@ -115,6 +115,49 @@
     });
   }
 
+  function csvDelimiter(text) {
+    var line = text.slice(0, 2000).split(/\r?\n/)[0] || '';
+    if (line.indexOf('\t') !== -1 && line.indexOf(',') === -1) return '\t';
+    if (line.indexOf(',') === -1 && line.indexOf(';') !== -1) return ';';
+    return ',';
+  }
+
+  function csvRows(text, delim) {
+    var rows = [];
+    var cells = [];
+    var cell = '';
+    var quoted = false;
+    for (var i = 0; i < text.length; i++) {
+      var ch = text.charAt(i);
+      if (quoted) {
+        if (ch === '"') {
+          if (text.charAt(i + 1) === '"') { cell += '"'; i++; }
+          else quoted = false;
+        } else {
+          cell += ch;
+        }
+      } else if (ch === '"') {
+        quoted = true;
+      } else if (ch === delim) {
+        cells.push(cell);
+        cell = '';
+      } else if (ch === '\n' || ch === '\r') {
+        if (ch === '\r' && text.charAt(i + 1) === '\n') i++;
+        cells.push(cell);
+        rows.push(cells);
+        cells = [];
+        cell = '';
+      } else {
+        cell += ch;
+      }
+    }
+    if (cell.length || cells.length) {
+      cells.push(cell);
+      rows.push(cells);
+    }
+    return rows;
+  }
+
   function pre(text) {
     var node = document.createElement('pre');
     node.className = 'pane-preview__text';
@@ -167,6 +210,14 @@
       });
     }
     if (meta.xlsx) return bytes.then(xlsxRows).then(function (rows) { return rows.length ? sheetNode(rows) : null; });
+    if (meta.csv) {
+      return blob.text().then(function (text) {
+        var rows = csvRows(text, csvDelimiter(text)).slice(0, SHEET_ROWS).map(function (cells) {
+          return cells.slice(0, SHEET_COLS);
+        });
+        return rows.length ? sheetNode(rows) : null;
+      });
+    }
     if (meta.text) {
       return blob.text().then(function (text) {
         var trimmed = text.length > TEXT_LIMIT ? text.slice(0, TEXT_LIMIT) + '\n\u2026' : text;
