@@ -973,7 +973,7 @@ window.NoteApp = window.NoteApp || {};
 
     var bulkCount = (ctx.bulkSelected || []).length;
     if (bulkCount > 1) {
-      frag.appendChild(el('div', { class: 'bulk-bar', role: 'toolbar', 'aria-label': 'Bulk actions' }, [
+      frag.appendChild(el('div', { class: ctx.bulkFloat ? 'bulk-bar is-floating' : 'bulk-bar', role: 'toolbar', 'aria-label': 'Bulk actions' }, [
         el('div', { class: 'bulk-bar__lead' }, [
           el('span', { class: 'bulk-bar__count', text: String(bulkCount) }),
           el('span', { class: 'bulk-bar__label', text: 'selected' }),

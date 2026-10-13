@@ -1466,6 +1466,13 @@ body.is-marquee * {
   background: var(--bg-raised);
   box-shadow: var(--shadow-md);
 }
+.bulk-bar.is-floating {
+  position: fixed;
+  bottom: auto;
+  margin-top: 0;
+  z-index: 60;
+  max-width: calc(100vw - 24px);
+}
 .bulk-bar__lead {
   display: flex;
   align-items: center;

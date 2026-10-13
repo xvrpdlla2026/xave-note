@@ -33,6 +33,7 @@ window.NoteApp = window.NoteApp || {};
     trashOpen: false,
     trashSelected: [],
     bulkSelected: [],
+    bulkFloat: null,
     bulkKinds: {},
     focused: null,
     bulkAnchor: null,
@@ -1379,6 +1380,8 @@ window.NoteApp = window.NoteApp || {};
           activeNoteId: state.activeNoteId,
           activeFileId: state.activeFileId,
           bulkSelected: state.bulkSelected,
+      bulkFloat: state.bulkFloat,
+          bulkFloat: state.bulkFloat,
           focused: state.focused,
           paneView: state.paneView,
           onSetPaneView: setPaneView,
@@ -1400,6 +1403,7 @@ window.NoteApp = window.NoteApp || {};
       activeNoteId: state.activeNoteId,
       activeFileId: state.activeFileId,
       bulkSelected: state.bulkSelected,
+      bulkFloat: state.bulkFloat,
       focused: state.focused,
       paneView: state.paneView,
       onSetPaneView: setPaneView,
@@ -3846,6 +3850,7 @@ window.NoteApp = window.NoteApp || {};
 
   function onPanePointerDown(event) {
     suppressPaneClick = null;
+    state.bulkFloat = null;
     if (event.button !== 0 || marqueeDrag) return;
     if (!marqueeAllows(event.target)) return;
     marqueeDrag = {
@@ -3915,6 +3920,26 @@ window.NoteApp = window.NoteApp || {};
     marqueeApply();
   }
 
+  function placeBulkBar() {
+    var point = state.bulkFloat;
+    var bar = dom.main && dom.main.querySelector('.bulk-bar');
+    if (!point || !bar) return;
+    var width = bar.offsetWidth;
+    var height = bar.offsetHeight;
+    var pad = 12;
+    var gap = 16;
+    var maxLeft = window.innerWidth - pad - width;
+    var maxTop = window.innerHeight - pad - height;
+    var left = point.x + gap;
+    if (left > maxLeft) left = point.x - gap - width;
+    left = Math.min(left, maxLeft);
+    var top = point.y + gap;
+    if (top > maxTop) top = point.y - gap - height;
+    top = Math.min(top, maxTop);
+    bar.style.left = Math.round(Math.max(pad, left)) + 'px';
+    bar.style.top = Math.round(Math.max(pad, top)) + 'px';
+  }
+
   function endMarquee() {
     var drag = marqueeDrag;
     marqueeDrag = null;
@@ -3924,7 +3949,9 @@ window.NoteApp = window.NoteApp || {};
     if (!drag.active) return false;
     suppressPaneClick = { x: drag.x1, y: drag.y1 };
     if (state.bulkSelected.length) state.bulkAnchor = state.bulkSelected[state.bulkSelected.length - 1];
+    state.bulkFloat = { x: drag.x1, y: drag.y1 };
     render();
+    placeBulkBar();
     return true;
   }
 
@@ -4105,6 +4132,7 @@ window.NoteApp = window.NoteApp || {};
 
   function selectNewItems(kind, ids) {
     if (!ids.length) return;
+    state.bulkFloat = null;
     state.bulkSelected = ids.slice();
     state.bulkKinds = {};
     ids.forEach(function (id) { state.bulkKinds[id] = kind; });
