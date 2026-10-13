@@ -297,7 +297,7 @@ input, textarea, select { font: inherit; }
   position: relative;
   flex: 0 0 auto;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   height: var(--topbar-h);
   padding: 0 14px 0 10px;
@@ -310,15 +310,20 @@ input, textarea, select { font: inherit; }
 #nav-toggle,
 #sidebar-toggle { grid-row: 1; grid-column: 1; justify-self: start; }
 
-.topbar__brand {
+.topbar__center {
   grid-row: 1;
-  grid-column: 4;
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  justify-self: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.topbar__brand {
   display: flex;
   align-items: center;
   gap: 9px;
-  height: 100%;
-  padding: 0 2px 0 14px;
-  border-left: 1px solid var(--border);
 }
 
 .topbar__logo {
@@ -343,11 +348,10 @@ input, textarea, select { font: inherit; }
 }
 
 .topbar__search {
-  grid-row: 1;
-  grid-column: 2;
   position: relative;
-  justify-self: center;
-  width: min(calc(100% - 24px), 520px);
+  flex: 0 0 auto;
+  width: 520px;
+  max-width: 46vw;
 }
 
 .topbar__search .icon {
@@ -2729,15 +2733,16 @@ dialog:not([open]) { display: none; }
   .nav-toggle { display: inline-flex; }
   body:has(.layout.is-mobile-list) .nav-toggle { display: none; }
   .topbar {
-    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 8px;
     padding: 0 10px;
   }
-  .topbar__brand { grid-column: 2; height: auto; gap: 6px; padding: 0; border-left: 0; }
+  .topbar__center { grid-column: 2; justify-self: stretch; gap: 8px; }
+  .topbar__brand { order: -1; gap: 0; }
   .topbar__name { display: none; }
-  .topbar__search { grid-column: 3; width: 100%; margin-left: 0; }
+  .topbar__search { flex: 1 1 auto; width: 100%; max-width: none; }
   .topbar__search input { height: 36px; padding-right: 12px; }
-  .topbar__actions { grid-column: 4; padding: 0; }
+  .topbar__actions { grid-column: 3; padding: 0; }
   .topbar .icon-btn { width: 32px; height: 32px; }
   .topbar__hint,
   .topbar__divider { display: none; }

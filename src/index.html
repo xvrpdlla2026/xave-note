@@ -28,6 +28,17 @@
 
 <header class="topbar">
 
+
+    <button id="sidebar-toggle" class="icon-btn" type="button" data-action="toggle-sidebar" aria-label="Hide the sidebar" title="Hide the sidebar (Ctrl+B)"></button>
+
+  <div class="topbar__center">
+  <div class="topbar__search">
+    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" style="font-size:15px">
+      <path d="M11 4.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13Z"></path><path d="M15.8 15.8 20 20"></path>
+    </svg>
+    <input id="search" type="search" placeholder="Search notes and files" aria-label="Search notes and files" autocomplete="off">
+    <kbd class="topbar__hint" aria-hidden="true">Ctrl K</kbd>
+  </div>
   <div class="topbar__brand">
     <button id="nav-toggle" class="icon-btn nav-toggle" type="button" data-action="toggle-nav" aria-label="Back to the notebook list" title="Back to the notebook list">
     <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" style="font-size:16px">
@@ -43,15 +54,6 @@
     </span>
     <span class="topbar__name">Xave</span>
   </div>
-
-    <button id="sidebar-toggle" class="icon-btn" type="button" data-action="toggle-sidebar" aria-label="Hide the sidebar" title="Hide the sidebar (Ctrl+B)"></button>
-
-  <div class="topbar__search">
-    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" style="font-size:15px">
-      <path d="M11 4.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13Z"></path><path d="M15.8 15.8 20 20"></path>
-    </svg>
-    <input id="search" type="search" placeholder="Search notes and files" aria-label="Search notes and files" autocomplete="off">
-    <kbd class="topbar__hint" aria-hidden="true">Ctrl K</kbd>
   </div>
 
   <div class="topbar__actions">
