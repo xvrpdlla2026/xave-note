@@ -3841,11 +3841,9 @@ window.NoteApp = window.NoteApp || {};
   function marqueeAllows(target) {
     if (!dom.main || !target || !dom.main.contains(target)) return false;
     if (!dom.main.querySelector('.card-grid')) return false;
-    if (target.closest && target.closest('input, textarea, select, [contenteditable="true"], .bulk-bar, .pane-head, .pane-actions, .card-list__head')) return false;
-    var control = target.closest ? target.closest('button, a') : null;
-    if (control && !control.closest('.card-grid')) return false;
-    if (target === dom.main) return true;
-    return !!(target.closest && (target.closest('.pane-section') || target.closest('.card-grid')));
+    if (document.body.classList.contains('is-resizing')) return false;
+    if (target.closest && target.closest('input, textarea, select, [contenteditable="true"], .bulk-bar, .editor, .pane-preview__text, .pane-preview__facts, .pane-preview__sheetwrap, .pane-preview__docx, .pane-preview__pdf, .pane-preview__stack, pre, code')) return false;
+    return true;
   }
 
   function onPanePointerDown(event) {

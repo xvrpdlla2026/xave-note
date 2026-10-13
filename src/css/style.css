@@ -1446,6 +1446,25 @@ svg.tree__glyph--note { font-size: 14.5px; }
   border-radius: 2px;
 }
 
+.main,
+.sidebar,
+.tabs,
+.topbar {
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.main input,
+.main textarea,
+.main select,
+.main [contenteditable="true"],
+.main :is(.pane-preview__text, .pane-preview__facts, .pane-preview__sheetwrap, .pane-preview__docx, .pane-preview__pdf, .pane-preview__stack, pre, code) {
+  cursor: auto;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 body.is-marquee,
 body.is-marquee * {
   user-select: none;
