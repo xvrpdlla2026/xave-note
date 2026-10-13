@@ -1030,6 +1030,10 @@ window.NoteApp = window.NoteApp || {};
     return node;
   }
 
+  function browserOpens(preview) {
+    return !!(preview && (preview.image || preview.video || preview.audio || preview.pdf || preview.text));
+  }
+
   function branchSpan(item) {
     var branch = el('span', { class: 'pane-preview__branch' });
     (item.levels || []).forEach(function (line) {
@@ -1398,23 +1402,20 @@ window.NoteApp = window.NoteApp || {};
     } else {
       body.appendChild(el('div', { class: 'preview__placeholder' }, [
         el('span', { class: 'preview__glyph', text: util.fileGlyph(file.filename, file.mime_type) }),
-        el('p', { text: 'No inline preview for this type. Download it, or open it in a new tab.' }),
+        el('p', { text: 'No inline preview for this type. Download it to open it in the app that owns the format.' }),
       ]));
     }
 
+    var renameButton = el('button', { class: 'btn btn--ghost', type: 'button', dataset: { action: 'rename-file', id: file.id } }, ['Rename']);
+    var moveButton = el('button', { class: 'btn btn--ghost', type: 'button', dataset: { action: 'move-file', id: file.id } }, ['Move']);
+    var deleteButton = el('button', { class: 'btn btn--danger-ghost', type: 'button', dataset: { action: 'delete-file', id: file.id } }, ['Delete']);
     var actions = el('div', { class: 'preview__actions' }, ctx.locked
-      ? [
-        el('button', { class: 'btn btn--ghost', type: 'button', dataset: { action: 'rename-file', id: file.id } }, ['Rename']),
-        el('button', { class: 'btn btn--ghost', type: 'button', dataset: { action: 'move-file', id: file.id } }, ['Move']),
-        el('button', { class: 'btn btn--danger-ghost', type: 'button', dataset: { action: 'delete-file', id: file.id } }, ['Delete']),
-      ]
+      ? [renameButton, moveButton, deleteButton]
       : [
         el('button', { class: 'btn btn--primary', type: 'button', dataset: { action: 'download-file', id: file.id } }, ['Download']),
-        el('button', { class: 'btn', type: 'button', dataset: { action: 'open-file-tab', id: file.id } }, ['Open in new tab']),
-        el('button', { class: 'btn btn--ghost', type: 'button', dataset: { action: 'rename-file', id: file.id } }, ['Rename']),
-        el('button', { class: 'btn btn--ghost', type: 'button', dataset: { action: 'move-file', id: file.id } }, ['Move']),
-        el('button', { class: 'btn btn--danger-ghost', type: 'button', dataset: { action: 'delete-file', id: file.id } }, ['Delete']),
-      ]);
+      ].concat(browserOpens(ctx.preview) ? [
+        el('button', { class: 'btn', type: 'button', dataset: { action: 'open-file-tab', id: file.id } }, ['Open']),
+      ] : [], [renameButton, moveButton, deleteButton]));
 
     host.textContent = '';
     host.appendChild(el('div', { class: 'preview' }, [
