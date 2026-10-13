@@ -2234,6 +2234,13 @@ function taskRow(task, ctx) {
   ]);
 }
 
+function paneSection(label, count) {
+  return el('h3', { class: 'pane-section' }, [
+    el('span', { text: label }),
+    count ? el('span', { class: 'pane-section__count', text: String(count) }) : null,
+  ]);
+}
+
 function taskGroup(bucket, rows, ctx) {
   var ordered = ctx.manual
     ? rows.slice().sort(function (a, b) {
