@@ -4004,7 +4004,7 @@ window.NoteApp = window.NoteApp || {};
       if (!folder) return null;
       var items = [];
       var total = 0;
-      (function walk(id, depth) {
+      (function walk(id, prefix) {
         var kids = [];
         treeModel.folders.forEach(function (f) {
           if (f.parent_folder_id === id) kids.push({ name: f.name, kind: 'folder', id: f.id });
@@ -4016,12 +4016,19 @@ window.NoteApp = window.NoteApp || {};
           kids.push({ name: f.filename, kind: 'file', id: f.id });
         });
         total += kids.length;
-        kids.forEach(function (kid) {
+        kids.forEach(function (kid, i) {
           if (items.length >= 200) return;
-          items.push({ kind: kid.kind, id: kid.id, name: kid.name, depth: depth, parent: id });
-          if (kid.kind === 'folder') walk(kid.id, depth + 1);
+          var last = i === kids.length - 1;
+          items.push({
+            kind: kid.kind,
+            id: kid.id,
+            name: kid.name,
+            parent: id,
+            branch: prefix + (last ? '\u2514\u2500 ' : '\u251c\u2500 '),
+          });
+          if (kid.kind === 'folder') walk(kid.id, prefix + (last ? '   ' : '\u2502  '));
         });
-      })(folder.id, 0);
+      })(folder.id, '');
       return {
         kind: 'folder',
         title: folder.name,

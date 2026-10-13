@@ -1002,10 +1002,10 @@ window.NoteApp = window.NoteApp || {};
           type: 'button',
           title: item.name,
         }, [
+          el('span', { class: 'pane-preview__branch', text: item.branch }),
           App.ui.icon(item.kind === 'folder' ? 'folder' : (item.kind === 'note' ? 'note' : 'file'), 13),
           el('span', { text: item.name }),
         ]);
-        row.style.paddingLeft = (6 + item.depth * 14) + 'px';
         row.addEventListener('click', function () {
           App.app.revealPaneItem(item.kind, item.id, item.parent);
         });

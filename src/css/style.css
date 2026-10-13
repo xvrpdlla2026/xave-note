@@ -1266,6 +1266,14 @@ svg.tree__glyph--note { font-size: 14.5px; }
   }
   .pane-preview__node:hover { background: var(--bg-hover); color: var(--text); }
   .pane-preview__node.is-active { background: var(--bg-active); color: var(--text); }
+  .pane-preview__branch {
+    flex: 0 0 auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11.5px;
+    line-height: 1;
+    color: var(--text-faint);
+    white-space: pre;
+  }
   .pane-preview__node svg { flex: 0 0 auto; opacity: 0.7; }
   .pane-preview__node span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pane-preview__text { max-height: 460px; white-space: pre-wrap; overflow-wrap: anywhere; }
