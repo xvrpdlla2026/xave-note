@@ -2678,6 +2678,7 @@ dialog:not([open]) { display: none; }
   .layout.is-mobile-list .sidebar { border-right: 0; }
   .layout:not(.is-mobile-list) .sidebar { display: none; }
   .splitter { display: none; }
+  #sidebar-toggle { display: none; }
   .tabs { padding: 8px 10px 0; }
 
   .tree__row { min-height: 38px; }
@@ -3563,3 +3564,9 @@ dialog:not([open]) { display: none; }
   color: var(--text-dim);
 }
 .file-preview__doc .pane-preview__sheet th { color: var(--text); background: var(--bg-hover); font-weight: 600; }
+
+@media (min-width: 821px) {
+  .layout.is-sidebar-hidden { grid-template-columns: minmax(0, 1fr); }
+  .layout.is-sidebar-hidden > .sidebar,
+  .layout.is-sidebar-hidden > .splitter { display: none; }
+}

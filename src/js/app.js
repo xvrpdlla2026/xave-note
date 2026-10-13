@@ -3422,6 +3422,25 @@ window.NoteApp = window.NoteApp || {};
     document.head.appendChild(link);
   }
 
+  function sidebarHidden() {
+    return App.prefs.get('sidebarHidden', false) === true;
+  }
+
+  function applySidebarHidden(hidden) {
+    if (dom.layout) dom.layout.classList.toggle('is-sidebar-hidden', !!hidden);
+    var button = document.getElementById('sidebar-toggle');
+    if (button) {
+      button.setAttribute('aria-pressed', hidden ? 'true' : 'false');
+      button.setAttribute('aria-label', hidden ? 'Show the sidebar' : 'Hide the sidebar');
+      button.title = (hidden ? 'Show the sidebar' : 'Hide the sidebar') + ' (Ctrl+B)';
+    }
+    App.prefs.set('sidebarHidden', !!hidden);
+  }
+
+  function toggleSidebar() {
+    applySidebarHidden(!sidebarHidden());
+  }
+
   function applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
     App.prefs.set('theme', theme);
@@ -3455,6 +3474,7 @@ window.NoteApp = window.NoteApp || {};
 
   function bootstrapIcons() {
     setIcon(document.getElementById('nav-toggle'), 'arrowLeft', 16);
+    setIcon(document.getElementById('sidebar-toggle'), 'panel', 16);
     setIcon(document.getElementById('settings-open'), 'settings', 16);
     setIcon(document.getElementById('workspace-add'), 'plus', 15);
     setIcon(document.getElementById('workspace-trash'), 'trash', 19);
@@ -3787,6 +3807,7 @@ window.NoteApp = window.NoteApp || {};
     },
     'sort-menu': function () { openSortMenu(); },
     'view-tasks': function () { showTasks(state.view !== 'tasks'); },
+    'toggle-sidebar': function () { toggleSidebar(); },
     'add-task': function () { addTaskFromQuickAdd(); },
     'task-edit': function (id) { editTask(id); },
     'task-delete': function (id) { deleteTask(id); },
@@ -4685,6 +4706,11 @@ window.NoteApp = window.NoteApp || {};
     }, true);
 
     document.addEventListener('keydown', function (event) {
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'b') {
+        event.preventDefault();
+        toggleSidebar();
+        return;
+      }
       if ((event.key === 'Enter' || event.key === ' ') && !(event.ctrlKey || event.metaKey || event.altKey)) {
         if (event.target.closest && event.target.closest('.tab__close[data-action]')) return;
         var pill = event.target.closest ? event.target.closest('.wikilink[data-title]') : null;
@@ -5479,6 +5505,7 @@ window.NoteApp = window.NoteApp || {};
   function boot() {
     cacheDom();
     applyManifest();
+    applySidebarHidden(sidebarHidden());
     bootstrapIcons();
     applyTheme(App.prefs.get('theme', window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
     applyPalette(App.prefs.get('palette', 'indigo'));
