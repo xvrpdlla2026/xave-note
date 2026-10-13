@@ -1332,6 +1332,7 @@ window.NoteApp = window.NoteApp || {};
         App.ui.renderFilePreview(dom.main, {
           file: meta,
           previewLoader: fileLocked ? null : function () { return App.db.getFileBlob(meta.id); },
+          preview: filePreviewFor(meta),
           locked: fileLocked,
           chain: meta.folder_id ? App.db.folderChains(state.workspaceId)[meta.folder_id] : [],
         });
@@ -3990,6 +3991,26 @@ window.NoteApp = window.NoteApp || {};
 
   var TEXT_EXTENSIONS = ['.txt', '.md', '.markdown', '.csv', '.tsv', '.json', '.log', '.yml', '.yaml', '.ini', '.xml', '.html', '.css', '.js', '.ts'];
 
+  function filePreviewFor(meta) {
+    var mime = meta.mime_type || '';
+    var ext = (String(meta.filename || '').match(/\.[a-z0-9]+$/i) || [''])[0].toLowerCase();
+    return {
+      kind: 'file',
+      title: meta.filename,
+      id: meta.id,
+      mime: meta.mime_type || '',
+      bytes: meta.size || 0,
+      when: meta.created_at,
+      image: /^image\//.test(mime),
+      video: /^video\//.test(mime),
+      audio: /^audio\//.test(mime),
+      pdf: mime === 'application/pdf' || ext === '.pdf',
+      docx: ext === '.docx' || mime.indexOf('wordprocessingml') !== -1,
+      xlsx: ext === '.xlsx' || mime.indexOf('spreadsheetml') !== -1,
+      text: /^text\//.test(mime) || TEXT_EXTENSIONS.indexOf(ext) !== -1,
+    };
+  }
+
   function previewFor(treeModel) {
     var target = state.focused;
     if (!target && state.bulkSelected.length === 1) {
@@ -4040,24 +4061,7 @@ window.NoteApp = window.NoteApp || {};
     }
     if (target.kind === 'file') {
       var meta = App.db.getFileMeta(target.id);
-      if (!meta) return null;
-      var mime = meta.mime_type || '';
-      var ext = (String(meta.filename || '').match(/\.[a-z0-9]+$/i) || [''])[0].toLowerCase();
-      return {
-        kind: 'file',
-        title: meta.filename,
-        id: meta.id,
-        mime: meta.mime_type || '',
-        bytes: meta.size || 0,
-        when: meta.created_at,
-        image: /^image\//.test(mime),
-        video: /^video\//.test(mime),
-        audio: /^audio\//.test(mime),
-        pdf: mime === 'application/pdf' || ext === '.pdf',
-        docx: ext === '.docx' || mime.indexOf('wordprocessingml') !== -1,
-        xlsx: ext === '.xlsx' || mime.indexOf('spreadsheetml') !== -1,
-        text: /^text\//.test(mime) || TEXT_EXTENSIONS.indexOf(ext) !== -1,
-      };
+      return meta ? filePreviewFor(meta) : null;
     }
     var note = App.db.getNote(target.id);
     if (!note) return null;

@@ -988,6 +988,47 @@ window.NoteApp = window.NoteApp || {};
     host.appendChild(el('div', { class: 'pane-split' + (wide ? ' pane-split--wide' : '') }, [column, previewPanel(preview)]));
   }
 
+  function filePreviewContent(preview, load, cls) {
+    var names = cls || {};
+    var node;
+    if (preview.image || preview.video || preview.audio) {
+      var kind = preview.image ? 'image' : (preview.video ? 'video' : 'audio');
+      node = el(preview.image ? 'img' : (preview.video ? 'video' : 'audio'), {
+        class: names[kind] || 'pane-preview__' + kind,
+        alt: preview.image ? preview.title : null,
+        controls: preview.image ? null : true,
+        preload: preview.image ? null : 'metadata',
+      });
+      load().then(function (blob) {
+        if (blob && node.isConnected) node.src = makeObjectUrl(blob);
+      }).catch(function () {});
+    } else if (preview.pdf) {
+      node = el('iframe', { class: names.pdf || 'pane-preview__pdf', title: preview.title });
+      load().then(function (blob) {
+        if (blob && node.isConnected) node.src = makeObjectUrl(blob);
+      }).catch(function () {});
+    } else if (preview.docx || preview.xlsx || preview.text) {
+      var host = el('div', { class: 'pane-preview__doc' });
+      host.appendChild(el('p', { class: 'pane-preview__empty', text: 'Reading\u2026' }));
+      node = names.doc ? el('div', { class: names.doc }, [host]) : host;
+      load().then(function (blob) {
+        if (!blob || !host.isConnected) return null;
+        return App.preview.render(preview, blob);
+      }).then(function (rendered) {
+        if (!host.isConnected) return;
+        host.innerHTML = '';
+        host.appendChild(rendered || el('p', { class: 'pane-preview__empty', text: 'No preview for this file.' }));
+      }).catch(function () {
+        if (!host.isConnected) return;
+        host.innerHTML = '';
+        host.appendChild(el('p', { class: 'pane-preview__empty', text: 'This file could not be read.' }));
+      });
+    } else {
+      return null;
+    }
+    return node;
+  }
+
   function previewPanel(preview) {
     if (!preview) return null;
     var many = preview.kind === 'many';
@@ -1020,41 +1061,12 @@ window.NoteApp = window.NoteApp || {};
         : el('p', { class: 'pane-preview__empty', text: 'This note is empty.' });
     } else if (preview.kind === 'file') {
       var thumb = el('div', { class: 'pane-preview__thumb' });
-      if (preview.image || preview.video || preview.audio) {
-        var media = el(preview.image ? 'img' : (preview.video ? 'video' : 'audio'), {
-          class: preview.image ? 'pane-preview__image' : (preview.video ? 'pane-preview__video' : 'pane-preview__audio'),
-          alt: preview.image ? preview.title : null,
-          controls: preview.image ? null : true,
-          preload: preview.image ? null : 'metadata',
+      var inline = filePreviewContent(preview, function () {
+        return App.db.getFileBlob(preview.id).then(function (stored) {
+          return stored ? stored.blob : null;
         });
-        thumb.appendChild(media);
-        App.db.getFileBlob(preview.id).then(function (stored) {
-          if (stored && stored.blob) media.src = URL.createObjectURL(stored.blob);
-        }).catch(function () {});
-      } else if (preview.pdf) {
-        var frame = el('iframe', { class: 'pane-preview__pdf', title: preview.title });
-        thumb.appendChild(frame);
-        App.db.getFileBlob(preview.id).then(function (stored) {
-          if (stored && stored.blob) frame.src = URL.createObjectURL(stored.blob);
-        }).catch(function () {});
-      } else if (preview.docx || preview.xlsx || preview.text) {
-        var slot = el('div', { class: 'pane-preview__doc' }, [
-          el('p', { class: 'pane-preview__empty', text: 'Reading\u2026' }),
-        ]);
-        thumb.appendChild(slot);
-        App.db.getFileBlob(preview.id).then(function (stored) {
-          if (!stored || !stored.blob) return null;
-          return App.preview.render(preview, stored.blob);
-        }).then(function (node) {
-          slot.innerHTML = '';
-          slot.appendChild(node || el('p', { class: 'pane-preview__empty', text: 'No preview for this file.' }));
-        }).catch(function () {
-          slot.innerHTML = '';
-          slot.appendChild(el('p', { class: 'pane-preview__empty', text: 'This file could not be read.' }));
-        });
-      } else {
-        thumb.appendChild(el('div', { class: 'pane-preview__glyph' }, [App.ui.icon('file', 26)]));
-      }
+      });
+      thumb.appendChild(inline || el('div', { class: 'pane-preview__glyph' }, [App.ui.icon('file', 26)]));
       body = el('div', { class: 'pane-preview__stack' }, [
         thumb,
         el('dl', { class: 'pane-preview__facts' }, [
@@ -1347,25 +1359,23 @@ window.NoteApp = window.NoteApp || {};
     return list;
   }
 
-  function previewMedia(mime, filename) {
-    var type = String(mime || '').toLowerCase();
-    if (type.indexOf('video/') === 0) {
-      return el('video', { class: 'preview__video', controls: 'controls', playsinline: 'playsinline', preload: 'metadata' });
-    }
-    if (type.indexOf('audio/') === 0) {
-      return el('audio', { class: 'preview__audio', controls: 'controls', preload: 'metadata' });
-    }
-    if (type.indexOf('image/') === 0) {
-      return el('img', { class: 'preview__image', alt: filename, draggable: 'false' });
-    }
-    return null;
-  }
-
   function renderFilePreview(host, ctx) {
     var file = ctx.file;
     var body = el('div', { class: 'preview__body' });
 
-    var media = !ctx.locked && ctx.previewLoader ? previewMedia(file.mime_type, file.filename) : null;
+    var inline = !ctx.locked && ctx.previewLoader && ctx.preview
+      ? filePreviewContent(ctx.preview, function () {
+        return Promise.resolve(ctx.previewLoader()).then(function (resolved) {
+          return resolved ? resolved.blob : null;
+        });
+      }, {
+        image: 'file-preview__image',
+        video: 'file-preview__video',
+        audio: 'file-preview__audio',
+        pdf: 'file-preview__pdf',
+        doc: 'file-preview__doc',
+      })
+      : null;
 
     if (ctx.locked) {
       body.appendChild(lockNotice({
@@ -1373,20 +1383,8 @@ window.NoteApp = window.NoteApp || {};
         body: 'Its contents are sealed with your notebook password, so there is nothing to show '
           + 'yet. The name, type and size above are not encrypted.',
       }));
-    } else if (media) {
-      var pending = el('div', { class: 'preview__loading', text: 'Loading preview…' });
-      body.appendChild(pending);
-      body.appendChild(media);
-      Promise.resolve(ctx.previewLoader()).then(function (resolved) {
-        if (!media.isConnected) return;
-        if (!resolved || !resolved.blob) throw new Error('no blob');
-        pending.remove();
-        media.src = makeObjectUrl(resolved.blob);
-      }, function () {
-        if (!media.isConnected) return;
-        media.remove();
-        pending.textContent = 'This preview could not be loaded. Download it instead.';
-      });
+    } else if (inline) {
+      body.appendChild(inline);
     } else {
       body.appendChild(el('div', { class: 'preview__placeholder' }, [
         el('span', { class: 'preview__glyph', text: util.fileGlyph(file.filename, file.mime_type) }),
