@@ -297,22 +297,28 @@ input, textarea, select { font: inherit; }
   position: relative;
   flex: 0 0 auto;
   display: grid;
-  grid-template-columns: var(--sidebar-w) minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   height: var(--topbar-h);
+  padding: 0 14px 0 10px;
   background: var(--bg-raised);
   border-bottom: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
   z-index: 20;
 }
 
+#nav-toggle,
+#sidebar-toggle { grid-row: 1; grid-column: 1; justify-self: start; }
+
 .topbar__brand {
+  grid-row: 1;
+  grid-column: 4;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   height: 100%;
-  padding: 0 10px 0 12px;
-  border-right: 1px solid var(--border);
+  padding: 0 2px 0 14px;
+  border-left: 1px solid var(--border);
 }
 
 .topbar__logo {
@@ -331,17 +337,17 @@ input, textarea, select { font: inherit; }
 .topbar__logo svg { width: 15px; height: 15px; display: block; }
 
 .topbar__name {
-  margin-right: auto;
   font-size: 14px;
   font-weight: 660;
   letter-spacing: -0.015em;
 }
 
 .topbar__search {
+  grid-row: 1;
+  grid-column: 2;
   position: relative;
-  justify-self: start;
-  width: min(calc(100% - 40px), 460px);
-  margin-left: 16px;
+  justify-self: center;
+  width: min(calc(100% - 24px), 520px);
 }
 
 .topbar__search .icon {
@@ -395,11 +401,13 @@ input, textarea, select { font: inherit; }
 .topbar__search:focus-within .topbar__hint { opacity: 0; }
 
 .topbar__actions {
+  grid-row: 1;
+  grid-column: 3;
   display: flex;
   align-items: center;
   gap: 6px;
   height: 100%;
-  padding: 0 12px 0 8px;
+  padding: 0 14px;
 }
 .topbar__divider {
   width: 1px; height: 20px;
@@ -408,9 +416,6 @@ input, textarea, select { font: inherit; }
 }
 .topbar .icon-btn { width: 34px; height: 34px; border-radius: 9px; font-size: 15px; }
 .topbar .icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-
-body:has(.layout.is-sidebar-hidden) .topbar { grid-template-columns: auto minmax(0, 1fr) auto; }
-body:has(.layout.is-sidebar-hidden) .topbar__brand { border-right: 0; padding-right: 6px; }
 .btn {
   display: inline-flex;
   align-items: center;
@@ -2724,14 +2729,15 @@ dialog:not([open]) { display: none; }
   .nav-toggle { display: inline-flex; }
   body:has(.layout.is-mobile-list) .nav-toggle { display: none; }
   .topbar {
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
     gap: 8px;
     padding: 0 10px;
   }
-  .topbar__brand { height: auto; gap: 6px; padding: 0; border-right: 0; }
+  .topbar__brand { grid-column: 2; height: auto; gap: 6px; padding: 0; border-left: 0; }
   .topbar__name { display: none; }
-  .topbar__search { width: 100%; }
+  .topbar__search { grid-column: 3; width: 100%; margin-left: 0; }
   .topbar__search input { height: 36px; padding-right: 12px; }
+  .topbar__actions { grid-column: 4; padding: 0; }
   .topbar .icon-btn { width: 32px; height: 32px; }
   .topbar__hint,
   .topbar__divider { display: none; }
