@@ -3567,6 +3567,10 @@ dialog:not([open]) { display: none; }
 
 @media (min-width: 821px) {
   .layout.is-sidebar-hidden { grid-template-columns: minmax(0, 1fr); }
+  .layout.is-sidebar-hidden > .tabs,
+  .layout.is-sidebar-hidden > .main { grid-column: 1; }
   .layout.is-sidebar-hidden > .sidebar,
   .layout.is-sidebar-hidden > .splitter { display: none; }
 }
+
+#sidebar-toggle[aria-pressed="true"] { background: var(--bg-hover); color: var(--text); }
