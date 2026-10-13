@@ -140,10 +140,32 @@
     return wrap;
   }
 
+  function docxNode(blob) {
+    if (!window.docx || typeof window.docx.renderAsync !== 'function') return Promise.resolve(null);
+    var host = document.createElement('div');
+    host.className = 'pane-preview__docx';
+    return window.docx.renderAsync(blob, host, null, {
+      className: 'docx',
+      inWrapper: true,
+      ignoreWidth: true,
+      ignoreHeight: true,
+      breakPages: false,
+      renderHeaders: false,
+      renderFooters: false,
+      useBase64URL: true,
+      experimental: true,
+    }).then(function () { return host; }).catch(function () { return null; });
+  }
+
   function render(meta, blob) {
     if (!blob) return Promise.resolve(null);
     var bytes = blob.arrayBuffer().then(function (buf) { return new Uint8Array(buf); });
-    if (meta.docx) return bytes.then(docxText).then(function (text) { return text ? pre(text) : null; });
+    if (meta.docx) {
+      return docxNode(blob).then(function (node) {
+        if (node) return node;
+        return bytes.then(docxText).then(function (text) { return text ? pre(text) : null; });
+      });
+    }
     if (meta.xlsx) return bytes.then(xlsxRows).then(function (rows) { return rows.length ? sheetNode(rows) : null; });
     if (meta.text) {
       return blob.text().then(function (text) {

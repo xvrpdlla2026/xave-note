@@ -983,7 +983,9 @@ window.NoteApp = window.NoteApp || {};
     host.textContent = '';
     var column = el('div', { class: 'pane-split__main' });
     column.appendChild(frag);
-    host.appendChild(el('div', { class: 'pane-split' }, [column, previewPanel(ctx.preview)]));
+    var preview = ctx.preview;
+    var wide = !!(preview && (preview.docx || preview.xlsx || preview.pdf || preview.text));
+    host.appendChild(el('div', { class: 'pane-split' + (wide ? ' pane-split--wide' : '') }, [column, previewPanel(preview)]));
   }
 
   function previewPanel(preview) {

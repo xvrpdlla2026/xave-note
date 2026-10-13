@@ -29,6 +29,15 @@ const OUT = path.join(ROOT, 'index.html');
 const SQLJS_VERSION = '1.10.3';
 const CDN = `https://cdnjs.cloudflare.com/ajax/libs/sql.js/${SQLJS_VERSION}`;
 
+// Renderers for the file preview panel. Pinned for reproducible builds; both are MIT.
+// docx-preview expects the JSZip global, so it must be inlined second.
+const JSZIP_VERSION = '3.10.1';
+const DOCX_VERSION = '0.3.5';
+const VENDOR_SCRIPTS = [
+  { file: 'jszip.min.js', url: `https://unpkg.com/jszip@${JSZIP_VERSION}/dist/jszip.min.js` },
+  { file: 'docx-preview.min.js', url: `https://unpkg.com/docx-preview@${DOCX_VERSION}/dist/docx-preview.min.js` },
+];
+
 /** Script order matters: each file attaches to window.NoteApp in dependency order. */
 const SCRIPTS = ['js/util.js', 'js/trigram.js', 'js/storage.js', 'js/crypto.js', 'js/db.js', 'js/components.js', 'js/preview.js', 'js/ui.js', 'js/app.js'];
 
@@ -49,6 +58,13 @@ async function fetchVendor(refresh) {
     console.log(`fetching sql.js ${SQLJS_VERSION} from cdnjs...`);
     await download(`${CDN}/sql-wasm.wasm`, wasm);
     await download(`${CDN}/sql-wasm.js`, glue);
+  }
+  for (const lib of VENDOR_SCRIPTS) {
+    const dest = path.join(VENDOR, lib.file);
+    if (refresh || !fs.existsSync(dest)) {
+      console.log(`fetching ${lib.file}...`);
+      await download(lib.url, dest);
+    }
   }
 }
 
@@ -77,6 +93,7 @@ function build() {
   const scripts = SCRIPTS.map((rel) => read(path.join(SRC, rel)));
 
   assertParses('vendor/sql-wasm.js', vendored.glue);
+  VENDOR_SCRIPTS.forEach((lib) => assertParses('vendor/' + lib.file, read(path.join(VENDOR, lib.file))));
   SCRIPTS.forEach((rel, i) => assertParses(rel, scripts[i]));
 
   const parts = [
@@ -84,11 +101,15 @@ function build() {
     '<!--',
     '  Local-first note taking app — single-file build.',
     '  GENERATED FILE: edit the sources in src/ and run `node tools/build.js`.',
-    '  Bundle contents: style.css + js/{util,trigram,storage,crypto,db,components,ui,app}.js + vendored sql.js engine.',
+    '  Bundle contents: style.css + js/{util,trigram,storage,crypto,db,components,preview,ui,app}.js',
+    '  plus the vendored sql.js engine, JSZip and docx-preview.',
     '-->',
     html
       .replace('/*__CSS__*/', () => css)
-      .replace('<!--__VENDOR__-->', () => `<script>${safe(vendored.glue)}</script>`)
+      .replace('<!--__VENDOR__-->', () => [vendored.glue]
+        .concat(VENDOR_SCRIPTS.map((lib) => read(path.join(VENDOR, lib.file))))
+        .map((js) => `<script>${safe(js)}</script>`)
+        .join('\n'))
       .replace('<!--__WASM__-->', () => `<script>${read(path.join(VENDOR, 'sql-wasm.base64.js'))}</script>`)
       .replace('<!--__SCRIPTS__-->', () => scripts.map((s) => `<script>${safe(s)}</script>`).join('\n')),
   ];
@@ -114,8 +135,8 @@ function build() {
 function readVendor() {
   const wasm = path.join(VENDOR, 'sql-wasm.wasm');
   const glue = path.join(VENDOR, 'sql-wasm.js');
-  if (!fs.existsSync(wasm) || !fs.existsSync(glue)) {
-    console.error('error: vendored sql.js missing — run `node tools/build.js --refresh` first');
+  if (!fs.existsSync(wasm) || !fs.existsSync(glue) || VENDOR_SCRIPTS.some((lib) => !fs.existsSync(path.join(VENDOR, lib.file)))) {
+    console.error('error: vendored engine missing — run `node tools/build.js --refresh` first');
     process.exit(1);
   }
   const b64 = fs.readFileSync(wasm).toString('base64');
