@@ -1011,6 +1011,27 @@ window.NoteApp = window.NoteApp || {};
         App.db.getFileBlob(preview.id).then(function (stored) {
           if (stored && stored.blob) media.src = URL.createObjectURL(stored.blob);
         }).catch(function () {});
+      } else if (preview.pdf) {
+        var frame = el('iframe', { class: 'pane-preview__pdf', title: preview.title });
+        thumb.appendChild(frame);
+        App.db.getFileBlob(preview.id).then(function (stored) {
+          if (stored && stored.blob) frame.src = URL.createObjectURL(stored.blob);
+        }).catch(function () {});
+      } else if (preview.docx || preview.xlsx || preview.text) {
+        var slot = el('div', { class: 'pane-preview__doc' }, [
+          el('p', { class: 'pane-preview__empty', text: 'Reading\u2026' }),
+        ]);
+        thumb.appendChild(slot);
+        App.db.getFileBlob(preview.id).then(function (stored) {
+          if (!stored || !stored.blob) return null;
+          return App.preview.render(preview, stored.blob);
+        }).then(function (node) {
+          slot.innerHTML = '';
+          slot.appendChild(node || el('p', { class: 'pane-preview__empty', text: 'No preview for this file.' }));
+        }).catch(function () {
+          slot.innerHTML = '';
+          slot.appendChild(el('p', { class: 'pane-preview__empty', text: 'This file could not be read.' }));
+        });
       } else {
         thumb.appendChild(el('div', { class: 'pane-preview__glyph' }, [App.ui.icon('file', 26)]));
       }

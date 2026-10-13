@@ -3973,6 +3973,8 @@ window.NoteApp = window.NoteApp || {};
       .trim();
   }
 
+  var TEXT_EXTENSIONS = ['.txt', '.md', '.markdown', '.csv', '.tsv', '.json', '.log', '.yml', '.yaml', '.ini', '.xml', '.html', '.css', '.js', '.ts'];
+
   function previewFor(treeModel) {
     var target = state.focused;
     if (!target && state.bulkSelected.length === 1) {
@@ -4017,6 +4019,8 @@ window.NoteApp = window.NoteApp || {};
     if (target.kind === 'file') {
       var meta = App.db.getFileMeta(target.id);
       if (!meta) return null;
+      var mime = meta.mime_type || '';
+      var ext = (String(meta.filename || '').match(/\.[a-z0-9]+$/i) || [''])[0].toLowerCase();
       return {
         kind: 'file',
         title: meta.filename,
@@ -4024,9 +4028,13 @@ window.NoteApp = window.NoteApp || {};
         mime: meta.mime_type || '',
         bytes: meta.size || 0,
         when: meta.created_at,
-        image: /^image\//.test(meta.mime_type || ''),
-        video: /^video\//.test(meta.mime_type || ''),
-        audio: /^audio\//.test(meta.mime_type || ''),
+        image: /^image\//.test(mime),
+        video: /^video\//.test(mime),
+        audio: /^audio\//.test(mime),
+        pdf: mime === 'application/pdf' || ext === '.pdf',
+        docx: ext === '.docx' || mime.indexOf('wordprocessingml') !== -1,
+        xlsx: ext === '.xlsx' || mime.indexOf('spreadsheetml') !== -1,
+        text: /^text\//.test(mime) || TEXT_EXTENSIONS.indexOf(ext) !== -1,
       };
     }
     var note = App.db.getNote(target.id);
