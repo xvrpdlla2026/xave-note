@@ -1226,6 +1226,67 @@ svg.tree__glyph--note { font-size: 14.5px; }
 
 .card-grid:not(.card-grid--list) { margin-bottom: 12px; }
 
+.pane-preview { display: none; }
+
+@media (min-width: 1120px) {
+  .pane-split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 26px;
+    align-items: start;
+  }
+  .pane-preview {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    position: sticky;
+    top: 0;
+    max-height: calc(100vh - 150px);
+    overflow: auto;
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-raised);
+  }
+  .pane-preview__head { display: flex; flex-direction: column; gap: 4px; }
+  .pane-preview__kind {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+  .pane-preview__title { margin: 0; font-size: 15px; font-weight: 600; }
+  .pane-preview__meta { margin: 0; font-size: 11.5px; color: var(--text-faint); }
+  .pane-preview__tree,
+  .pane-preview__text {
+    margin: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11.5px;
+    line-height: 1.65;
+    color: var(--text-dim);
+    white-space: pre;
+    overflow: auto;
+  }
+  .pane-preview__tree { max-height: 340px; }
+  .pane-preview__text { max-height: 460px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .pane-preview__empty { margin: 0; font-size: 12px; color: var(--text-faint); }
+  .pane-preview__stack { display: flex; flex-direction: column; gap: 12px; }
+  .pane-preview__image { width: 100%; border-radius: 6px; border: 1px solid var(--border); }
+  .pane-preview__glyph {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 92px;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    color: var(--text-faint);
+  }
+  .pane-preview__facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; font-size: 12px; }
+  .pane-preview__facts dt { color: var(--text-faint); }
+  .pane-preview__facts dd { margin: 0; color: var(--text-dim); overflow-wrap: anywhere; }
+}
+
 .card-wrap { position: relative; }
 .card-wrap .card { width: 100%; }
 .card-wrap.is-selected .card,

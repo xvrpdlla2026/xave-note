@@ -981,7 +981,58 @@ window.NoteApp = window.NoteApp || {};
     }
 
     host.textContent = '';
-    host.appendChild(frag);
+    var column = el('div', { class: 'pane-split__main' });
+    column.appendChild(frag);
+    host.appendChild(el('div', { class: 'pane-split' }, [column, previewPanel(ctx.preview)]));
+  }
+
+  function previewPanel(preview) {
+    if (!preview) return null;
+    var many = preview.kind === 'many';
+    var body;
+    if (preview.kind === 'folder') {
+      body = preview.lines.length
+        ? el('pre', { class: 'pane-preview__tree', text: preview.lines.join('\n') })
+        : el('p', { class: 'pane-preview__empty', text: 'This folder is empty.' });
+    } else if (preview.kind === 'note') {
+      body = preview.text
+        ? el('pre', { class: 'pane-preview__text', text: preview.text.slice(0, 1400) })
+        : el('p', { class: 'pane-preview__empty', text: 'This note is empty.' });
+    } else if (preview.kind === 'file') {
+      var thumb = el('div', { class: 'pane-preview__thumb' });
+      if (preview.image) {
+        var img = el('img', { class: 'pane-preview__image', alt: preview.title });
+        thumb.appendChild(img);
+        App.db.getFileBlob(preview.id).then(function (stored) {
+          if (stored && stored.blob) img.src = URL.createObjectURL(stored.blob);
+        }).catch(function () {});
+      } else {
+        thumb.appendChild(el('div', { class: 'pane-preview__glyph' }, [App.ui.icon('file', 26)]));
+      }
+      body = el('div', { class: 'pane-preview__stack' }, [
+        thumb,
+        el('dl', { class: 'pane-preview__facts' }, [
+          el('dt', { text: 'Type' }), el('dd', { text: preview.mime || 'Unknown' }),
+          el('dt', { text: 'Size' }), el('dd', { text: util.formatBytes(preview.bytes) }),
+          el('dt', { text: 'Added' }), el('dd', { text: util.formatWhen(preview.when) }),
+        ]),
+      ]);
+    } else {
+      body = el('p', { class: 'pane-preview__empty', text: 'Pick one item to preview it here.' });
+    }
+    var metaText = preview.kind === 'folder'
+      ? preview.total + (preview.total === 1 ? ' item' : ' items') + ' \u00b7 ' + util.formatBytes(preview.bytes)
+      : (preview.kind === 'note' || preview.kind === 'file')
+        ? util.formatBytes(preview.bytes) + ' \u00b7 ' + util.formatWhen(preview.when)
+        : '';
+    return el('aside', { class: 'pane-preview', 'aria-label': 'Preview' }, [
+      el('div', { class: 'pane-preview__head' }, [
+        el('span', { class: 'pane-preview__kind', text: many ? 'Selection' : preview.kind }),
+        el('h3', { class: 'pane-preview__title', text: many ? preview.count + ' items' : preview.title }),
+        metaText ? el('p', { class: 'pane-preview__meta', text: metaText }) : null,
+      ]),
+      body,
+    ]);
   }
 
   function applyPaneView(host, view) {

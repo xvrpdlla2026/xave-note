@@ -1381,6 +1381,7 @@ window.NoteApp = window.NoteApp || {};
           focused: state.focused,
           paneView: state.paneView,
           onSetPaneView: setPaneView,
+          preview: previewFor(treeModel),
         });
         return;
       }
@@ -1401,6 +1402,7 @@ window.NoteApp = window.NoteApp || {};
       focused: state.focused,
       paneView: state.paneView,
       onSetPaneView: setPaneView,
+      preview: previewFor(treeModel),
     });
   }
 
@@ -3953,6 +3955,87 @@ window.NoteApp = window.NoteApp || {};
     state.bulkAnchor = id;
     syncBulkKinds(id, kind);
     focusPaneItem(kind, id, true);
+  }
+
+  function plainPreview(html) {
+    return String(html || '')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(p|div|li|h[1-6])>/gi, '\n')
+      .replace(/<[^>]*>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  function previewFor(treeModel) {
+    var target = state.focused;
+    if (!target && state.bulkSelected.length === 1) {
+      var only = state.bulkSelected[0];
+      target = { kind: state.bulkKinds[only] || 'note', id: only };
+    }
+    if (!target) {
+      return state.bulkSelected.length > 1 ? { kind: 'many', count: state.bulkSelected.length } : null;
+    }
+    if (target.kind === 'folder') {
+      var folder = treeModel.folders.filter(function (f) { return f.id === target.id; })[0];
+      if (!folder) return null;
+      var lines = [];
+      var total = 0;
+      (function walk(id, prefix) {
+        var kids = [];
+        treeModel.folders.forEach(function (f) {
+          if (f.parent_folder_id === id) kids.push({ label: f.name, kind: 'folder', id: f.id });
+        });
+        (treeModel.notesByFolder[id] || []).forEach(function (n) {
+          kids.push({ label: n.title && n.title.trim() ? n.title : 'Untitled note', kind: 'note', id: n.id });
+        });
+        (treeModel.filesByFolder[id] || []).forEach(function (f) {
+          kids.push({ label: f.filename, kind: 'file', id: f.id });
+        });
+        total += kids.length;
+        kids.forEach(function (kid, i) {
+          if (lines.length >= 200) return;
+          var last = i === kids.length - 1;
+          lines.push(prefix + (last ? '\u2514\u2500 ' : '\u251c\u2500 ') + kid.label);
+          if (kid.kind === 'folder') walk(kid.id, prefix + (last ? '   ' : '\u2502  '));
+        });
+      })(folder.id, '');
+      return {
+        kind: 'folder',
+        title: folder.name,
+        lines: lines,
+        total: total,
+        bytes: App.db.subtreeBytes(state.workspaceId)[folder.id] || 0,
+      };
+    }
+    if (target.kind === 'file') {
+      var meta = App.db.getFileMeta(target.id);
+      if (!meta) return null;
+      return {
+        kind: 'file',
+        title: meta.filename,
+        id: meta.id,
+        mime: meta.mime_type || '',
+        bytes: meta.size || 0,
+        when: meta.created_at,
+        image: /^image\//.test(meta.mime_type || ''),
+      };
+    }
+    var note = App.db.getNote(target.id);
+    if (!note) return null;
+    return {
+      kind: 'note',
+      title: note.title && note.title.trim() ? note.title : 'Untitled note',
+      text: plainPreview(note.content),
+      when: note.updated_at || note.created_at,
+      bytes: (note.content || '').length,
+    };
   }
 
   function selectNewItems(kind, ids) {
