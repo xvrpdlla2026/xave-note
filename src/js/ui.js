@@ -1029,6 +1029,15 @@ window.NoteApp = window.NoteApp || {};
     return node;
   }
 
+  function branchSpan(item) {
+    var branch = el('span', { class: 'pane-preview__branch' });
+    (item.levels || []).forEach(function (line) {
+      branch.appendChild(el('span', { class: line ? 'is-line' : '' }));
+    });
+    branch.appendChild(el('span', { class: 'is-elbow' + (item.last ? ' is-last' : '') }));
+    return branch;
+  }
+
   function previewPanel(preview) {
     if (!preview) return null;
     var many = preview.kind === 'many';
@@ -1043,7 +1052,7 @@ window.NoteApp = window.NoteApp || {};
           type: 'button',
           title: item.name,
         }, [
-          el('span', { class: 'pane-preview__branch', text: item.branch }),
+          branchSpan(item),
           App.ui.icon(item.kind === 'folder' ? 'folder' : (item.kind === 'note' ? 'note' : 'file'), 13),
           el('span', { text: item.name }),
         ]);

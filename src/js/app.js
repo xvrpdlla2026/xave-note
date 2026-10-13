@@ -4023,7 +4023,7 @@ window.NoteApp = window.NoteApp || {};
       if (!folder) return null;
       var items = [];
       var total = 0;
-      (function walk(id, prefix) {
+      (function walk(id, levels) {
         var kids = [];
         treeModel.folders.forEach(function (f) {
           if (f.parent_folder_id === id) kids.push({ name: f.name, kind: 'folder', id: f.id });
@@ -4043,11 +4043,12 @@ window.NoteApp = window.NoteApp || {};
             id: kid.id,
             name: kid.name,
             parent: id,
-            branch: prefix + (last ? '\u2514\u2500 ' : '\u251c\u2500 '),
+            levels: levels,
+            last: last,
           });
-          if (kid.kind === 'folder') walk(kid.id, prefix + (last ? '   ' : '\u2502  '));
+          if (kid.kind === 'folder') walk(kid.id, levels.concat([!last]));
         });
-      })(folder.id, '');
+      })(folder.id, []);
       return {
         kind: 'folder',
         title: folder.name,
