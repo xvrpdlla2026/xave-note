@@ -232,6 +232,7 @@ window.NoteApp = window.NoteApp || {};
         if (node.open) node.close();
         if (node.parentNode) node.parentNode.removeChild(node);
         openDialogs = openDialogs.filter(function (d) { return d !== node; });
+        syncDialogStack();
         if (returnFocus && document.contains(returnFocus)) returnFocus.focus();
       }
 
@@ -313,6 +314,7 @@ window.NoteApp = window.NoteApp || {};
 
       if (typeof node.showModal === 'function') node.showModal();
       else node.setAttribute('open', '');
+      syncDialogStack();
 
       var api = { root: node, form: form, body: body, footer: footer, close: dismiss };
       if (typeof config.onOpen === 'function') {
@@ -331,6 +333,13 @@ window.NoteApp = window.NoteApp || {};
       }
       if (focusTarget && typeof focusTarget.focus === 'function') focusTarget.focus();
       if (field && config.input.selectOnOpen !== false) field.input.select();
+    });
+  }
+
+  function syncDialogStack() {
+    var open = Array.prototype.slice.call(document.querySelectorAll('dialog[open]'));
+    open.forEach(function (node, index) {
+      node.classList.toggle('is-behind', index < open.length - 1);
     });
   }
 

@@ -2219,6 +2219,8 @@ body.is-dragging .dropzone { display: flex; }
   to { transform: rotate(360deg); }
 }
 
+dialog.is-behind { display: none; }
+
 .dialog {
   width: min(480px, calc(100vw - 32px));
   max-height: min(86vh, 760px);
