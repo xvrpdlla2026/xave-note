@@ -27,13 +27,13 @@
 <body>
 
 <header class="topbar">
-  <button id="nav-toggle" class="icon-btn nav-toggle" type="button" data-action="toggle-nav" aria-label="Back to the notebook list" title="Back to the notebook list">
+
+  <div class="topbar__brand">
+    <button id="nav-toggle" class="icon-btn nav-toggle" type="button" data-action="toggle-nav" aria-label="Back to the notebook list" title="Back to the notebook list">
     <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" style="font-size:16px">
       <path d="M19 12H5.5"></path><path d="M11 5.5 4.5 12l6.5 6.5"></path>
     </svg>
-  </button>
-
-  <div class="topbar__brand">
+    </button>
     <span class="topbar__logo" aria-hidden="true">
       <svg viewBox="0 0 22 22" fill="currentColor">
         <rect x="5.9" y="8.3" width="10.2" height="2.2" rx="1.1" transform="rotate(45 11 9.4)"></rect>
@@ -42,9 +42,8 @@
       </svg>
     </span>
     <span class="topbar__name">Xave</span>
+    <button id="sidebar-toggle" class="icon-btn" type="button" data-action="toggle-sidebar" aria-label="Hide the sidebar" title="Hide the sidebar (Ctrl+B)"></button>
   </div>
-
-  <button id="sidebar-toggle" class="icon-btn" type="button" data-action="toggle-sidebar" aria-label="Hide the sidebar" title="Hide the sidebar (Ctrl+B)"></button>
 
   <div class="topbar__search">
     <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" style="font-size:15px">
