@@ -4070,6 +4070,9 @@ window.NoteApp = window.NoteApp || {};
       var only = state.bulkSelected[0];
       target = { kind: state.bulkKinds[only] || 'note', id: only };
     }
+    if (!target && state.selection && state.selection.type === 'folder') {
+      target = { kind: 'folder', id: state.selection.id };
+    }
     if (!target) {
       return state.bulkSelected.length > 1 ? { kind: 'many', count: state.bulkSelected.length } : null;
     }
