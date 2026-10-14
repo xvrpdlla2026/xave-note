@@ -635,6 +635,7 @@ window.NoteApp = window.NoteApp || {};
           item.data.size = row.size;
           saveItem(item);
           repaintBody(item);
+          paintKind(item);
           if (App.app && App.app.render) App.app.render();
           util.toast(file.name + ' is on the board');
         }, function () { util.toast('Could not add that file'); });
@@ -718,11 +719,27 @@ window.NoteApp = window.NoteApp || {};
     body.appendChild(bodyFor(item));
   }
 
+  function kindLabel(item) {
+    if (item.kind === 'ref') return item.ref_kind || 'item';
+    if (item.kind === 'group') return item.data && item.data.scope === 'workspace' ? 'workspace' : 'folder';
+    if (item.kind === 'image') {
+      var name = item.data && item.data.filename;
+      return name ? (name.match(/\.[a-z0-9]+$/i) || ['file'])[0].slice(1).toLowerCase() : 'file';
+    }
+    return item.kind;
+  }
+
+  function paintKind(item) {
+    if (!item.node) return;
+    var label = item.node.querySelector('.bd-item__kind');
+    if (label) label.textContent = kindLabel(item);
+  }
+
   function paintItem(item) {
     var box = node('div', 'bd-item bd-item--' + item.kind);
     box.setAttribute('data-board-id', item.id);
     var bar = node('div', 'bd-item__bar');
-    bar.appendChild(node('span', 'bd-item__kind', item.kind === 'ref' ? (item.ref_kind || 'item') : item.kind === 'group' ? (item.data && item.data.scope === 'workspace' ? 'workspace' : 'folder') : item.kind === 'image' && item.data && item.data.filename ? ((item.data.filename.match(/\.[a-z0-9]+$/i) || ['file'])[0].slice(1).toLowerCase()) : item.kind));
+    bar.appendChild(node('span', 'bd-item__kind', kindLabel(item)));
     var remove = node('button', 'bd-item__x', '\u00d7');
     remove.type = 'button';
     remove.setAttribute('data-board-del', item.id);
