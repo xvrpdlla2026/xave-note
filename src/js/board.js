@@ -8,7 +8,7 @@ window.NoteApp = window.NoteApp || {};
   var MIN_Z = 0.3;
   var MAX_Z = 2.5;
   var STEP = 1.15;
-  var SIZES = { note: [268, 176], todo: [256, 196], link: [264, 128], image: [288, 216], comment: [232, 144], ref: [244, 168] };
+  var SIZES = { note: [268, 176], todo: [256, 196], link: [264, 128], image: [288, 216], comment: [232, 144], ref: [244, 168], line: [260, 44], column: [280, 340], table: [320, 208] };
 
   var board = {
     open: false,
@@ -30,6 +30,10 @@ window.NoteApp = window.NoteApp || {};
     grid: null,
     zoomLabel: null,
     hint: null,
+    menuAt: null,
+    undo: [],
+    bg: 'dots',
+    bound: false,
   };
 
   function node(tag, cls, text) {
@@ -44,6 +48,9 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function defaultData(kind) {
+    if (kind === 'line') return {};
+    if (kind === 'column') return { text: '' };
+    if (kind === 'table') return { cells: [['', '', ''], ['', '', ''], ['', '', '']] };
     if (kind === 'todo') return { title: '', items: [{ text: '', done: false }] };
     if (kind === 'link') return { title: '', url: '' };
     if (kind === 'image') return { name: '', src: '' };
@@ -328,6 +335,9 @@ window.NoteApp = window.NoteApp || {};
     if (item.kind === 'link') return linkBody(item);
     if (item.kind === 'image') return imageBody(item);
     if (item.kind === 'ref') return refBody(item);
+    if (item.kind === 'line') return lineBody();
+    if (item.kind === 'column') return columnBody(item);
+    if (item.kind === 'table') return tableBody(item);
     if (item.kind === 'comment') return textArea(item, 'text', 'Comment');
     return textArea(item, 'text', 'Start typing...');
   }
@@ -369,9 +379,10 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function addItem(kind, payload) {
+    pushUndo('add');
     var now = util.nowIso();
     var size = SIZES[kind] || SIZES.note;
-    var at = centerOfView(board.items.length);
+    var at = payload && payload.at ? payload.at : centerOfView(board.items.length);
     var item = {
       id: util.uuid(),
       board_id: BOARD_ID,
@@ -395,6 +406,7 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function removeItem(item) {
+    pushUndo('remove');
     if (item.saveTimer) { clearTimeout(item.saveTimer); item.saveTimer = null; }
     if (item.node && item.node.parentNode) item.node.parentNode.removeChild(item.node);
     board.items = board.items.filter(function (other) { return other !== item; });
@@ -414,6 +426,7 @@ window.NoteApp = window.NoteApp || {};
     event.stopPropagation();
     var grip = target.closest('.bd-item__resize');
     var start = { x: event.clientX, y: event.clientY, w: item.w, h: item.h, ix: item.x, iy: item.y };
+    pushUndo(grip ? 'resize' : 'move');
     if (grip) {
       board.resize = { item: item, start: start };
     } else {
@@ -507,6 +520,21 @@ window.NoteApp = window.NoteApp || {};
       fitView();
       return;
     }
+    if ((event.ctrlKey || event.metaKey) && !event.shiftKey && (event.key === 'z' || event.key === 'Z')) {
+      if (editing) return;
+      event.preventDefault();
+      undoLast();
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && (event.key === 'd' || event.key === 'D')) {
+      if (editing) return;
+      var copy = board.selectedId ? findItem(board.selectedId) : null;
+      if (copy) {
+        event.preventDefault();
+        duplicateItem(copy);
+      }
+      return;
+    }
     if ((event.key === 'Delete' || event.key === 'Backspace') && !editing && board.selectedId) {
       var item = findItem(board.selectedId);
       if (item) { event.preventDefault(); removeItem(item); }
@@ -536,10 +564,13 @@ window.NoteApp = window.NoteApp || {};
     group.appendChild(railButton('external', 'Link', function () { addItem('link'); }));
     group.appendChild(railButton('eye', 'Image', function () { addItem('image'); }));
     group.appendChild(railButton('info', 'Comment', function () { addItem('comment'); }));
+    group.appendChild(railButton('list', 'Line', function () { addItem('line'); }));
+    group.appendChild(railButton('panel', 'Column', function () { addItem('column'); }));
+    group.appendChild(railButton('grid', 'Table', function () { addItem('table'); }));
     rail.appendChild(group);
     var source = node('div', 'board__rail-group');
     source.appendChild(railButton('layers', 'From notes', openPicker));
-    source.appendChild(railButton('grid', 'Tidy up', function () { tidy(); }));
+    source.appendChild(railButton('sort', 'Tidy up', function () { tidy(); }));
     source.appendChild(railButton('restore', 'Fit', fitView));
     rail.appendChild(source);
     var foot = node('div', 'board__rail-group board__rail--foot');
@@ -549,6 +580,7 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function tidy() {
+    pushUndo('tidy');
     var columns = Math.max(1, Math.ceil(Math.sqrt(board.items.length)));
     board.items.forEach(function (item, index) {
       item.x = (index % columns) * 300;
@@ -559,6 +591,279 @@ window.NoteApp = window.NoteApp || {};
     fitView();
   }
 
+  function lineBody() {
+    return node('div', 'bd-line');
+  }
+
+  function columnBody(item) {
+    var wrap = node('div', 'bd-column');
+    var head = textArea(item, 'text', 'Column title');
+    head.classList.add('bd-column__title');
+    wrap.appendChild(head);
+    wrap.appendChild(node('div', 'bd-column__space'));
+    return wrap;
+  }
+
+  function tableBody(item) {
+    var cells = item.data && item.data.cells;
+    if (!cells || !cells.length) {
+      cells = [['', '', ''], ['', '', ''], ['', '', '']];
+      item.data.cells = cells;
+    }
+    var wrap = node('div', 'bd-table');
+    cells.forEach(function (row, r) {
+      var line = node('div', 'bd-table__row');
+      row.forEach(function (value, c) {
+        var cell = node('div', 'bd-table__cell');
+        cell.contentEditable = 'true';
+        cell.spellcheck = false;
+        cell.innerHTML = util.isRichHtml(value) ? util.sanitizeRichHtml(value) : util.escapeHtml(value || '');
+        cell.addEventListener('input', function () {
+          cells[r][c] = cell.innerHTML;
+          item.updated_at = util.nowIso();
+          queueItemSave(item);
+        });
+        cell.addEventListener('keydown', function (event) {
+          if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); cell.blur(); }
+        });
+        line.appendChild(cell);
+      });
+      wrap.appendChild(line);
+    });
+    return wrap;
+  }
+
+  function canvasPoint(clientX, clientY) {
+    var rect = board.stage.getBoundingClientRect();
+    return {
+      x: (clientX - rect.left - board.view.x) / board.view.z,
+      y: (clientY - rect.top - board.view.y) / board.view.z,
+    };
+  }
+
+  function applyBgFromDb() {
+    var row = null;
+    try { row = App.db.boardGet(BOARD_ID); } catch (e) { row = null; }
+    board.bg = (row && row.bg) || 'dots';
+    if (board.root) board.root.setAttribute('data-bg', board.bg);
+  }
+
+  function setBg(name, quiet) {
+    board.bg = name || 'dots';
+    if (board.root) board.root.setAttribute('data-bg', board.bg);
+    try { App.db.boardSaveBg(BOARD_ID, board.bg); } catch (e) { }
+    if (!quiet) util.toast('Board background: ' + board.bg);
+  }
+
+  function snapshotBoard() {
+    return {
+      items: JSON.parse(JSON.stringify(board.items, function (key, value) {
+        if (key === 'node' || key === 'saveTimer' || key === 'src') return undefined;
+        return value;
+      })),
+      view: { x: board.view.x, y: board.view.y, z: board.view.z },
+      bg: board.bg,
+    };
+  }
+
+  function pushUndo(label) {
+    if (!board.open) return;
+    board.undo.push({ label: label, snap: snapshotBoard() });
+    if (board.undo.length > 30) board.undo.shift();
+  }
+
+  function repaintAll() {
+    if (!board.canvas) return;
+    board.canvas.textContent = '';
+    board.items.forEach(function (item) {
+      delete item.node;
+      paintItem(item);
+    });
+  }
+
+  function undoLast() {
+    var entry = board.undo.pop();
+    if (!entry) {
+      util.toast('Nothing to undo');
+      return;
+    }
+    var snap = entry.snap;
+    var keep = {};
+    snap.items.forEach(function (row) { keep[row.id] = true; });
+    board.items.forEach(function (item) {
+      if (keep[item.id]) return;
+      if (item.saveTimer) { clearTimeout(item.saveTimer); item.saveTimer = null; }
+      if (item.node && item.node.parentNode) item.node.parentNode.removeChild(item.node);
+      try { App.db.boardDeleteItem(item.id); } catch (e) { }
+    });
+    board.items = snap.items.map(function (row) {
+      var copy = JSON.parse(JSON.stringify(row));
+      try { App.db.boardAddItem(copy); } catch (e) { }
+      return copy;
+    });
+    board.selectedId = null;
+    if (snap.bg && snap.bg !== board.bg) setBg(snap.bg, true);
+    board.view.x = snap.view.x;
+    board.view.y = snap.view.y;
+    board.view.z = snap.view.z;
+    applyView();
+    repaintAll();
+    queueViewSave();
+  }
+
+  function duplicateItem(item) {
+    pushUndo('duplicate');
+    var copy = JSON.parse(JSON.stringify(item, function (key, value) {
+      if (key === 'node' || key === 'saveTimer' || key === 'src') return undefined;
+      return value;
+    }));
+    copy.id = util.uuid();
+    copy.x = item.x + 28;
+    copy.y = item.y + 28;
+    copy.z = nextZ();
+    copy.created_at = util.nowIso();
+    copy.updated_at = copy.created_at;
+    board.items.push(copy);
+    paintItem(copy);
+    select(copy);
+    try { App.db.boardAddItem(copy); } catch (e) { }
+    return copy;
+  }
+
+  function reorder(item, front) {
+    pushUndo(front ? 'front' : 'back');
+    var zs = board.items.map(function (other) { return other.z; });
+    item.z = front ? Math.max.apply(null, zs) + 1 : Math.min.apply(null, zs) - 1;
+    placeItem(item);
+    saveItem(item);
+  }
+
+  function itemLabel(item) {
+    if (item.kind === 'ref') return (item.data && item.data.title) || 'Reference';
+    if (item.kind === 'image') return (item.data && item.data.name) || 'Image';
+    if (item.kind === 'link') return (item.data && (item.data.title || item.data.url)) || 'Link';
+    if (item.kind === 'todo') return (item.data && item.data.title) || 'To-do';
+    var text = util.htmlToText((item.data && item.data.text) || '').slice(0, 44);
+    if (text) return text;
+    return item.kind.charAt(0).toUpperCase() + item.kind.slice(1);
+  }
+
+  function pasteFromClipboard() {
+    var at = board.menuAt || centerOfView(board.items.length);
+    if (!navigator.clipboard || !navigator.clipboard.readText) {
+      util.toast('Press Ctrl+V to paste');
+      return;
+    }
+    navigator.clipboard.readText().then(function (text) {
+      if (!text) {
+        util.toast('Clipboard is empty');
+        return;
+      }
+      pushUndo('paste');
+      addItem('note', { at: at, data: { text: util.escapeHtml(text).replace(/\n/g, '<br>') } });
+    }).catch(function () {
+      util.toast('Press Ctrl+V to paste');
+    });
+  }
+
+  function onPaste(event) {
+    if (!board.open || board.picker) return;
+    var target = event.target;
+    if (target && target.closest && target.closest('input, textarea, [contenteditable="true"]')) return;
+    var data = event.clipboardData;
+    if (!data) return;
+    var at = board.menuAt || centerOfView(board.items.length);
+    var files = data.files && data.files.length ? data.files : null;
+    if (files) {
+      var file = files[0];
+      event.preventDefault();
+      var reader = new FileReader();
+      reader.onload = function () {
+        pushUndo('paste');
+        addItem('image', { at: at, data: { name: file.name || 'Pasted image', src: String(reader.result || '') } });
+      };
+      reader.readAsDataURL(file);
+      return;
+    }
+    var text = data.getData('text/plain');
+    if (!text) return;
+    event.preventDefault();
+    pushUndo('paste');
+    addItem('note', { at: at, data: { text: util.escapeHtml(text).replace(/\n/g, '<br>') } });
+  }
+
+  function showBoardMenu(at) {
+    var newItem = function (kind) { return function () { addItem(kind, { at: board.menuAt }); }; };
+    App.ui.openMenu({
+      x: at.x,
+      y: at.y,
+      items: [
+        { label: 'Paste', shortcut: 'Ctrl+V', icon: 'copy', onclick: pasteFromClipboard },
+        { label: 'Undo', shortcut: 'Ctrl+Z', icon: 'restore', disabled: !board.undo.length, onclick: undoLast },
+        { sep: true },
+        { label: 'New Note', icon: 'note', onclick: newItem('note') },
+        { label: 'New Link', icon: 'external', onclick: newItem('link') },
+        { label: 'New To-do', icon: 'check', onclick: newItem('todo') },
+        { label: 'New Comment', icon: 'info', onclick: newItem('comment') },
+        { label: 'New Line', icon: 'list', onclick: newItem('line') },
+        { label: 'New Column', icon: 'panel', onclick: newItem('column') },
+        { label: 'New Table', icon: 'grid', onclick: newItem('table') },
+        { label: 'New Image or File', icon: 'upload', onclick: newItem('image') },
+        { label: 'Add from your notes', icon: 'layers', onclick: openPicker },
+        { sep: true },
+        { label: 'Change Board Background', icon: 'eye', onclick: function () { showBackgroundMenu(at); } },
+        { sep: true },
+        { label: 'Tidy up', icon: 'sort', onclick: tidy },
+        { label: 'Fit to view', shortcut: 'Ctrl+0', icon: 'restore', onclick: fitView },
+      ],
+    });
+  }
+
+  function showBackgroundMenu(at) {
+    var items = [
+      { label: 'Back', icon: 'arrowLeft', onclick: function () { showBoardMenu(at); } },
+      { sep: true },
+    ];
+    [['dots', 'Dots'], ['grid', 'Grid'], ['plain', 'Plain'], ['warm', 'Warm'], ['cool', 'Cool']].forEach(function (pair) {
+      items.push({
+        label: pair[1],
+        checked: board.bg === pair[0],
+        onclick: function () {
+          pushUndo('background');
+          setBg(pair[0]);
+        },
+      });
+    });
+    App.ui.openMenu({ x: at.x, y: at.y, items: items });
+  }
+
+  function showItemMenu(item, at) {
+    App.ui.openMenu({
+      x: at.x,
+      y: at.y,
+      title: itemLabel(item),
+      items: [
+        { label: 'Duplicate', shortcut: 'Ctrl+D', icon: 'copy', onclick: function () { duplicateItem(item); } },
+        { label: 'Remove', shortcut: 'Delete', icon: 'trash', danger: true, onclick: function () { removeItem(item); } },
+        { sep: true },
+        { label: 'Bring to front', icon: 'layers', onclick: function () { reorder(item, true); } },
+        { label: 'Send to back', icon: 'layers', onclick: function () { reorder(item, false); } },
+      ],
+    });
+  }
+
+  function onBoardContext(event) {
+    if (!board.open) return;
+    if (board.picker && event.target.closest && event.target.closest('.board__picker')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    board.menuAt = canvasPoint(event.clientX, event.clientY);
+    var at = { x: event.clientX, y: event.clientY };
+    var box = event.target.closest ? event.target.closest('.bd-item') : null;
+    var item = box ? findItem(box.getAttribute('data-board-id')) : null;
+    if (item) showItemMenu(item, at);
+    else showBoardMenu(at);
+  }
   function buildRoot() {
     var root = node('div', 'board');
     root.setAttribute('data-board', 'root');
@@ -905,6 +1210,12 @@ window.NoteApp = window.NoteApp || {};
     document.body.classList.add('is-board');
     try { App.db.boardEnsure(BOARD_ID, 'Xave'); } catch (e) { }
     load();
+    applyBgFromDb();
+    if (!board.bound) {
+      board.bound = true;
+      board.root.addEventListener('contextmenu', onBoardContext);
+      document.addEventListener('paste', onPaste);
+    }
     document.addEventListener('keydown', onKeyDown, true);
     document.addEventListener('keyup', onKeyUp, true);
     window.addEventListener('resize', applyView);
@@ -930,5 +1241,8 @@ window.NoteApp = window.NoteApp || {};
     isOpen: function () { return board.open; },
     state: board,
     addItem: addItem,
+    undo: undoLast,
+    setBg: setBg,
+    menu: showBoardMenu,
   };
 })(window.NoteApp);

@@ -173,6 +173,7 @@ window.NoteApp = window.NoteApp || {};
         ')',
       'CREATE INDEX IF NOT EXISTS idx_board_items_board ON board_items (board_id)',
     ],
+    ['ALTER TABLE boards ADD COLUMN bg TEXT'],
 ];
 
   var db = null;        
@@ -2076,7 +2077,7 @@ var vaultBusy = false;
     },
     boardGet: function (id) {
       var row = queryOne('SELECT * FROM boards WHERE id = ?', [id]);
-      return row ? { id: row.id, name: row.name, vx: Number(row.vx) || 0, vy: Number(row.vy) || 0, vz: Number(row.vz) || 1 } : null;
+      return row ? { id: row.id, name: row.name, vx: Number(row.vx) || 0, vy: Number(row.vy) || 0, vz: Number(row.vz) || 1, bg: row.bg || 'dots' } : null;
     },
     boardEnsure: function (id, name) {
       var row = queryOne('SELECT id FROM boards WHERE id = ?', [id]);
@@ -2086,6 +2087,9 @@ var vaultBusy = false;
     },
     boardSaveView: function (id, vx, vy, vz) {
       return write('UPDATE boards SET vx = ?, vy = ?, vz = ?, updated_at = ? WHERE id = ?', [vx, vy, vz, util.nowIso(), id]);
+    },
+    boardSaveBg: function (id, bg) {
+      return write('UPDATE boards SET bg = ?, updated_at = ? WHERE id = ?', [bg || 'dots', util.nowIso(), id]);
     },
     boardItems: function (id) {
       return query('SELECT * FROM board_items WHERE board_id = ? ORDER BY z ASC, created_at ASC', [id]).map(function (row) {
