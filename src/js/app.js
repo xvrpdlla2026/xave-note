@@ -4186,6 +4186,18 @@ window.NoteApp = window.NoteApp || {};
       }
     }
 
+    var openElsewhere = (kind === 'note' && String(state.activeNoteId) === String(id))
+      || (kind === 'file' && String(state.activeFileId) === String(id));
+    var alreadyPicked = !add && !range && !openElsewhere
+      && state.bulkSelected.length === 1 && String(state.bulkSelected[0]) === String(id)
+      && state.focused && state.focused.kind === kind && String(state.focused.id) === String(id);
+    if (alreadyPicked) {
+      clearBulkSelection();
+      state.focused = null;
+      render();
+      return;
+    }
+
     var before = state.bulkSelected.join(',');
     var next = state.bulkSelected.filter(function (x) { return String(x) !== String(id); });
     if (add) {
