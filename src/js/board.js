@@ -8,7 +8,7 @@ window.NoteApp = window.NoteApp || {};
   var MIN_Z = 0.3;
   var MAX_Z = 2.5;
   var STEP = 1.15;
-  var SIZES = { note: [268, 176], todo: [256, 196], link: [268, 272], image: [288, 216], comment: [232, 144], ref: [244, 168], line: [260, 44], column: [280, 340], table: [320, 208], group: [232, 62], file: [300, 236] };
+  var SIZES = { note: [268, 176], todo: [256, 196], link: [268, 348], image: [288, 216], comment: [232, 144], ref: [244, 168], line: [260, 44], column: [280, 340], table: [320, 208], group: [232, 62], file: [300, 236] };
 
   var board = {
     open: false,
