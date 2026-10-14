@@ -815,8 +815,7 @@ window.NoteApp = window.NoteApp || {};
 
     menuState = { items: items, buttons: buttons, onClose: c.onClose, returnFocus: document.activeElement };
 
-    var first = buttons.filter(function (b) { return !b.disabled; })[0];
-    (first || root).focus();
+    root.focus();
 
     return root;
   }
