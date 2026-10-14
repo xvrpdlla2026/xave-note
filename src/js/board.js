@@ -2365,7 +2365,7 @@ window.NoteApp = window.NoteApp || {};
   }
 
   var INK_PAD = 18;
-  var INK_BAR = 34;
+  var INK_BAR = 30;
 
   function inkPoint(event) {
     var rect = board.stage.getBoundingClientRect();
@@ -2658,7 +2658,7 @@ window.NoteApp = window.NoteApp || {};
     item.data.w = Math.max(16, box.w);
     item.data.h = Math.max(16, box.h);
     item.x = item.data.ox - INK_PAD;
-    item.y = item.data.oy - INK_PAD;
+    item.y = item.data.oy - INK_PAD - INK_BAR;
     item.w = Math.max(96, box.w + INK_PAD * 2);
     item.h = Math.max(96, box.h + INK_PAD * 2 + INK_BAR);
     if (item.node) {
@@ -2691,7 +2691,7 @@ window.NoteApp = window.NoteApp || {};
     var local = strokes.map(function (stroke) { return inkLocal(stroke, base); });
     addItem('draw', {
       data: { strokes: local, ink: 1, ox: base.x, oy: base.y, w: Math.max(16, box.w), h: Math.max(16, box.h) },
-      at: { x: base.x - INK_PAD, y: base.y - INK_PAD },
+      at: { x: base.x - INK_PAD, y: base.y - INK_PAD - INK_BAR },
       w: Math.max(96, box.w + INK_PAD * 2),
       h: Math.max(96, box.h + INK_PAD * 2 + INK_BAR),
     });
@@ -2814,16 +2814,21 @@ window.NoteApp = window.NoteApp || {};
     wrap.appendChild(canvas);
     var strokes = (item.data && item.data.strokes) || [];
     var paint = function () {
-      var rect = wrap.getBoundingClientRect();
-      if (rect.width < 2 || rect.height < 2) return;
+      var w = wrap.offsetWidth;
+      var h = wrap.offsetHeight;
+      if (w < 2 || h < 2) return;
       var dpr = window.devicePixelRatio || 1;
-      canvas.width = Math.max(1, Math.round(rect.width * dpr));
-      canvas.height = Math.max(1, Math.round(rect.height * dpr));
+      canvas.width = Math.max(1, Math.round(w * dpr));
+      canvas.height = Math.max(1, Math.round(h * dpr));
       var ctx = canvas.getContext('2d');
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, rect.width, rect.height);
-      var box = strokeBox(strokes);
-      ctx.setTransform(dpr, 0, 0, dpr, dpr * ((rect.width - box.w) / 2 - box.x), dpr * ((rect.height - box.h) / 2 - box.y));
+      ctx.clearRect(0, 0, w, h);
+      if (item.data && typeof item.data.ox === 'number') {
+        ctx.setTransform(dpr, 0, 0, dpr, dpr * (item.data.ox - item.x - 1), dpr * (item.data.oy - item.y - 1 - INK_BAR));
+      } else {
+        var box = strokeBox(strokes);
+        ctx.setTransform(dpr, 0, 0, dpr, dpr * ((w - box.w) / 2 - box.x), dpr * ((h - box.h) / 2 - box.y));
+      }
       strokes.forEach(function (stroke) { paintStroke(ctx, stroke); });
     };
     wrap.addEventListener('dblclick', function (event) {
