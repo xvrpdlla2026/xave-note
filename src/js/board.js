@@ -8,7 +8,7 @@ window.NoteApp = window.NoteApp || {};
   var MIN_Z = 0.3;
   var MAX_Z = 2.5;
   var STEP = 1.15;
-  var SIZES = { note: [268, 176], todo: [256, 196], link: [268, 348], image: [288, 216], comment: [232, 144], ref: [244, 168], line: [260, 44], column: [280, 340], table: [320, 208], group: [232, 62], file: [300, 236] };
+  var SIZES = { note: [268, 176], todo: [256, 196], link: [268, 96], image: [288, 216], comment: [232, 144], ref: [244, 168], line: [260, 44], column: [280, 340], table: [320, 208], group: [232, 62], file: [300, 236] };
 
   var board = {
     open: false,
@@ -339,17 +339,41 @@ window.NoteApp = window.NoteApp || {};
     return unfurlDirect(url).catch(function () { return unfurlService(url); });
   }
 
+  function fitLinkCard(item) {
+    if (!item.node || !item.node.isConnected) return;
+    var wrap = item.node.querySelector('.bd-linkcard');
+    var bar = item.node.querySelector('.bd-item__bar');
+    if (!wrap) return;
+    if (item.data.fitH && Math.abs(item.h - item.data.fitH) > 4) return;
+    var kids = wrap.children;
+    var need = 0;
+    var shown = 0;
+    for (var i = 0; i < kids.length; i++) {
+      if (kids[i].style.display === 'none') continue;
+      need += kids[i].offsetHeight;
+      shown++;
+    }
+    need += 7 * Math.max(0, shown - 1) + (bar ? bar.offsetHeight : 26) + 20 + 2;
+    var want = clamp(need, 92, 480);
+    item.data.fitH = want;
+    if (Math.abs(want - item.h) < 4) return;
+    item.h = want;
+    placeItem(item);
+    saveItem(item);
+  }
+
   function renderLinkCard(item) {
     if (!item.node) return;
     var box = item.node.querySelector('.bd-linkcard__preview');
     if (!box) return;
     box.textContent = '';
     var url = linkUrl(item.data.url);
-    if (!url) { box.style.display = 'none'; return; }
+    if (!url) { box.style.display = 'none'; fitLinkCard(item); return; }
     box.style.display = '';
     var data = item.data.link && item.data.link.url === url ? item.data.link : null;
     if (!data) {
       box.appendChild(node('span', 'bd-linkcard__status', 'Reading link...'));
+      fitLinkCard(item);
       return;
     }
     if (data.image) {
@@ -358,7 +382,7 @@ window.NoteApp = window.NoteApp || {};
       shot.alt = '';
       shot.setAttribute('referrerpolicy', 'no-referrer');
       shot.setAttribute('loading', 'lazy');
-      shot.addEventListener('error', function () { if (shot.parentNode) shot.parentNode.removeChild(shot); });
+      shot.addEventListener('error', function () { if (shot.parentNode) shot.parentNode.removeChild(shot); fitLinkCard(item); });
       box.appendChild(shot);
     }
     var row = node('div', 'bd-linkcard__row');
@@ -376,10 +400,10 @@ window.NoteApp = window.NoteApp || {};
     }
     row.appendChild(node('span', 'bd-linkcard__host', data.host || hostOf(url)));
     box.appendChild(row);
-    var name = String(item.data.title || data.title || '').trim() || data.host || hostOf(url);
-    box.appendChild(node('span', 'bd-linkcard__name', name));
+    box.appendChild(node('span', 'bd-linkcard__name', String(data.title || '').trim() || data.host || hostOf(url)));
     if (data.description) box.appendChild(node('p', 'bd-linkcard__desc', data.description));
     if (data.failed) box.appendChild(node('span', 'bd-linkcard__status', 'No preview available for this page'));
+    fitLinkCard(item);
   }
 
   function unfurlLink(item) {
@@ -407,9 +431,7 @@ window.NoteApp = window.NoteApp || {};
 
   function linkBody(item) {
     var wrap = node('div', 'bd-linkcard');
-    wrap.appendChild(node('span', 'bd-linkcard__label', 'Link title'));
-    wrap.appendChild(field(item, 'title', 'input', 'bd-title', ''));
-    wrap.appendChild(field(item, 'url', 'input', 'bd-url', 'https://'));
+    wrap.appendChild(field(item, 'url', 'input', 'bd-url', 'Paste a link'));
     wrap.appendChild(node('div', 'bd-linkcard__preview'));
     var open = node('a', 'bd-linkcard__open', 'Open link');
     open.setAttribute('data-board-nodrag', '1');
@@ -563,6 +585,7 @@ window.NoteApp = window.NoteApp || {};
     item.node = box;
     placeItem(item);
     board.canvas.appendChild(box);
+    if (item.kind === 'link') renderLinkCard(item);
     return box;
   }
 
