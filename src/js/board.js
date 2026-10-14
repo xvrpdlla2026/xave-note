@@ -855,8 +855,12 @@ window.NoteApp = window.NoteApp || {};
   function onBoardContext(event) {
     if (!board.open) return;
     var target = event.target;
-    var inside = target && target.closest ? target.closest('.board__picker, input, textarea, [contenteditable="true"]') : null;
-    if (inside) return;
+    if (target && target.closest && target.closest('.board__picker')) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    if (target && target.closest && target.closest('input, textarea, [contenteditable="true"]')) return;
     event.preventDefault();
     event.stopPropagation();
     board.menuAt = canvasPoint(event.clientX, event.clientY);
