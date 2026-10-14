@@ -2323,16 +2323,19 @@ window.NoteApp = window.NoteApp || {};
     ctx.lineWidth = stroke.w;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
+    ctx.globalCompositeOperation = stroke.e ? 'destination-out' : 'source-over';
     if (points.length === 1) {
       ctx.beginPath();
       ctx.arc(points[0][0], points[0][1], Math.max(0.5, stroke.w / 2), 0, Math.PI * 2);
       ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
       return;
     }
     ctx.beginPath();
     ctx.moveTo(points[0][0], points[0][1]);
     for (var i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
     ctx.stroke();
+    ctx.globalCompositeOperation = 'source-over';
   }
 
   function strokeBox(strokes) {
@@ -2625,7 +2628,7 @@ window.NoteApp = window.NoteApp || {};
     canvas.addEventListener('pointerdown', function (event) {
       if (event.button !== 0) return;
       var erase = state.tool === 'eraser';
-      state.drawing = { c: erase ? '#ffffff' : state.color, w: erase ? state.width * 2.5 : state.width, p: [padPoint(event)] };
+      state.drawing = { c: erase ? '#ffffff' : state.color, e: erase ? 1 : 0, w: erase ? state.width * 2.5 : state.width, p: [padPoint(event)] };
       state.strokes.push(state.drawing);
       state.redo.length = 0;
       window.addEventListener('pointermove', onMove);
