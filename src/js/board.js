@@ -777,26 +777,12 @@ window.NoteApp = window.NoteApp || {};
     rail.appendChild(group);
     var source = node('div', 'board__rail-group');
     source.appendChild(railButton('layers', 'From notes', openPicker));
-    source.appendChild(railButton('sort', 'Tidy up', function () { tidy(); }));
     source.appendChild(railButton('restore', 'Fit', fitView));
     rail.appendChild(source);
     var foot = node('div', 'board__rail-group board__rail--foot');
     foot.appendChild(railButton('arrowLeft', 'Back', close));
     rail.appendChild(foot);
     return rail;
-  }
-
-  function tidy() {
-    pushUndo('tidy');
-    var columns = Math.max(1, Math.ceil(Math.sqrt(board.items.length)));
-    board.items.forEach(function (item, index) {
-      item.x = (index % columns) * 300;
-      item.y = Math.floor(index / columns) * 240;
-      placeItem(item);
-      saveItem(item);
-    });
-    paintLinks();
-    fitView();
   }
 
   function lineBody() {
@@ -1023,7 +1009,6 @@ window.NoteApp = window.NoteApp || {};
         { sep: true },
         { label: 'Change Board Background', icon: 'eye', onclick: function () { showBackgroundMenu(at); } },
         { sep: true },
-        { label: 'Tidy up', icon: 'sort', onclick: tidy },
         { label: 'Fit to view', shortcut: 'Ctrl+0', icon: 'restore', onclick: fitView },
       ],
     });
