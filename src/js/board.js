@@ -15,6 +15,10 @@ window.NoteApp = window.NoteApp || {};
     items: [],
     view: { x: 0, y: 0, z: 1 },
     selectedId: null,
+    selectedIds: [],
+    mode: 'grab',
+    marquee: null,
+    modeButton: null,
     space: false,
     pan: null,
     drag: null,
@@ -154,10 +158,24 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function select(item) {
-    board.selectedId = item ? item.id : null;
-    board.items.forEach(function (other) {
-      if (other.node) other.node.classList.toggle('is-selected', other === item);
+    setSelection(item ? [item.id] : [], item ? item.id : null);
+  }
+
+  function setSelection(ids, primary) {
+    board.selectedIds = (ids || []).slice();
+    board.selectedId = primary || board.selectedIds[board.selectedIds.length - 1] || null;
+    paintSelection();
+  }
+
+  function paintSelection() {
+    board.items.forEach(function (item) {
+      if (item.node) item.node.classList.toggle('is-selected', board.selectedIds.indexOf(item.id) >= 0);
     });
+  }
+
+  function itemScreenRect(item) {
+    var view = board.view;
+    return { x: view.x + item.x * view.z, y: view.y + item.y * view.z, w: item.w * view.z, h: item.h * view.z };
   }
 
   function placeItem(item) {
@@ -916,18 +934,41 @@ window.NoteApp = window.NoteApp || {};
     util.toast(item.data.locked ? 'Card locked' : 'Card unlocked');
   }
 
+  function deleteRow(row) {
+    if (row.saveTimer) { clearTimeout(row.saveTimer); row.saveTimer = null; }
+    if (row.node && row.node.parentNode) row.node.parentNode.removeChild(row.node);
+    try { App.db.boardDeleteItem(row.id); } catch (e) { }
+  }
+
   function removeItem(item) {
     if (lockOf(item)) { util.toast('Unlock this card first'); return; }
     pushUndo('remove');
     var doomed = [item].concat(descendantsOf(item.id)).filter(function (row) { return !lockOf(row); });
-    doomed.forEach(function (row) {
-      if (row.saveTimer) { clearTimeout(row.saveTimer); row.saveTimer = null; }
-      if (row.node && row.node.parentNode) row.node.parentNode.removeChild(row.node);
-      try { App.db.boardDeleteItem(row.id); } catch (e) { }
-    });
+    doomed.forEach(deleteRow);
     board.items = board.items.filter(function (other) { return doomed.indexOf(other) < 0; });
-    if (doomed.some(function (row) { return row.id === board.selectedId; })) board.selectedId = null;
+    setSelection([], null);
     paintLinks();
+  }
+
+  function removeSelected() {
+    var rows = board.selectedIds.map(findItem).filter(Boolean);
+    if (rows.length < 2) { if (rows.length) removeItem(rows[0]); return; }
+    var free = [];
+    var doomed = [];
+    rows.forEach(function (row) {
+      if (lockOf(row)) return;
+      free.push(row);
+      [row].concat(descendantsOf(row.id)).forEach(function (child) {
+        if (!lockOf(child) && doomed.indexOf(child) < 0) doomed.push(child);
+      });
+    });
+    if (!free.length) { util.toast('Unlock this card first'); return; }
+    pushUndo('remove');
+    doomed.forEach(deleteRow);
+    board.items = board.items.filter(function (other) { return doomed.indexOf(other) < 0; });
+    setSelection([], null);
+    paintLinks();
+    if (free.length < rows.length) util.toast('Locked cards were kept');
   }
 
   function onItemDown(event) {
@@ -938,16 +979,28 @@ window.NoteApp = window.NoteApp || {};
     if (!box) return;
     var item = findItem(box.getAttribute('data-board-id'));
     if (!item) return;
-    select(item);
-    if (lockOf(item)) return;
+    var multi = board.selectedIds.length > 1 && board.selectedIds.indexOf(item.id) >= 0;
+    if (!multi) select(item);
+    if (lockOf(item) && !multi) return;
     event.stopPropagation();
     var grip = target.closest('.bd-item__resize');
+    var rows = null;
+    if (!grip) {
+      rows = (multi ? board.selectedIds.map(findItem) : [item]).filter(function (row) {
+        return row && !lockOf(row);
+      });
+      if (!rows.length) return;
+    }
     var start = { x: event.clientX, y: event.clientY, w: item.w, h: item.h, ix: item.x, iy: item.y };
     pushUndo(grip ? 'resize' : 'move');
     if (grip) {
       board.resize = { item: item, start: start };
     } else {
-      board.drag = { item: item, start: start };
+      board.drag = {
+        item: item,
+        start: start,
+        rows: rows.map(function (row) { return { item: row, x: row.x, y: row.y }; }),
+      };
     }
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
@@ -958,7 +1011,11 @@ window.NoteApp = window.NoteApp || {};
     if (event.button !== 0) return;
     var target = event.target;
     if (target.closest && target.closest('.bd-item')) return;
-    if (target.closest && target.closest('.board__rail, .board__picker')) return;
+    if (target.closest && target.closest('.board__rail, .board__picker, .board__mode')) return;
+    if (board.mode === 'select' && !board.space) {
+      startMarquee(event);
+      return;
+    }
     select(null);
     board.pan = { x: event.clientX, y: event.clientY, vx: board.view.x, vy: board.view.y };
     board.stage.classList.add('is-panning');
@@ -967,8 +1024,50 @@ window.NoteApp = window.NoteApp || {};
     event.preventDefault();
   }
 
+  function startMarquee(event) {
+    var box = node('div', 'board__marquee');
+    var rect = board.stage.getBoundingClientRect();
+    box.style.left = (event.clientX - rect.left) + 'px';
+    box.style.top = (event.clientY - rect.top) + 'px';
+    board.stage.appendChild(box);
+    board.marquee = {
+      x: event.clientX,
+      y: event.clientY,
+      base: event.shiftKey || event.metaKey || event.ctrlKey ? board.selectedIds.slice() : [],
+      node: box,
+      last: null,
+    };
+    if (!board.marquee.base.length) setSelection([], null);
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    event.preventDefault();
+  }
+
+  function moveMarquee(event) {
+    var m = board.marquee;
+    var rect = board.stage.getBoundingClientRect();
+    var x1 = Math.min(m.x, event.clientX);
+    var y1 = Math.min(m.y, event.clientY);
+    var x2 = Math.max(m.x, event.clientX);
+    var y2 = Math.max(m.y, event.clientY);
+    m.node.style.left = (x1 - rect.left) + 'px';
+    m.node.style.top = (y1 - rect.top) + 'px';
+    m.node.style.width = (x2 - x1) + 'px';
+    m.node.style.height = (y2 - y1) + 'px';
+    m.last = { x1: x1, y1: y1, x2: x2, y2: y2 };
+    var ids = m.base.slice();
+    board.items.forEach(function (item) {
+      var box = itemScreenRect(item);
+      var sx = box.x + rect.left;
+      var sy = box.y + rect.top;
+      if (sx < x2 && sx + box.w > x1 && sy < y2 && sy + box.h > y1 && ids.indexOf(item.id) < 0) ids.push(item.id);
+    });
+    setSelection(ids, ids[ids.length - 1]);
+  }
+
   function onPointerMove(event) {
     var scale = board.view.z;
+    if (board.marquee) { moveMarquee(event); return; }
     if (board.pan) {
       board.view.x = board.pan.vx + (event.clientX - board.pan.x);
       board.view.y = board.pan.vy + (event.clientY - board.pan.y);
@@ -977,9 +1076,13 @@ window.NoteApp = window.NoteApp || {};
     }
     if (board.drag) {
       var drag = board.drag;
-      drag.item.x = Math.round(drag.start.ix + (event.clientX - drag.start.x) / scale);
-      drag.item.y = Math.round(drag.start.iy + (event.clientY - drag.start.y) / scale);
-      placeItem(drag.item);
+      var dx = (event.clientX - drag.start.x) / scale;
+      var dy = (event.clientY - drag.start.y) / scale;
+      drag.rows.forEach(function (row) {
+        row.item.x = Math.round(row.x + dx);
+        row.item.y = Math.round(row.y + dy);
+        placeItem(row.item);
+      });
       paintLinks();
       return;
     }
@@ -996,8 +1099,15 @@ window.NoteApp = window.NoteApp || {};
     window.removeEventListener('pointermove', onPointerMove);
     window.removeEventListener('pointerup', onPointerUp);
     board.stage.classList.remove('is-panning');
-    if (board.drag) { saveItem(board.drag.item); board.drag = null; }
+    if (board.drag) {
+      board.drag.rows.forEach(saveItem);
+      board.drag = null;
+    }
     if (board.resize) { saveItem(board.resize.item); board.resize = null; }
+    if (board.marquee) {
+      if (board.marquee.node && board.marquee.node.parentNode) board.marquee.node.parentNode.removeChild(board.marquee.node);
+      board.marquee = null;
+    }
     board.pan = null;
   }
 
@@ -1019,6 +1129,7 @@ window.NoteApp = window.NoteApp || {};
     if (event.key === 'Escape') {
       if (board.picker) { closePicker(); return; }
       if (editing) { event.target.blur(); return; }
+      if (board.selectedIds.length) { event.preventDefault(); setSelection([], null); return; }
       event.preventDefault();
       close();
       return;
@@ -1054,9 +1165,9 @@ window.NoteApp = window.NoteApp || {};
       }
       return;
     }
-    if ((event.key === 'Delete' || event.key === 'Backspace') && !editing && board.selectedId) {
-      var item = findItem(board.selectedId);
-      if (item) { event.preventDefault(); removeItem(item); }
+    if ((event.key === 'Delete' || event.key === 'Backspace') && !editing && board.selectedIds.length) {
+      event.preventDefault();
+      removeSelected();
     }
   }
 
@@ -1186,6 +1297,7 @@ window.NoteApp = window.NoteApp || {};
       paintItem(item);
     });
     paintLinks();
+    paintSelection();
   }
 
   function undoLast() {
@@ -1209,7 +1321,7 @@ window.NoteApp = window.NoteApp || {};
       try { App.db.boardAddItem(copy); } catch (e) { }
       return copy;
     });
-    board.selectedId = null;
+    setSelection([], null);
     if (snap.bg && snap.bg !== board.bg) setBg(snap.bg, true);
     board.view.x = snap.view.x;
     board.view.y = snap.view.y;
@@ -1497,6 +1609,13 @@ window.NoteApp = window.NoteApp || {};
     board.canvas = canvas;
     board.grid = grid;
     board.zoomLabel = label;
+    var mode = node('button', 'board__mode');
+    mode.type = 'button';
+    mode.addEventListener('click', function () {
+      setMode(board.mode === 'select' ? 'grab' : 'select');
+    });
+    board.modeButton = mode;
+    root.appendChild(mode);
     return root;
   }
 
@@ -1946,6 +2065,23 @@ window.NoteApp = window.NoteApp || {};
     applyView();
   }
 
+  function setMode(next, quiet) {
+    board.mode = next === 'select' ? 'select' : 'grab';
+    var on = board.mode === 'select';
+    if (board.modeButton) {
+      board.modeButton.textContent = '';
+      var glyph = App.ui.icon(on ? 'marquee' : 'hand', 16);
+      if (glyph) board.modeButton.appendChild(glyph);
+      board.modeButton.classList.toggle('is-select', on);
+      board.modeButton.title = on ? 'Drag to select blocks' : 'Drag to pan the board';
+      board.modeButton.setAttribute('aria-label', board.modeButton.title);
+      board.modeButton.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    if (board.stage) board.stage.classList.toggle('is-select-mode', on);
+    if (!on) setSelection([], null);
+    if (!quiet) util.toast(on ? 'Drag to select blocks' : 'Drag to pan the board');
+  }
+
   function open() {
     if (board.open) return;
     board.open = true;
@@ -1954,6 +2090,7 @@ window.NoteApp = window.NoteApp || {};
     document.body.classList.add('is-board');
     try { App.db.boardEnsure(BOARD_ID, 'Xave'); } catch (e) { }
     load();
+    setMode(board.mode, true);
     applyBgFromDb();
     if (!board.bound) {
       board.bound = true;
@@ -1970,7 +2107,7 @@ window.NoteApp = window.NoteApp || {};
     board.items.forEach(flushItem);
     closePicker();
     board.open = false;
-    board.selectedId = null;
+    setSelection([], null);
     board.root.classList.remove('is-open');
     document.body.classList.remove('is-board');
     document.removeEventListener('keydown', onKeyDown, true);
@@ -1987,6 +2124,7 @@ window.NoteApp = window.NoteApp || {};
     addItem: addItem,
     undo: undoLast,
     setBg: setBg,
+    setMode: setMode,
     menu: showBoardMenu,
   };
 })(window.NoteApp);

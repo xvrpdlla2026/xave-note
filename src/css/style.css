@@ -3723,6 +3723,11 @@ dialog:not([open]) { display: none; }
 .board__tool:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-ring); }
 .board__tool-label { white-space: nowrap; }
 .board__stage { position: relative; flex: 1; min-width: 0; overflow: hidden; }
+.board__stage.is-select-mode { cursor: crosshair; }
+.board__mode { position: absolute; top: 50%; right: 16px; z-index: 6; width: 34px; height: 34px; margin-top: -17px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-raised); color: var(--text-muted); cursor: pointer; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22); }
+.board__mode:hover { color: var(--text); }
+.board__mode.is-select { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.board__marquee { position: absolute; z-index: 4; border: 1px solid var(--accent); border-radius: 4px; background: var(--accent-ring); pointer-events: none; }
 .board__stage.is-space { cursor: grab; }
 .board__stage.is-panning { cursor: grabbing; }
 .board__grid { position: absolute; inset: 0; background-image: radial-gradient(circle, var(--border-strong) 1px, transparent 1px); background-size: 26px 26px; pointer-events: none; }
