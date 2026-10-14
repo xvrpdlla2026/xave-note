@@ -1350,7 +1350,7 @@ window.NoteApp = window.NoteApp || {};
     board.batch = false;
     paintLinks();
     showSpot(spot, size);
-    util.toast(made.length + ' items added to the board');
+    util.toast(made.length === 1 ? '1 item added to the board' : made.length + ' items added to the board');
   }
 
   function closePicker() {
