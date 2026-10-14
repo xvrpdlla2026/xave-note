@@ -8,7 +8,7 @@ window.NoteApp = window.NoteApp || {};
   var MIN_Z = 0.3;
   var MAX_Z = 2.5;
   var STEP = 1.15;
-  var SIZES = { note: [268, 176], todo: [256, 196], link: [264, 128], image: [288, 216], comment: [232, 144], ref: [244, 168], line: [260, 44], column: [280, 340], table: [320, 208] };
+  var SIZES = { note: [268, 176], todo: [256, 196], link: [264, 128], image: [288, 216], comment: [232, 144], ref: [244, 168], line: [260, 44], column: [280, 340], table: [320, 208], group: [232, 62] };
 
   var board = {
     open: false,
@@ -34,6 +34,8 @@ window.NoteApp = window.NoteApp || {};
     undo: [],
     bg: 'dots',
     bound: false,
+    links: null,
+    batch: false,
   };
 
   function node(tag, cls, text) {
@@ -48,6 +50,7 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function defaultData(kind) {
+    if (kind === 'group') return { title: 'Folder', lines: true };
     if (kind === 'line') return {};
     if (kind === 'column') return { text: '' };
     if (kind === 'table') return { cells: [['', '', ''], ['', '', ''], ['', '', '']] };
@@ -335,6 +338,7 @@ window.NoteApp = window.NoteApp || {};
     if (item.kind === 'link') return linkBody(item);
     if (item.kind === 'image') return imageBody(item);
     if (item.kind === 'ref') return refBody(item);
+    if (item.kind === 'group') return groupBody(item);
     if (item.kind === 'line') return lineBody();
     if (item.kind === 'column') return columnBody(item);
     if (item.kind === 'table') return tableBody(item);
@@ -354,7 +358,7 @@ window.NoteApp = window.NoteApp || {};
     var box = node('div', 'bd-item bd-item--' + item.kind);
     box.setAttribute('data-board-id', item.id);
     var bar = node('div', 'bd-item__bar');
-    bar.appendChild(node('span', 'bd-item__kind', item.kind === 'ref' ? (item.ref_kind || 'item') : item.kind));
+    bar.appendChild(node('span', 'bd-item__kind', item.kind === 'ref' ? (item.ref_kind || 'item') : item.kind === 'group' ? (item.data && item.data.scope === 'workspace' ? 'workspace' : 'folder') : item.kind));
     var remove = node('button', 'bd-item__x', '\u00d7');
     remove.type = 'button';
     remove.setAttribute('data-board-del', item.id);
@@ -402,6 +406,7 @@ window.NoteApp = window.NoteApp || {};
     paintItem(item);
     select(item);
     try { App.db.boardAddItem(item); } catch (e) { }
+    paintLinks();
     return item;
   }
 
@@ -411,6 +416,13 @@ window.NoteApp = window.NoteApp || {};
     if (item.node && item.node.parentNode) item.node.parentNode.removeChild(item.node);
     board.items = board.items.filter(function (other) { return other !== item; });
     if (board.selectedId === item.id) board.selectedId = null;
+    board.items.forEach(function (other) {
+      if (other.data && other.data.group === item.id) {
+        other.data.group = null;
+        saveItem(other);
+      }
+    });
+    paintLinks();
     try { App.db.boardDeleteItem(item.id); } catch (e) { }
   }
 
@@ -463,6 +475,7 @@ window.NoteApp = window.NoteApp || {};
       drag.item.x = Math.round(drag.start.ix + (event.clientX - drag.start.x) / scale);
       drag.item.y = Math.round(drag.start.iy + (event.clientY - drag.start.y) / scale);
       placeItem(drag.item);
+      paintLinks();
       return;
     }
     if (board.resize) {
@@ -470,6 +483,7 @@ window.NoteApp = window.NoteApp || {};
       size.item.w = Math.max(170, Math.round(size.start.w + (event.clientX - size.start.x) / scale));
       size.item.h = Math.max(110, Math.round(size.start.h + (event.clientY - size.start.y) / scale));
       placeItem(size.item);
+      paintLinks();
     }
   }
 
@@ -588,6 +602,7 @@ window.NoteApp = window.NoteApp || {};
       placeItem(item);
       saveItem(item);
     });
+    paintLinks();
     fitView();
   }
 
@@ -667,18 +682,19 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function pushUndo(label) {
-    if (!board.open) return;
+    if (!board.open || board.batch) return;
     board.undo.push({ label: label, snap: snapshotBoard() });
     if (board.undo.length > 30) board.undo.shift();
   }
 
   function repaintAll() {
     if (!board.canvas) return;
-    board.canvas.textContent = '';
+    clearCanvas();
     board.items.forEach(function (item) {
       delete item.node;
       paintItem(item);
     });
+    paintLinks();
   }
 
   function undoLast() {
@@ -696,6 +712,7 @@ window.NoteApp = window.NoteApp || {};
       if (item.node && item.node.parentNode) item.node.parentNode.removeChild(item.node);
       try { App.db.boardDeleteItem(item.id); } catch (e) { }
     });
+    clearCanvas();
     board.items = snap.items.map(function (row) {
       var copy = JSON.parse(JSON.stringify(row));
       try { App.db.boardAddItem(copy); } catch (e) { }
@@ -870,6 +887,85 @@ window.NoteApp = window.NoteApp || {};
     if (item) showItemMenu(item, at);
     else showBoardMenu(at);
   }
+  function clearCanvas() {
+    board.items.forEach(function (item) {
+      if (item.node && item.node.parentNode) item.node.parentNode.removeChild(item.node);
+    });
+  }
+
+  function linesOn(item) {
+    return !(item.data && item.data.lines === false);
+  }
+
+  function childrenOf(id) {
+    return board.items.filter(function (other) { return other.data && other.data.group === id; });
+  }
+
+  function edgePoint(item, towardX, towardY) {
+    var cx = item.x + item.w / 2;
+    var cy = item.y + item.h / 2;
+    var dx = towardX - cx;
+    var dy = towardY - cy;
+    if (Math.abs(dx) * item.h > Math.abs(dy) * item.w) {
+      return { x: dx >= 0 ? item.x + item.w : item.x, y: cy };
+    }
+    return { x: cx, y: dy >= 0 ? item.y + item.h : item.y };
+  }
+
+  function linkPath(anchor, kid) {
+    var acx = anchor.x + anchor.w / 2;
+    var acy = anchor.y + anchor.h / 2;
+    var kcx = kid.x + kid.w / 2;
+    var kcy = kid.y + kid.h / 2;
+    var a = edgePoint(anchor, kcx, kcy);
+    var z = edgePoint(kid, acx, acy);
+    var mid = (a.x + z.x) / 2;
+    return 'M' + a.x + ' ' + a.y + 'C' + mid + ' ' + a.y + ' ' + mid + ' ' + z.y + ' ' + z.x + ' ' + z.y;
+  }
+
+  function paintLinks() {
+    if (!board.links) return;
+    board.links.textContent = '';
+    board.items.forEach(function (anchor) {
+      if (anchor.kind !== 'group' || !linesOn(anchor)) return;
+      childrenOf(anchor.id).forEach(function (kid) {
+        var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('class', 'bd-link');
+        path.setAttribute('d', linkPath(anchor, kid));
+        board.links.appendChild(path);
+      });
+    });
+  }
+
+  function groupBody(item) {
+    var wrap = node('div', 'bd-group');
+    var glyph = node('span', 'bd-group__glyph');
+    glyph.appendChild(App.ui.icon(item.data && item.data.scope === 'workspace' ? 'layers' : 'folder', 16));
+    wrap.appendChild(glyph);
+    wrap.appendChild(node('span', 'bd-group__title', (item.data && item.data.title) || 'Folder'));
+    var on = linesOn(item);
+    var toggle = node('button', 'bd-group__link' + (on ? ' is-on' : ''));
+    toggle.type = 'button';
+    toggle.setAttribute('aria-pressed', on ? 'true' : 'false');
+    toggle.setAttribute('aria-label', on ? 'Hide the connection lines' : 'Show the connection lines');
+    toggle.title = on ? 'Hide the connection lines' : 'Show the connection lines';
+    toggle.appendChild(App.ui.icon('link', 15));
+    toggle.addEventListener('click', function (event) {
+      event.stopPropagation();
+      toggleLines(item);
+    });
+    wrap.appendChild(toggle);
+    return wrap;
+  }
+
+  function toggleLines(item) {
+    pushUndo('lines');
+    item.data.lines = !linesOn(item);
+    item.updated_at = util.nowIso();
+    saveItem(item);
+    repaintBody(item);
+    paintLinks();
+  }
   function buildRoot() {
     var root = node('div', 'board');
     root.setAttribute('data-board', 'root');
@@ -877,6 +973,10 @@ window.NoteApp = window.NoteApp || {};
     var stage = node('div', 'board__stage');
     var grid = node('div', 'board__grid');
     var canvas = node('div', 'board__canvas');
+    var links = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    links.setAttribute('class', 'board__links');
+    canvas.appendChild(links);
+    board.links = links;
     stage.appendChild(grid);
     stage.appendChild(canvas);
     stage.addEventListener('pointerdown', onStageDown);
@@ -1061,7 +1161,7 @@ window.NoteApp = window.NoteApp || {};
         id: null,
         ws: space.id,
         name: space.name || 'Workspace',
-        meta: folders.length + notes.length + rootFiles.length + nestedFiles + ' items',
+        meta: folders.length + notes.length + rootFiles.length + nestedFiles + 1 + ' items',
         kids: kids,
         open: board.pickExpanded[key] !== false,
       }));
@@ -1070,43 +1170,128 @@ window.NoteApp = window.NoteApp || {};
     updatePickCount();
   }
 
-  function expandWorkspace(wsId, picks) {
-    var folders = [];
-    var notes = [];
-    try { folders = App.db.listFolders(wsId) || []; } catch (e) { folders = []; }
-    try { notes = App.db.listAllNotes(wsId) || []; } catch (e) { notes = []; }
-    folders.forEach(function (folder) {
-      picks.push({ kind: 'folder', id: folder.id, ws: wsId });
-      try {
-        (App.db.listFilesIn(wsId, folder.id) || []).forEach(function (file) { picks.push({ kind: 'file', id: file.id, ws: wsId }); });
-      } catch (e) { }
-    });
-    notes.forEach(function (note) { picks.push({ kind: 'note', id: note.id, ws: wsId }); });
-    try {
-      (App.db.listFilesIn(wsId, null) || []).forEach(function (file) { picks.push({ kind: 'file', id: file.id, ws: wsId }); });
-    } catch (e) { }
+  function safeList(fn) {
+    try { return fn() || []; } catch (e) { return []; }
   }
 
-  function collectPicks() {
-    var picks = [];
+  function workspaceById(wsId) {
+    var found = null;
+    safeList(function () { return App.db.listWorkspaces(); }).forEach(function (row) {
+      if (String(row.id) === String(wsId)) found = row;
+    });
+    return found;
+  }
+
+  function notePickNode(wsId, note, seen) {
+    var key = 'note:' + note.id;
+    if (seen[key]) return null;
+    seen[key] = true;
+    return { type: 'leaf', kind: 'note', id: note.id, ws: wsId, children: [] };
+  }
+
+  function filePickNode(wsId, file, seen) {
+    var key = 'file:' + file.id;
+    if (seen[key]) return null;
+    seen[key] = true;
+    return { type: 'leaf', kind: 'file', id: file.id, ws: wsId, children: [] };
+  }
+
+  function folderPickNode(wsId, folder, folders, notes, seen) {
+    var key = 'folder:' + folder.id;
+    if (seen[key]) return null;
+    seen[key] = true;
+    var kids = [];
+    folders.forEach(function (row) {
+      if (String(row.parent_folder_id) !== String(folder.id)) return;
+      var sub = folderPickNode(wsId, row, folders, notes, seen);
+      if (sub) kids.push(sub);
+    });
+    notes.forEach(function (row) {
+      if (String(row.folder_id) !== String(folder.id)) return;
+      var leaf = notePickNode(wsId, row, seen);
+      if (leaf) kids.push(leaf);
+    });
+    safeList(function () { return App.db.listFilesIn(wsId, folder.id); }).forEach(function (file) {
+      var leaf = filePickNode(wsId, file, seen);
+      if (leaf) kids.push(leaf);
+    });
+    return { type: 'anchor', kind: 'folder', id: folder.id, ws: wsId, name: folder.name || 'Untitled folder', children: kids };
+  }
+
+  function workspacePickNode(wsId, seen) {
+    var space = workspaceById(wsId);
+    var folders = safeList(function () { return App.db.listFolders(wsId); });
+    var notes = safeList(function () { return App.db.listAllNotes(wsId); });
+    var kids = [];
+    folders.forEach(function (row) {
+      if (row.parent_folder_id) return;
+      var sub = folderPickNode(wsId, row, folders, notes, seen);
+      if (sub) kids.push(sub);
+    });
+    notes.forEach(function (row) {
+      if (row.folder_id) return;
+      var leaf = notePickNode(wsId, row, seen);
+      if (leaf) kids.push(leaf);
+    });
+    safeList(function () { return App.db.listFilesIn(wsId, null); }).forEach(function (file) {
+      var leaf = filePickNode(wsId, file, seen);
+      if (leaf) kids.push(leaf);
+    });
+    return { type: 'anchor', kind: 'workspace', id: wsId, ws: wsId, name: (space && space.name) || 'Workspace', children: kids };
+  }
+
+  function pickTree() {
+    var roots = [];
+    var seen = {};
     Object.keys(board.pickChecked).forEach(function (key) {
       var entry = board.pickChecked[key];
       if (!entry) return;
-      if (entry.kind && entry.id) {
-        picks.push({ kind: entry.kind, id: entry.id, ws: entry.ws });
+      if (entry.kind === 'folder' && entry.id) {
+        var folders = safeList(function () { return App.db.listFolders(entry.ws); });
+        var notes = safeList(function () { return App.db.listAllNotes(entry.ws); });
+        var folder = null;
+        folders.forEach(function (row) { if (String(row.id) === String(entry.id)) folder = row; });
+        if (folder) {
+          var anchor = folderPickNode(entry.ws, folder, folders, notes, seen);
+          if (anchor) roots.push(anchor);
+        }
         return;
       }
-      expandWorkspace(entry.ws, picks);
+      if (entry.kind && entry.id) {
+        var leafKey = entry.kind + ':' + entry.id;
+        if (seen[leafKey]) return;
+        seen[leafKey] = true;
+        roots.push({ type: 'leaf', kind: entry.kind, id: entry.id, ws: entry.ws, children: [] });
+        return;
+      }
+      var wsKey = 'ws:' + entry.ws;
+      if (seen[wsKey]) return;
+      seen[wsKey] = true;
+      roots.push(workspacePickNode(entry.ws, seen));
     });
-    return picks;
+    return roots;
+  }
+
+  function countPicks(list) {
+    var total = 0;
+    list.forEach(function (entry) { total += 1 + countPicks(entry.children || []); });
+    return total;
+  }
+
+  function subtreeHeight(entry) {
+    var own = entry.type === 'anchor' ? 66 : 190;
+    var kids = entry.children || [];
+    if (!kids.length) return own;
+    var total = 0;
+    kids.forEach(function (kid) { total += subtreeHeight(kid); });
+    return Math.max(own, total);
   }
 
   function updatePickCount() {
     if (!board.pickerCount) return;
-    var total = collectPicks().length;
+    var total = countPicks(pickTree());
     board.pickerCount.textContent = total ? total + ' selected' : 'Nothing selected';
   }
-
   function closePicker() {
     if (!board.picker) return;
     if (board.picker.parentNode) board.picker.parentNode.removeChild(board.picker);
@@ -1166,34 +1351,71 @@ window.NoteApp = window.NoteApp || {};
     return data;
   }
 
-  function commitPicker(panel) {
-    var picks = collectPicks();
-    closePicker();
-    if (!picks.length) return;
-    var base = centerOfView(0);
-    var columns = Math.ceil(Math.sqrt(picks.length));
-    picks.slice(0, 120).forEach(function (pick, index) {
-      var snapshot = snapshotFor(pick.kind, pick.id, pick.ws);
-      var item = addItem('ref', {
-        ref_kind: pick.kind,
-        ref_id: pick.id,
+  function placePick(entry, x, y, parentId, added) {
+    var item;
+    if (entry.type === 'anchor') {
+      item = addItem('group', {
+        at: { x: x, y: y },
+        w: SIZES.group[0],
+        h: SIZES.group[1],
+        data: {
+          title: entry.name,
+          lines: true,
+          scope: entry.kind,
+          refId: entry.id,
+          wsId: entry.ws,
+        },
+      });
+    } else {
+      var snapshot = snapshotFor(entry.kind, entry.id, entry.ws);
+      item = addItem('ref', {
+        ref_kind: entry.kind,
+        ref_id: entry.id,
         data: snapshot,
+        at: { x: x, y: y },
         w: SIZES.ref[0],
         h: SIZES.ref[1],
       });
       snapshot.__itemId = item.id;
-      item.x = Math.round(base.x + (index % columns) * 272 - 120);
-      item.y = Math.round(base.y + Math.floor(index / columns) * 196 - 60);
-      placeItem(item);
+    }
+    if (parentId) {
+      item.data.group = parentId;
       saveItem(item);
+    }
+    added.push(item);
+    var kids = entry.children || [];
+    if (!kids.length) return item;
+    var cx = x + 300;
+    var cursor = y;
+    kids.forEach(function (kid) {
+      placePick(kid, cx, cursor, item.id, added);
+      cursor += subtreeHeight(kid);
     });
+    return item;
+  }
+
+  function commitPicker(panel) {
+    var roots = pickTree();
+    closePicker();
+    if (!roots.length) return;
+    var base = centerOfView(0);
+    var added = [];
+    var cursor = Math.round(base.y - 60);
+    board.batch = true;
+    pushUndo('picker');
+    roots.forEach(function (entry) {
+      placePick(entry, Math.round(base.x - 120), cursor, null, added);
+      cursor += subtreeHeight(entry) + 40;
+    });
+    board.batch = false;
+    paintLinks();
     fitView();
-    util.toast(picks.length + ' items added to the board');
+    util.toast(added.length + ' items added to the board');
   }
 
   function load() {
+    clearCanvas();
     board.items = [];
-    board.canvas.textContent = '';
     var stored = [];
     try { stored = App.db.boardItems(BOARD_ID) || []; } catch (e) { stored = []; }
     stored.forEach(function (row) {
@@ -1202,6 +1424,7 @@ window.NoteApp = window.NoteApp || {};
       board.items.push(item);
       paintItem(item);
     });
+    paintLinks();
     var view = null;
     try { view = App.db.boardGet(BOARD_ID); } catch (e) { view = null; }
     board.view = view ? { x: view.vx || 0, y: view.vy || 0, z: view.vz || 1 } : { x: 0, y: 0, z: 1 };
