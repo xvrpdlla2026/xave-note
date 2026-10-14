@@ -24,6 +24,7 @@ window.NoteApp = window.NoteApp || {};
     pickerCount: null,
     pickChecked: {},
     pickExpanded: {},
+    pickModel: [],
     root: null,
     stage: null,
     canvas: null,
@@ -1111,10 +1112,23 @@ window.NoteApp = window.NoteApp || {};
     var box = node('input', 'board__pick-box');
     box.type = 'checkbox';
     box.checked = !!board.pickChecked[spec.key];
+    var kin = subtreeNodes(spec.node || { key: spec.key, kind: spec.kind, id: spec.id, ws: spec.ws, kids: [] });
+    if (kin.length > 1) {
+      var total = 0;
+      var on = 0;
+      kin.forEach(function (entry) {
+        if (entry.key === spec.key) return;
+        total++;
+        if (board.pickChecked[entry.key]) on++;
+      });
+      if (on && (!box.checked || on < total)) box.indeterminate = true;
+    }
     box.addEventListener('change', function () {
-      if (box.checked) board.pickChecked[spec.key] = { kind: spec.kind || null, id: spec.id || null, ws: spec.ws };
-      else delete board.pickChecked[spec.key];
-      updatePickCount();
+      kin.forEach(function (entry) {
+        if (box.checked) board.pickChecked[entry.key] = entry.kind === 'workspace' || !entry.kind ? { kind: null, id: null, ws: entry.ws } : { kind: entry.kind, id: entry.id, ws: entry.ws };
+        else delete board.pickChecked[entry.key];
+      });
+      paintPicker();
     });
     hit.appendChild(box);
     hit.appendChild(node('span', 'pk-glyph', pickGlyph(spec.kind)));
@@ -1126,191 +1140,147 @@ window.NoteApp = window.NoteApp || {};
     return wrap;
   }
 
-  function noteNode(space, note) {
-    var title = note.title && note.title.trim() ? note.title : 'Untitled note';
-    return pickNode({ key: 'note:' + note.id, kind: 'note', id: note.id, ws: space.id, name: title, meta: util.formatWhen(note.updated_at) });
-  }
-
-  function fileNode(space, file) {
-    return pickNode({ key: 'file:' + file.id, kind: 'file', id: file.id, ws: space.id, name: file.filename || 'file', meta: util.formatBytes(file.size) });
-  }
-
-  function folderNode(space, folder, folders, notes, filesByFolder) {
-    var subs = folders.filter(function (row) { return row.parent_folder_id === folder.id; });
-    var inner = notes.filter(function (row) { return row.folder_id === folder.id; });
-    var key = 'folder:' + folder.id;
-    var open = !!board.pickExpanded[key];
-    var direct = subs.length + inner.length;
-    var kids = function () {
-      var host = node('div', 'pk-kids');
-      subs.forEach(function (sub) { host.appendChild(folderNode(space, sub, folders, notes, filesByFolder)); });
-      inner.forEach(function (note) { host.appendChild(noteNode(space, note)); });
-      ((filesByFolder || {})[folder.id] || []).forEach(function (file) { host.appendChild(fileNode(space, file)); });
-      return host;
-    };
-    return pickNode({
-      key: key,
-      kind: 'folder',
-      id: folder.id,
+  function noteModel(space, note) {
+    return {
+      key: 'note:' + note.id,
+      kind: 'note',
+      id: note.id,
       ws: space.id,
-      name: folder.name || 'Untitled folder',
-      meta: direct ? String(direct) : '',
-      kids: direct ? kids : null,
-      open: open,
+      name: note.title && note.title.trim() ? note.title : 'Untitled note',
+      meta: util.formatWhen(note.updated_at),
+      kids: [],
+    };
+  }
+
+  function fileModel(space, file) {
+    return {
+      key: 'file:' + file.id,
+      kind: 'file',
+      id: file.id,
+      ws: space.id,
+      name: file.filename || 'file',
+      meta: util.formatBytes(file.size),
+      kids: [],
+    };
+  }
+
+  function renderPickNode(model) {
+    var kids = model.kids || [];
+    return pickNode({
+      key: model.key,
+      kind: model.kind === 'workspace' ? null : model.kind,
+      id: model.kind === 'workspace' ? null : model.id,
+      ws: model.ws,
+      name: model.name,
+      meta: model.meta || '',
+      node: model,
+      kids: kids.length ? function () {
+        var host = node('div', 'pk-kids');
+        kids.forEach(function (kid) { host.appendChild(renderPickNode(kid)); });
+        return host;
+      } : null,
+      open: model.kind === 'workspace' ? board.pickExpanded[model.key] !== false : !!board.pickExpanded[model.key],
     });
+  }
+
+  function buildPickModel(space) {
+    var folders = safeList(function () { return App.db.listFolders(space.id); });
+    var notes = safeList(function () { return App.db.listAllNotes(space.id); });
+    var rootFiles = safeList(function () { return App.db.listFilesIn(space.id, null); });
+    var filesByFolder = {};
+    var nestedFiles = 0;
+    folders.forEach(function (folder) {
+      var list = safeList(function () { return App.db.listFilesIn(space.id, folder.id); });
+      filesByFolder[folder.id] = list;
+      nestedFiles += list.length;
+    });
+    var folderModel = function (folder) {
+      var kids = [];
+      folders.forEach(function (row) {
+        if (String(row.parent_folder_id) === String(folder.id)) kids.push(folderModel(row));
+      });
+      notes.forEach(function (row) {
+        if (String(row.folder_id) === String(folder.id)) kids.push(noteModel(space, row));
+      });
+      (filesByFolder[folder.id] || []).forEach(function (file) { kids.push(fileModel(space, file)); });
+      return {
+        key: 'folder:' + folder.id,
+        kind: 'folder',
+        id: folder.id,
+        ws: space.id,
+        name: folder.name || 'Untitled folder',
+        meta: kids.length ? String(kids.length) : '',
+        kids: kids,
+      };
+    };
+    var kids = [];
+    folders.forEach(function (row) { if (!row.parent_folder_id) kids.push(folderModel(row)); });
+    notes.forEach(function (row) { if (!row.folder_id) kids.push(noteModel(space, row)); });
+    rootFiles.forEach(function (file) { kids.push(fileModel(space, file)); });
+    return {
+      key: 'ws:' + space.id,
+      kind: 'workspace',
+      id: space.id,
+      ws: space.id,
+      name: space.name || 'Workspace',
+      meta: folders.length + notes.length + rootFiles.length + nestedFiles + 1 + ' items',
+      kids: kids,
+    };
   }
 
   function paintPicker() {
     var panel = board.picker;
     if (!panel) return;
     var body = panel.querySelector('.board__picker-body');
+    var scroll = body.scrollTop;
     body.textContent = '';
-    var spaces = [];
-    try { spaces = App.db.listWorkspaces() || []; } catch (e) { spaces = []; }
+    var spaces = safeList(function () { return App.db.listWorkspaces(); });
     if (!spaces.length) body.appendChild(node('p', 'board__picker-empty', 'No workspaces yet.'));
+    var model = [];
     spaces.forEach(function (space) {
-      var folders = [];
-      var notes = [];
-      var rootFiles = [];
-      try { folders = App.db.listFolders(space.id) || []; } catch (e) { folders = []; }
-      try { notes = App.db.listAllNotes(space.id) || []; } catch (e) { notes = []; }
-      try { rootFiles = App.db.listFilesIn(space.id, null) || []; } catch (e) { rootFiles = []; }
-      var filesByFolder = {};
-      var nestedFiles = 0;
-      folders.forEach(function (folder) {
-        var list = [];
-        try { list = App.db.listFilesIn(space.id, folder.id) || []; } catch (e) { list = []; }
-        filesByFolder[folder.id] = list;
-        nestedFiles += list.length;
-      });
-      var key = 'ws:' + space.id;
-      var kids = function () {
-        var host = node('div', 'pk-kids');
-        folders.filter(function (row) { return !row.parent_folder_id; }).forEach(function (folder) {
-          host.appendChild(folderNode(space, folder, folders, notes, filesByFolder));
-        });
-        notes.filter(function (row) { return !row.folder_id; }).forEach(function (note) { host.appendChild(noteNode(space, note)); });
-        rootFiles.forEach(function (file) { host.appendChild(fileNode(space, file)); });
-        return host;
-      };
+      var spaceModel = buildPickModel(space);
+      model.push(spaceModel);
       var group = node('div', 'pk-group');
-      group.appendChild(pickNode({
-        key: key,
-        kind: null,
-        id: null,
-        ws: space.id,
-        name: space.name || 'Workspace',
-        meta: folders.length + notes.length + rootFiles.length + nestedFiles + 1 + ' items',
-        kids: kids,
-        open: board.pickExpanded[key] !== false,
-      }));
+      group.appendChild(renderPickNode(spaceModel));
       body.appendChild(group);
     });
+    board.pickModel = model;
+    body.scrollTop = scroll;
     updatePickCount();
   }
-
   function safeList(fn) {
     try { return fn() || []; } catch (e) { return []; }
   }
 
-  function workspaceById(wsId) {
-    var found = null;
-    safeList(function () { return App.db.listWorkspaces(); }).forEach(function (row) {
-      if (String(row.id) === String(wsId)) found = row;
-    });
-    return found;
+  function subtreeNodes(model) {
+    var out = [];
+    (function walk(entry) {
+      out.push(entry);
+      (entry.kids || []).forEach(walk);
+    })(model);
+    return out;
   }
 
-  function notePickNode(wsId, note, seen) {
-    var key = 'note:' + note.id;
-    if (seen[key]) return null;
-    seen[key] = true;
-    return { type: 'leaf', kind: 'note', id: note.id, ws: wsId, children: [] };
-  }
-
-  function filePickNode(wsId, file, seen) {
-    var key = 'file:' + file.id;
-    if (seen[key]) return null;
-    seen[key] = true;
-    return { type: 'leaf', kind: 'file', id: file.id, ws: wsId, children: [] };
-  }
-
-  function folderPickNode(wsId, folder, folders, notes, seen) {
-    var key = 'folder:' + folder.id;
-    if (seen[key]) return null;
-    seen[key] = true;
-    var kids = [];
-    folders.forEach(function (row) {
-      if (String(row.parent_folder_id) !== String(folder.id)) return;
-      var sub = folderPickNode(wsId, row, folders, notes, seen);
-      if (sub) kids.push(sub);
+  function pickChildren(list) {
+    var out = [];
+    (list || []).forEach(function (model) {
+      var on = !!board.pickChecked[model.key];
+      if (model.kind === 'note' || model.kind === 'file') {
+        if (on) out.push({ type: 'leaf', kind: model.kind, id: model.id, ws: model.ws, children: [] });
+        return;
+      }
+      if (on) {
+        out.push({ type: 'anchor', kind: model.kind, id: model.id, ws: model.ws, name: model.name, children: pickChildren(model.kids) });
+        return;
+      }
+      pickChildren(model.kids).forEach(function (entry) { out.push(entry); });
     });
-    notes.forEach(function (row) {
-      if (String(row.folder_id) !== String(folder.id)) return;
-      var leaf = notePickNode(wsId, row, seen);
-      if (leaf) kids.push(leaf);
-    });
-    safeList(function () { return App.db.listFilesIn(wsId, folder.id); }).forEach(function (file) {
-      var leaf = filePickNode(wsId, file, seen);
-      if (leaf) kids.push(leaf);
-    });
-    return { type: 'anchor', kind: 'folder', id: folder.id, ws: wsId, name: folder.name || 'Untitled folder', children: kids };
-  }
-
-  function workspacePickNode(wsId, seen) {
-    var space = workspaceById(wsId);
-    var folders = safeList(function () { return App.db.listFolders(wsId); });
-    var notes = safeList(function () { return App.db.listAllNotes(wsId); });
-    var kids = [];
-    folders.forEach(function (row) {
-      if (row.parent_folder_id) return;
-      var sub = folderPickNode(wsId, row, folders, notes, seen);
-      if (sub) kids.push(sub);
-    });
-    notes.forEach(function (row) {
-      if (row.folder_id) return;
-      var leaf = notePickNode(wsId, row, seen);
-      if (leaf) kids.push(leaf);
-    });
-    safeList(function () { return App.db.listFilesIn(wsId, null); }).forEach(function (file) {
-      var leaf = filePickNode(wsId, file, seen);
-      if (leaf) kids.push(leaf);
-    });
-    return { type: 'anchor', kind: 'workspace', id: wsId, ws: wsId, name: (space && space.name) || 'Workspace', children: kids };
+    return out;
   }
 
   function pickTree() {
-    var roots = [];
-    var seen = {};
-    Object.keys(board.pickChecked).forEach(function (key) {
-      var entry = board.pickChecked[key];
-      if (!entry) return;
-      if (entry.kind === 'folder' && entry.id) {
-        var folders = safeList(function () { return App.db.listFolders(entry.ws); });
-        var notes = safeList(function () { return App.db.listAllNotes(entry.ws); });
-        var folder = null;
-        folders.forEach(function (row) { if (String(row.id) === String(entry.id)) folder = row; });
-        if (folder) {
-          var anchor = folderPickNode(entry.ws, folder, folders, notes, seen);
-          if (anchor) roots.push(anchor);
-        }
-        return;
-      }
-      if (entry.kind && entry.id) {
-        var leafKey = entry.kind + ':' + entry.id;
-        if (seen[leafKey]) return;
-        seen[leafKey] = true;
-        roots.push({ type: 'leaf', kind: entry.kind, id: entry.id, ws: entry.ws, children: [] });
-        return;
-      }
-      var wsKey = 'ws:' + entry.ws;
-      if (seen[wsKey]) return;
-      seen[wsKey] = true;
-      roots.push(workspacePickNode(entry.ws, seen));
-    });
-    return roots;
+    return pickChildren(board.pickModel);
   }
-
   function countPicks(list) {
     var total = 0;
     list.forEach(function (entry) { total += 1 + countPicks(entry.children || []); });
@@ -1338,6 +1308,7 @@ window.NoteApp = window.NoteApp || {};
     board.pickerCount = null;
     board.pickChecked = {};
     board.pickExpanded = {};
+    board.pickModel = [];
   }
   function snapshotFor(kind, id, wsId) {
     var space = null;
