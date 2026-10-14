@@ -5097,7 +5097,15 @@ window.NoteApp = window.NoteApp || {};
     });
 
     var dragDepth = 0;
+    var draggingInside = false;
+    document.addEventListener('dragstart', function () {
+      draggingInside = true;
+    }, true);
+    document.addEventListener('dragend', function () {
+      draggingInside = false;
+    }, true);
     window.addEventListener('dragenter', function (event) {
+      if (draggingInside) return;
       if (!event.dataTransfer || Array.prototype.indexOf.call(event.dataTransfer.types || [], 'Files') === -1) return;
       event.preventDefault();
       if (App.board && App.board.isOpen()) return;
@@ -5105,6 +5113,7 @@ window.NoteApp = window.NoteApp || {};
       App.ui.setDragActive(true);
     });
     window.addEventListener('dragover', function (event) {
+      if (draggingInside) return;
       if (!event.dataTransfer) return;
       if (Array.prototype.indexOf.call(event.dataTransfer.types || [], 'Files') === -1) return;
       event.preventDefault();
@@ -5118,6 +5127,10 @@ window.NoteApp = window.NoteApp || {};
       event.preventDefault();
       dragDepth = 0;
       App.ui.setDragActive(false);
+      if (draggingInside) {
+        draggingInside = false;
+        return;
+      }
       var types = event.dataTransfer ? event.dataTransfer.types : null;
       if (!types || Array.prototype.indexOf.call(types, 'Files') === -1) return;
       if (!event.dataTransfer || !event.dataTransfer.files || !event.dataTransfer.files.length) return;
