@@ -3882,8 +3882,9 @@ dialog:not([open]) { display: none; }
 .bd-item.is-drop { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-ring); }
 .bd-item.is-child { min-height: 0; margin: 0; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
 .bd-item.is-child .bd-item__body { overflow: auto; }
-.bd-draw { flex: 1; display: flex; min-height: 0; }
-.bd-draw__canvas { display: block; width: 100%; height: 100%; border-radius: 8px; background: transparent; }
+.bd-item--draw .bd-item__body { display: flex; padding: 0; overflow: hidden; }
+.bd-draw { position: relative; flex: 1; min-height: 0; }
+.bd-draw__canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; background: transparent; }
 .bd-item--draw { background: transparent; border-color: transparent; box-shadow: none; }
 .bd-item--draw:hover { border-color: var(--border); }
 .bd-item--draw .bd-item__bar { opacity: 0; transition: opacity .12s ease; }

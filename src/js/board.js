@@ -2324,7 +2324,7 @@ window.NoteApp = window.NoteApp || {};
     ctx.lineWidth = stroke.w;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    var erase = stroke.e || String(stroke.c).toLowerCase() === '#ffffff';
+    var erase = !!stroke.e || (typeof stroke.e === 'undefined' && String(stroke.c).toLowerCase() === '#ffffff');
     ctx.globalCompositeOperation = erase ? 'destination-out' : 'source-over';
     if (points.length === 1) {
       ctx.beginPath();
@@ -2358,7 +2358,11 @@ window.NoteApp = window.NoteApp || {};
     return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
   }
 
-  var inkState = { on: false, tool: 'pen', color: DRAW_COLORS[0], width: DRAW_WIDTHS[0], host: null, strokes: [], redo: [], cur: null, last: null };
+  var inkState = { on: false, tool: 'pen', color: DRAW_COLORS[0], picked: false, width: DRAW_WIDTHS[0], host: null, strokes: [], redo: [], cur: null, last: null };
+
+  function inkDefaultColor() {
+    return document.documentElement.getAttribute('data-theme') === 'dark' ? '#ffffff' : DRAW_COLORS[0];
+  }
 
   var INK_PAD = 18;
   var INK_BAR = 34;
@@ -2419,6 +2423,7 @@ window.NoteApp = window.NoteApp || {};
 
   function inkColor(hex) {
     inkState.color = hex;
+    inkState.picked = true;
     inkState.tool = 'pen';
     if (board.inkPop) board.inkPop.classList.add('is-hidden');
     inkBar();
@@ -2529,6 +2534,7 @@ window.NoteApp = window.NoteApp || {};
     if (board.stage) board.stage.classList.toggle('is-inking', next);
     if (board.inkButton) board.inkButton.classList.toggle('is-active', next);
     if (next) {
+      if (!inkState.picked) inkState.color = inkDefaultColor();
       inkFit();
       inkRepaint();
       inkBar();
