@@ -732,7 +732,17 @@ window.NoteApp = window.NoteApp || {};
       event.stopPropagation();
       removeItem(item);
     });
-    bar.appendChild(remove);
+    var tools = node('div', 'bd-item__tools');
+    var lock = node('button', 'bd-item__lock', '');
+    lock.type = 'button';
+    lock.setAttribute('aria-label', 'Lock this card');
+    lock.addEventListener('click', function (event) {
+      event.stopPropagation();
+      toggleLock(item);
+    });
+    tools.appendChild(lock);
+    tools.appendChild(remove);
+    bar.appendChild(tools);
     box.appendChild(bar);
     var body = node('div', 'bd-item__body');
     body.appendChild(bodyFor(item));
@@ -742,6 +752,7 @@ window.NoteApp = window.NoteApp || {};
     box.appendChild(grip);
     box.addEventListener('pointerdown', onItemDown);
     item.node = box;
+    paintLock(item);
     placeItem(item);
     board.canvas.appendChild(box);
     if (item.kind === 'link') renderLinkCard(item);
@@ -788,9 +799,39 @@ window.NoteApp = window.NoteApp || {};
     return out;
   }
 
+  function lockOf(item) {
+    return !!(item.data && item.data.locked);
+  }
+
+  function paintLock(item) {
+    if (!item.node) return;
+    var locked = lockOf(item);
+    var button = item.node.querySelector('.bd-item__lock');
+    var remove = item.node.querySelector('.bd-item__x');
+    var grip = item.node.querySelector('.bd-item__resize');
+    item.node.classList.toggle('is-locked', locked);
+    if (button) {
+      button.textContent = '';
+      button.appendChild(App.ui.icon(locked ? 'lock' : 'unlock', 12));
+      button.setAttribute('aria-label', locked ? 'Unlock this card' : 'Lock this card');
+      button.title = locked ? 'Unlock this card' : 'Lock this card';
+    }
+    if (remove) remove.style.display = locked ? 'none' : '';
+    if (grip) grip.style.display = locked ? 'none' : '';
+  }
+
+  function toggleLock(item) {
+    if (!item.data) item.data = {};
+    item.data.locked = !item.data.locked;
+    saveItem(item);
+    paintLock(item);
+    util.toast(item.data.locked ? 'Card locked' : 'Card unlocked');
+  }
+
   function removeItem(item) {
+    if (lockOf(item)) { util.toast('Unlock this card first'); return; }
     pushUndo('remove');
-    var doomed = [item].concat(descendantsOf(item.id));
+    var doomed = [item].concat(descendantsOf(item.id)).filter(function (row) { return !lockOf(row); });
     doomed.forEach(function (row) {
       if (row.saveTimer) { clearTimeout(row.saveTimer); row.saveTimer = null; }
       if (row.node && row.node.parentNode) row.node.parentNode.removeChild(row.node);
@@ -810,6 +851,7 @@ window.NoteApp = window.NoteApp || {};
     var item = findItem(box.getAttribute('data-board-id'));
     if (!item) return;
     select(item);
+    if (lockOf(item)) return;
     event.stopPropagation();
     var grip = target.closest('.bd-item__resize');
     var start = { x: event.clientX, y: event.clientY, w: item.w, h: item.h, ix: item.x, iy: item.y };
