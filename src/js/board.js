@@ -8,7 +8,7 @@ window.NoteApp = window.NoteApp || {};
   var MIN_Z = 0.3;
   var MAX_Z = 2.5;
   var STEP = 1.15;
-  var SIZES = { note: [268, 176], todo: [256, 196], link: [268, 96], image: [288, 216], comment: [268, 132], ref: [244, 168], line: [260, 44], column: [280, 340], table: [320, 208], group: [232, 62], file: [300, 236] };
+  var SIZES = { note: [268, 176], todo: [256, 196], link: [268, 96], image: [288, 216], comment: [268, 132], ref: [244, 168], column: [280, 340], table: [320, 208], group: [232, 62], file: [300, 236] };
 
   var board = {
     open: false,
@@ -55,7 +55,6 @@ window.NoteApp = window.NoteApp || {};
 
   function defaultData(kind) {
     if (kind === 'group') return { title: 'Folder', lines: true };
-    if (kind === 'line') return {};
     if (kind === 'column') return { text: '' };
     if (kind === 'table') return { cells: [['', '', ''], ['', '', ''], ['', '', '']] };
     if (kind === 'todo') return { title: '', items: [{ text: '', done: false }] };
@@ -783,7 +782,6 @@ window.NoteApp = window.NoteApp || {};
     if (item.kind === 'image') return imageBody(item);
     if (item.kind === 'ref') return refBody(item);
     if (item.kind === 'group') return groupBody(item);
-    if (item.kind === 'line') return lineBody();
     if (item.kind === 'column') return columnBody(item);
     if (item.kind === 'table') return tableBody(item);
     if (item.kind === 'comment') return commentBody(item);
@@ -1203,7 +1201,6 @@ window.NoteApp = window.NoteApp || {};
     group.appendChild(railButton('external', 'Link', function () { addItem('link'); }));
     group.appendChild(railButton('file', 'File', function () { addItem('image'); }));
     group.appendChild(railButton('info', 'Comment', function () { addItem('comment'); }));
-    group.appendChild(railButton('list', 'Line', function () { addItem('line'); }));
     group.appendChild(railButton('panel', 'Column', function () { addItem('column'); }));
     group.appendChild(railButton('grid', 'Table', function () { addItem('table'); }));
     rail.appendChild(group);
@@ -1215,10 +1212,6 @@ window.NoteApp = window.NoteApp || {};
     foot.appendChild(railButton('arrowLeft', 'Back', close));
     rail.appendChild(foot);
     return rail;
-  }
-
-  function lineBody() {
-    return node('div', 'bd-line');
   }
 
   function columnBody(item) {
@@ -1434,7 +1427,6 @@ window.NoteApp = window.NoteApp || {};
         { label: 'New Link', icon: 'external', onclick: newItem('link') },
         { label: 'New To-do', icon: 'check', onclick: newItem('todo') },
         { label: 'New Comment', icon: 'info', onclick: newItem('comment') },
-        { label: 'New Line', icon: 'list', onclick: newItem('line') },
         { label: 'New Column', icon: 'panel', onclick: newItem('column') },
         { label: 'New Table', icon: 'grid', onclick: newItem('table') },
         { label: 'New Image or File', icon: 'upload', onclick: newItem('image') },

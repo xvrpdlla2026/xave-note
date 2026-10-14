@@ -3870,8 +3870,6 @@ dialog:not([open]) { display: none; }
 .board__picker-foot { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--border); }
 .board__picker-count { margin-right: auto; font-size: 11.5px; color: var(--text-faint); }
 
-.bd-item--line .bd-item__body { display: flex; align-items: center; padding: 0 12px 6px; }
-.bd-line { flex: 1; height: 2px; border-radius: 999px; background: var(--border-strong); }
 .bd-column { flex: 1; display: flex; flex-direction: column; gap: 8px; }
 .bd-column__title { font-size: 13px; font-weight: 620; }
 .bd-column__space { flex: 1; border: 1px dashed var(--border-strong); border-radius: 10px; background: rgba(125, 141, 255, 0.05); }
