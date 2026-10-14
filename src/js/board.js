@@ -590,22 +590,47 @@ window.NoteApp = window.NoteApp || {};
     };
   }
 
+  function filePreviewKind(data) {
+    var name = String(data.filename || '');
+    var ext = (name.match(/\.([a-z0-9]+)$/i) || ['', ''])[1].toLowerCase();
+    var mime = String(data.mime || '').toLowerCase();
+    if (mime.indexOf('image/') === 0 || /^(png|jpe?g|gif|webp|avif|bmp|svg|ico)$/.test(ext)) return 'image';
+    if (mime.indexOf('video/') === 0 || /^(mp4|webm|mov|m4v|ogv)$/.test(ext)) return 'video';
+    if (mime === 'application/pdf' || ext === 'pdf') return 'pdf';
+    if (ext === 'docx' || mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx';
+    if (mime.indexOf('text/plain') === 0 || /^(txt|md|log)$/.test(ext)) return 'text';
+    return '';
+  }
+
+  function fileTile(data) {
+    var name = String(data.filename || '');
+    var ext = (name.match(/\.([a-z0-9]+)$/i) || ['', ''])[1];
+    var tile = node('div', 'bd-filetile');
+    tile.appendChild(node('span', 'bd-filetile__ext', ext ? ext.toUpperCase().slice(0, 4) : 'FILE'));
+    tile.appendChild(node('span', 'bd-filetile__name', name || 'File'));
+    return tile;
+  }
+
+
   function imageBody(item) {
     var wrap = node('div', 'bd-image');
     var data = item.data || {};
-    if (data.fileId && App.ui.filePreviewContent) {
-      var holder = App.ui.filePreviewContent(filePreview(data), fileLoad(data), {
-        image: 'bd-image__img',
-        video: 'bd-file__video',
-        audio: 'bd-file__audio',
-        pdf: 'bd-file__pdf',
-        doc: 'bd-file__doc',
-        pdfChrome: false,
-      });
-      if (holder) {
-        wrap.appendChild(holder);
-        return wrap;
+    if (data.fileId) {
+      var shown = filePreviewKind(data);
+      if (shown && App.ui.filePreviewContent) {
+        var classes = { pdfChrome: false };
+        if (shown === 'image') classes.image = 'bd-image__img';
+        else if (shown === 'video') classes.video = 'bd-file__video';
+        else if (shown === 'pdf') classes.pdf = 'bd-file__pdf';
+        else classes.doc = 'bd-file__doc';
+        var holder = App.ui.filePreviewContent(filePreview(data), fileLoad(data), classes);
+        if (holder) {
+          wrap.appendChild(holder);
+          return wrap;
+        }
       }
+      wrap.appendChild(fileTile(data));
+      return wrap;
     }
     if (data.src) {
       var img = node('img', 'bd-image__img');
@@ -1284,7 +1309,6 @@ window.NoteApp = window.NoteApp || {};
         { label: 'Bring to front', icon: 'layers', onclick: function () { reorder(item, true); } },
         { label: 'Send to back', icon: 'layers', onclick: function () { reorder(item, false); } },
       ],
-    });
   }
 
   function onBoardContext(event) {

@@ -3804,6 +3804,9 @@ dialog:not([open]) { display: none; }
 .bd-file__doc table { max-width: 100%; }
 .bd-image__img { max-width: 100%; max-height: 100%; border-radius: 6px; object-fit: contain; }
 .bd-image__empty { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.bd-filetile { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 100%; text-align: center; }
+.bd-filetile__ext { display: inline-flex; align-items: center; justify-content: center; min-width: 54px; height: 54px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-sunken); color: var(--text-muted); font-size: 12px; font-weight: 700; letter-spacing: 0.06em; }
+.bd-filetile__name { max-width: 100%; font-size: 11.5px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bd-image__glyph { font-size: 11px; color: var(--text-faint); }
 .bd-ref { display: flex; flex-direction: column; gap: 6px; height: 100%; }
 .bd-ref__head { display: flex; align-items: center; gap: 7px; }
