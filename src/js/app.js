@@ -5121,13 +5121,13 @@ window.NoteApp = window.NoteApp || {};
       var types = event.dataTransfer ? event.dataTransfer.types : null;
       if (!types || Array.prototype.indexOf.call(types, 'Files') === -1) return;
       if (!event.dataTransfer || !event.dataTransfer.files || !event.dataTransfer.files.length) return;
-      var files = Array.prototype.slice.call(event.dataTransfer.files);
+      var files = uniqueFiles(Array.prototype.slice.call(event.dataTransfer.files));
       if (App.board && App.board.isOpen() && App.board.dropFiles) {
         App.board.dropFiles(files, event.clientX, event.clientY);
         return;
       }
       var body = document.getElementById('note-body');
-      var onNote = !!body && !!state.currentNote
+      var onNote = !!body && !!state.currentNote && !!state.activeNoteId && !state.activeFileId
         && (body.contains(event.target) || (dom.main && dom.main.contains(event.target)));
       if (onNote) {
         var pictures = files.filter(looksLikePicture);
@@ -5299,6 +5299,16 @@ window.NoteApp = window.NoteApp || {};
   function looksLikePicture(file) {
     var type = String((file && file.type) || '').toLowerCase();
     return type.indexOf('image/') === 0 || type === '' || type === 'application/octet-stream';
+  }
+
+  function uniqueFiles(files) {
+    var seen = {};
+    return files.filter(function (file) {
+      var key = [file.name, file.size, file.lastModified || 0, file.type || ''].join('\u0000');
+      if (seen[key]) return false;
+      seen[key] = true;
+      return true;
+    });
   }
 
   function clipboardImages(data) {
@@ -5474,7 +5484,7 @@ window.NoteApp = window.NoteApp || {};
       return true;
     }).catch(function (err) {
       util.toast('Could not add the picture: ' + err.message, 'error', 9000);
-      return false;
+      return inserted > 0;
     });
   }
 
