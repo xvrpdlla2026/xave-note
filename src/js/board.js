@@ -658,13 +658,6 @@ window.NoteApp = window.NoteApp || {};
     return wrap;
   }
 
-  function boardWorkspace() {
-    var state = App.app && App.app.state;
-    if (state && state.workspaceId) return state.workspaceId;
-    var list = safeList(function () { return App.db.listWorkspaces(); });
-    return list.length ? list[0].id : '';
-  }
-
   function fileLoad(data) {
     return function () {
       return Promise.resolve(App.db.getFileBlob(data.fileId)).then(function (res) { return res ? res.blob : null; });
@@ -713,6 +706,41 @@ window.NoteApp = window.NoteApp || {};
     }).catch(function () { util.toast('Could not read that file'); });
   }
 
+  function storeBoardFile(item, file) {
+    return App.db.addFile(BOARD_ID, null, file.name || 'file', file.type || 'application/octet-stream', file).then(function (row) {
+      item.data.fileId = row.id;
+      item.data.filename = row.filename;
+      item.data.mime = row.mime_type;
+      item.data.size = row.size;
+      saveItem(item);
+      repaintBody(item);
+      paintKind(item);
+      return item;
+    });
+  }
+
+  function dropFiles(files, clientX, clientY) {
+    var list = Array.prototype.slice.call(files || []);
+    if (!list.length) return;
+    var point = canvasPoint(clientX, clientY);
+    list.forEach(function (file, index) {
+      var item = addItem('image', {
+        at: {
+          x: Math.round(point.x - SIZES.image[0] / 2 + index * 24),
+          y: Math.round(point.y - SIZES.image[1] / 2 + index * 24),
+        },
+        data: {
+          name: file.name || 'File',
+          filename: file.name || 'file',
+          mime: file.type || 'application/octet-stream',
+          size: file.size || 0,
+        },
+      });
+      storeBoardFile(item, file);
+    });
+    util.toast(list.length === 1 ? 'Added \u201c' + list[0].name + '\u201d to the board' : 'Added ' + list.length + ' files to the board');
+  }
+
   function imageBody(item) {
     var wrap = node('div', 'bd-image');
     var data = item.data || {};
@@ -751,19 +779,8 @@ window.NoteApp = window.NoteApp || {};
       input.addEventListener('change', function () {
         var file = input.files && input.files[0];
         if (!file) return;
-        var wsId = boardWorkspace();
-        if (!wsId) { util.toast('Create a workspace first'); return; }
         util.toast('Adding ' + file.name + '\u2026');
-        App.db.addFile(wsId, null, file.name, file.type || 'application/octet-stream', file).then(function (row) {
-          pushUndo('file');
-          item.data.fileId = row.id;
-          item.data.filename = row.filename;
-          item.data.mime = row.mime_type;
-          item.data.size = row.size;
-          saveItem(item);
-          repaintBody(item);
-          paintKind(item);
-          if (App.app && App.app.render) App.app.render();
+        storeBoardFile(item, file).then(function () {
           util.toast(file.name + ' is on the board');
         }, function () { util.toast('Could not add that file'); });
       });
@@ -3110,6 +3127,10 @@ window.NoteApp = window.NoteApp || {};
       board.items.push(item);
       paintItem(item);
     });
+    board.items.forEach(function (item) {
+      if (item.kind !== 'image' || item.ref_kind || !item.data || !item.data.fileId) return;
+      try { App.db.boardClaimFile(item.data.fileId, BOARD_ID); } catch (e) { }
+    });
     paintLinks();
     var view = null;
     try { view = App.db.boardGet(BOARD_ID); } catch (e) { view = null; }
@@ -3174,6 +3195,7 @@ window.NoteApp = window.NoteApp || {};
     isOpen: function () { return board.open; },
     state: board,
     addItem: addItem,
+    dropFiles: dropFiles,
     undo: undoLast,
     setBg: setBg,
     setMode: setMode,

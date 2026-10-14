@@ -960,6 +960,7 @@ var vaultBusy = false;
 
     listWorkspaces: function (sort) {
       return query('SELECT id, name, created_at, position FROM workspaces '
+        + 'WHERE id NOT IN (SELECT id FROM boards) '
         + (orderOf('workspaces', sort) || 'ORDER BY created_at'));
     },
 
@@ -2080,10 +2081,15 @@ var vaultBusy = false;
       return row ? { id: row.id, name: row.name, vx: Number(row.vx) || 0, vy: Number(row.vy) || 0, vz: Number(row.vz) || 1, bg: row.bg || 'dots' } : null;
     },
     boardEnsure: function (id, name) {
-      var row = queryOne('SELECT id FROM boards WHERE id = ?', [id]);
-      if (row) return Promise.resolve();
       var stamp = util.nowIso();
-      return write('INSERT INTO boards (id, name, vx, vy, vz, created_at, updated_at) VALUES (?, ?, 0, 0, 1, ?, ?)', [id, name, stamp, stamp]);
+      var ready = write('INSERT OR IGNORE INTO workspaces (id, name, created_at) VALUES (?, ?, ?)', [id, name, stamp]);
+      if (queryOne('SELECT id FROM boards WHERE id = ?', [id])) return ready;
+      return ready.then(function () {
+        return write('INSERT INTO boards (id, name, vx, vy, vz, created_at, updated_at) VALUES (?, ?, 0, 0, 1, ?, ?)', [id, name, stamp, stamp]);
+      });
+    },
+    boardClaimFile: function (fileId, scopeId) {
+      return write('UPDATE files SET workspace_id = ?, folder_id = NULL WHERE id = ? AND workspace_id != ?', [scopeId, fileId, scopeId]);
     },
     boardSaveView: function (id, vx, vy, vz) {
       return write('UPDATE boards SET vx = ?, vy = ?, vz = ?, updated_at = ? WHERE id = ?', [vx, vy, vz, util.nowIso(), id]);

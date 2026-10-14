@@ -5100,6 +5100,7 @@ window.NoteApp = window.NoteApp || {};
     window.addEventListener('dragenter', function (event) {
       if (!event.dataTransfer || Array.prototype.indexOf.call(event.dataTransfer.types || [], 'Files') === -1) return;
       event.preventDefault();
+      if (App.board && App.board.isOpen()) return;
       dragDepth++;
       App.ui.setDragActive(true);
     });
@@ -5121,6 +5122,10 @@ window.NoteApp = window.NoteApp || {};
       if (!types || Array.prototype.indexOf.call(types, 'Files') === -1) return;
       if (!event.dataTransfer || !event.dataTransfer.files || !event.dataTransfer.files.length) return;
       var files = Array.prototype.slice.call(event.dataTransfer.files);
+      if (App.board && App.board.isOpen() && App.board.dropFiles) {
+        App.board.dropFiles(files, event.clientX, event.clientY);
+        return;
+      }
       var body = document.getElementById('note-body');
       var onNote = !!body && !!state.currentNote
         && (body.contains(event.target) || (dom.main && dom.main.contains(event.target)));
