@@ -1359,7 +1359,8 @@ window.NoteApp = window.NoteApp || {};
     group.appendChild(railButton('info', 'Comment', function () { addItem('comment'); }));
     group.appendChild(railButton('panel', 'Group', function () { addItem('column'); }));
     group.appendChild(railButton('grid', 'Table', function () { addItem('table'); }));
-    group.appendChild(railButton('pencil', 'Draw', function () { openDrawPad(null); }));
+    group.appendChild(railButton('pencil', 'Draw', function () { setInkMode(!inkState.on); }));
+    board.inkButton = group.lastElementChild;
     rail.appendChild(group);
     var source = node('div', 'board__rail-group');
     source.appendChild(railButton('layers', 'From notes', openPicker));
@@ -2357,6 +2358,193 @@ window.NoteApp = window.NoteApp || {};
     return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
   }
 
+  var inkState = { on: false, color: DRAW_COLORS[0], width: DRAW_WIDTHS[0], host: null, cur: null, last: null };
+
+  var INK_PAD = 18;
+
+  function inkPoint(event) {
+    var rect = board.stage.getBoundingClientRect();
+    return [event.clientX - rect.left, event.clientY - rect.top];
+  }
+
+  function inkWorld(point) {
+    var view = board.view;
+    return [(point[0] - view.x) / view.z, (point[1] - view.y) / view.z];
+  }
+
+  function inkFit() {
+    var canvas = board.inkCanvas;
+    if (!canvas || !board.inkCtx) return;
+    var rect = board.stage.getBoundingClientRect();
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.max(1, Math.round(rect.width * dpr));
+    canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    var ctx = board.inkCtx;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, rect.width, rect.height);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+  }
+
+  function inkBar() {
+    var bar = board.inkBar;
+    if (!bar) return;
+    Array.prototype.forEach.call(bar.querySelectorAll('[data-ink-color]'), function (dot) {
+      dot.classList.toggle('is-active', dot.getAttribute('data-ink-color') === inkState.color);
+    });
+    Array.prototype.forEach.call(bar.querySelectorAll('[data-ink-width]'), function (dot) {
+      dot.classList.toggle('is-active', Number(dot.getAttribute('data-ink-width')) === inkState.width);
+    });
+  }
+
+  function buildInkBar() {
+    var bar = node('div', 'board__inkbar');
+    DRAW_COLORS.forEach(function (color) {
+      var dot = node('button', 'board__inkbar-dot');
+      dot.type = 'button';
+      dot.setAttribute('data-ink-color', color);
+      dot.style.background = color;
+      dot.addEventListener('click', function () { inkState.color = color; inkBar(); });
+      bar.appendChild(dot);
+    });
+    DRAW_WIDTHS.forEach(function (width) {
+      var dot = node('button', 'board__inkbar-width', String(width));
+      dot.type = 'button';
+      dot.setAttribute('data-ink-width', String(width));
+      dot.addEventListener('click', function () { inkState.width = width; inkBar(); });
+      bar.appendChild(dot);
+    });
+    var done = node('button', 'board__inkbar-done', 'Done');
+    done.type = 'button';
+    done.addEventListener('click', function () { setInkMode(false); });
+    bar.appendChild(done);
+    board.inkBar = bar;
+    inkBar();
+    return bar;
+  }
+
+  function setInkMode(on) {
+    inkState.on = !!on;
+    inkState.host = null;
+    inkState.cur = null;
+    if (board.stage) board.stage.classList.toggle('is-inking', inkState.on);
+    if (board.inkButton) board.inkButton.classList.toggle('is-active', inkState.on);
+    if (inkState.on) {
+      inkFit();
+      inkBar();
+      window.addEventListener('keydown', onInkKey, true);
+    } else {
+      window.removeEventListener('keydown', onInkKey, true);
+      if (board.inkCanvas && board.inkCtx) {
+        board.inkCtx.setTransform(1, 0, 0, 1, 0, 0);
+        board.inkCtx.clearRect(0, 0, board.inkCanvas.width, board.inkCanvas.height);
+      }
+    }
+  }
+
+  function onInkKey(event) {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    event.stopPropagation();
+    setInkMode(false);
+  }
+
+  function inkMark(point) {
+    var ctx = board.inkCtx;
+    if (!ctx) return;
+    ctx.fillStyle = inkState.color;
+    ctx.beginPath();
+    ctx.arc(point[0], point[1], Math.max(1, (inkState.width * board.view.z) / 2), 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function inkLine(from, to) {
+    var ctx = board.inkCtx;
+    if (!ctx) return;
+    ctx.strokeStyle = inkState.color;
+    ctx.lineWidth = Math.max(1, inkState.width * board.view.z);
+    ctx.beginPath();
+    ctx.moveTo(from[0], from[1]);
+    ctx.lineTo(to[0], to[1]);
+    ctx.stroke();
+  }
+
+  function onInkDown(event) {
+    if (!inkState.on || event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    inkFit();
+    var point = inkPoint(event);
+    inkState.cur = { c: inkState.color, e: 0, w: inkState.width, p: [inkWorld(point)] };
+    inkState.last = point;
+    inkMark(point);
+    window.addEventListener('pointermove', onInkMove);
+    window.addEventListener('pointerup', onInkUp);
+  }
+
+  function onInkMove(event) {
+    if (!inkState.cur) return;
+    var point = inkPoint(event);
+    inkLine(inkState.last, point);
+    inkState.last = point;
+    inkState.cur.p.push(inkWorld(point));
+  }
+
+  function onInkUp() {
+    window.removeEventListener('pointermove', onInkMove);
+    window.removeEventListener('pointerup', onInkUp);
+    var stroke = inkState.cur;
+    inkState.cur = null;
+    if (!stroke) return;
+    commitInk(stroke);
+    inkFit();
+  }
+
+  function inkLocal(stroke, origin) {
+    return {
+      c: stroke.c,
+      e: stroke.e,
+      w: stroke.w,
+      p: stroke.p.map(function (point) { return [point[0] - origin.x, point[1] - origin.y]; }),
+    };
+  }
+
+  function inkTouches(host, stroke) {
+    if (!host || !host.node || !host.data || !host.data.ink) return false;
+    var start = stroke.p[0];
+    return start[0] > host.x - 80 && start[0] < host.x + host.w + 80 && start[1] > host.y - 80 && start[1] < host.y + host.h + 80;
+  }
+
+  function commitInk(stroke) {
+    var host = inkState.host;
+    if (inkTouches(host, stroke)) {
+      var origin = { x: host.x + INK_PAD, y: host.y + INK_PAD };
+      host.data.strokes = (host.data.strokes || []).concat([inkLocal(stroke, origin)]);
+      host.data.ox = origin.x;
+      host.data.oy = origin.y;
+      var all = strokeBox(host.data.strokes);
+      host.data.w = Math.max(16, all.x + all.w);
+      host.data.h = Math.max(16, all.y + all.h);
+      host.w = Math.max(80, host.data.w + INK_PAD * 2);
+      host.h = Math.max(80, host.data.h + INK_PAD * 2);
+      if (host.node) {
+        host.node.style.width = host.w + 'px';
+        host.node.style.height = host.h + 'px';
+      }
+      saveItem(host);
+      repaintBody(host);
+      return;
+    }
+    var box = strokeBox([stroke]);
+    var base = { x: box.x, y: box.y };
+    inkState.host = addItem('draw', {
+      data: { strokes: [inkLocal(stroke, base)], ink: 1, ox: base.x, oy: base.y, w: Math.max(16, box.w), h: Math.max(16, box.h) },
+      at: { x: base.x - INK_PAD, y: base.y - INK_PAD },
+      w: Math.max(80, box.w + INK_PAD * 2),
+      h: Math.max(80, box.h + INK_PAD * 2),
+    });
+  }
+
   function closeDrawPad() {
     if (!drawPad) return;
     window.removeEventListener('keydown', onPadKey);
@@ -2488,7 +2676,14 @@ window.NoteApp = window.NoteApp || {};
     };
     wrap.addEventListener('dblclick', function (event) {
       event.stopPropagation();
-      if (!lockOf(item)) openDrawPad(item);
+      if (lockOf(item)) return;
+      setInkMode(true);
+      inkState.host = item;
+    });
+    wrap.addEventListener('pointerdown', function (event) {
+      if (inkState.on) return;
+      event.stopPropagation();
+      select(item);
     });
     if (typeof ResizeObserver === 'function') new ResizeObserver(paint).observe(wrap);
     requestAnimationFrame(paint);
@@ -2657,6 +2852,12 @@ window.NoteApp = window.NoteApp || {};
     board.links = links;
     stage.appendChild(grid);
     stage.appendChild(canvas);
+    var inkCanvas = node('canvas', 'board__ink');
+    board.inkCanvas = inkCanvas;
+    board.inkCtx = inkCanvas.getContext('2d');
+    inkCanvas.addEventListener('pointerdown', onInkDown);
+    stage.appendChild(inkCanvas);
+    stage.appendChild(buildInkBar());
     stage.addEventListener('pointerdown', onStageDown);
     stage.addEventListener('wheel', onWheel, { passive: false });
     root.appendChild(stage);
@@ -3187,6 +3388,7 @@ window.NoteApp = window.NoteApp || {};
     closePicker();
     board.open = false;
     setSelection([], null);
+    setInkMode(false);
     board.root.classList.remove('is-open');
     document.body.classList.remove('is-board');
     document.removeEventListener('keydown', onKeyDown, true);

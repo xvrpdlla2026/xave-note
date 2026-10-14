@@ -3890,9 +3890,11 @@ dialog:not([open]) { display: none; }
 .bd-draw { flex: 1; display: flex; min-height: 0; }
 .bd-draw__canvas { display: block; width: 100%; height: 100%; border-radius: 8px; background: transparent; }
 .bd-item--draw { background: transparent; border-color: transparent; box-shadow: none; }
-.bd-item--draw .bd-item__bar { background: transparent; border-bottom-color: transparent; }
+.bd-item--draw:hover { border-color: var(--border); }
+.bd-item--draw .bd-item__bar { opacity: 0; transition: opacity .12s ease; }
+.bd-item--draw:hover .bd-item__bar, .bd-item--draw.is-selected .bd-item__bar, .bd-item--draw.is-locked .bd-item__bar { opacity: 1; }
 .drawpad { position: fixed; inset: 0; z-index: 300; display: flex; align-items: center; justify-content: center; }
-.drawpad__canvas { position: absolute; inset: 0; width: 100%; height: 100%; background: #ffffff; cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22'><circle cx='11' cy='11' r='5' fill='none' stroke='%23ffffff' stroke-width='4'/><circle cx='11' cy='11' r='5' fill='none' stroke='%23111827' stroke-width='1.4'/><circle cx='11' cy='11' r='1.1' fill='%23111827'/></svg>") 11 11, crosshair; touch-action: none; }
+.drawpad__canvas { position: absolute; inset: 0; width: 100%; height: 100%; background: #ffffff; cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'><circle cx='5' cy='5' r='3' fill='%23111827' stroke='%23ffffff' stroke-width='1.5'/></svg>") 5 5, default; touch-action: none; }
 .drawpad__tools { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); display: flex; align-items: center; gap: 4px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-raised); box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28); }
 .drawpad__tool { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 1px solid transparent; border-radius: 50%; background: none; color: var(--text-muted); cursor: pointer; }
 .drawpad__tool:hover { background: var(--bg-hover); color: var(--text); }
@@ -3955,3 +3957,13 @@ dialog:not([open]) { display: none; }
 .bd-ref__preview .pane-preview__doc pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
 .bd-ref__preview .pane-preview__doc table { max-width: 100%; }
 .bd-item.is-swap { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-ring); }
+
+.board__ink { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.board__stage.is-inking .board__ink { pointer-events: auto; cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'><circle cx='5' cy='5' r='3' fill='%23111827' stroke='%23ffffff' stroke-width='1.5'/></svg>") 5 5, default; }
+.board__inkbar { position: absolute; left: 50%; bottom: 18px; z-index: 8; display: none; align-items: center; gap: 8px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-raised); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); transform: translateX(-50%); }
+.board__stage.is-inking .board__inkbar { display: flex; }
+.board__inkbar-dot { width: 20px; height: 20px; padding: 0; border: 1px solid rgba(0, 0, 0, 0.18); border-radius: 50%; cursor: pointer; }
+.board__inkbar-dot.is-active { outline: 2px solid var(--accent); outline-offset: 1px; }
+.board__inkbar-width { min-width: 24px; height: 24px; padding: 0 6px; border: 1px solid var(--border); border-radius: 999px; background: none; color: var(--text-muted); font: inherit; font-size: 11px; cursor: pointer; }
+.board__inkbar-width.is-active { border-color: var(--accent); color: var(--text); }
+.board__inkbar-done { height: 24px; padding: 0 12px; border: none; border-radius: 999px; background: var(--accent); color: #fff; font: inherit; font-size: 11.5px; cursor: pointer; }
