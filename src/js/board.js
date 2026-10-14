@@ -451,40 +451,72 @@ window.NoteApp = window.NoteApp || {};
     return wrap;
   }
 
+  function boardWorkspace() {
+    var state = App.app && App.app.state;
+    if (state && state.workspaceId) return state.workspaceId;
+    var list = safeList(function () { return App.db.listWorkspaces(); });
+    return list.length ? list[0].id : '';
+  }
+
+  function fileLoad(data) {
+    return function () {
+      return Promise.resolve(App.db.getFileBlob(data.fileId)).then(function (res) { return res ? res.blob : null; });
+    };
+  }
+
   function imageBody(item) {
     var wrap = node('div', 'bd-image');
-    if (item.data.src) {
-      var img = node('img', 'bd-image__img');
-      img.src = item.data.src;
-      img.alt = item.data.name || '';
-      wrap.appendChild(img);
-    } else {
-      var empty = node('div', 'bd-image__empty');
-      empty.appendChild(node('span', 'bd-image__glyph', 'Image'));
-      var pick = node('button', 'btn btn--ghost', 'Choose image');
-      pick.type = 'button';
-      pick.addEventListener('click', function (event) {
-        event.stopPropagation();
-        var input = document.createElement('input');
-        input.type = 'file';
-        input.accept = 'image/*';
-        input.addEventListener('change', function () {
-          var file = input.files && input.files[0];
-          if (!file) return;
-          var reader = new FileReader();
-          reader.onload = function () {
-            item.data.src = String(reader.result);
-            item.data.name = file.name;
-            saveItem(item);
-            repaintBody(item);
-          };
-          reader.readAsDataURL(file);
-        });
-        input.click();
+    var data = item.data || {};
+    if (data.fileId && App.ui.filePreviewContent) {
+      var holder = App.ui.filePreviewContent(filePreview(data), fileLoad(data), {
+        image: 'bd-image__img',
+        video: 'bd-file__video',
+        audio: 'bd-file__audio',
+        pdf: 'bd-file__pdf',
+        doc: 'bd-file__doc',
+        pdfChrome: false,
       });
-      empty.appendChild(pick);
-      wrap.appendChild(empty);
+      if (holder) {
+        wrap.appendChild(holder);
+        return wrap;
+      }
     }
+    if (data.src) {
+      var img = node('img', 'bd-image__img');
+      img.src = data.src;
+      img.alt = data.name || '';
+      wrap.appendChild(img);
+      return wrap;
+    }
+    var empty = node('div', 'bd-image__empty');
+    empty.appendChild(node('span', 'bd-image__glyph', 'Any file'));
+    var pick = node('button', 'btn btn--ghost', 'Choose file');
+    pick.type = 'button';
+    pick.addEventListener('click', function (event) {
+      event.stopPropagation();
+      var input = document.createElement('input');
+      input.type = 'file';
+      input.addEventListener('change', function () {
+        var file = input.files && input.files[0];
+        if (!file) return;
+        var wsId = boardWorkspace();
+        if (!wsId) { util.toast('Create a workspace first'); return; }
+        util.toast('Adding ' + file.name + '\u2026');
+        App.db.addFile(wsId, null, file.name, file.type || 'application/octet-stream', file).then(function (row) {
+          item.data.fileId = row.id;
+          item.data.filename = row.filename;
+          item.data.mime = row.mime_type;
+          item.data.size = row.size;
+          saveItem(item);
+          repaintBody(item);
+          if (App.app && App.app.render) App.app.render();
+          util.toast(file.name + ' is on the board');
+        }, function () { util.toast('Could not add that file'); });
+      });
+      input.click();
+    });
+    empty.appendChild(pick);
+    wrap.appendChild(empty);
     return wrap;
   }
 
@@ -564,7 +596,7 @@ window.NoteApp = window.NoteApp || {};
     var box = node('div', 'bd-item bd-item--' + item.kind);
     box.setAttribute('data-board-id', item.id);
     var bar = node('div', 'bd-item__bar');
-    bar.appendChild(node('span', 'bd-item__kind', item.kind === 'ref' ? (item.ref_kind || 'item') : item.kind === 'group' ? (item.data && item.data.scope === 'workspace' ? 'workspace' : 'folder') : item.kind));
+    bar.appendChild(node('span', 'bd-item__kind', item.kind === 'ref' ? (item.ref_kind || 'item') : item.kind === 'group' ? (item.data && item.data.scope === 'workspace' ? 'workspace' : 'folder') : item.kind === 'image' && item.data && item.data.filename ? ((item.data.filename.match(/\.[a-z0-9]+$/i) || ['file'])[0].slice(1).toLowerCase()) : item.kind));
     var remove = node('button', 'bd-item__x', '\u00d7');
     remove.type = 'button';
     remove.setAttribute('data-board-del', item.id);
@@ -792,7 +824,7 @@ window.NoteApp = window.NoteApp || {};
     group.appendChild(railButton('note', 'Note', function () { addItem('note'); }));
     group.appendChild(railButton('check', 'To-do', function () { addItem('todo'); }));
     group.appendChild(railButton('external', 'Link', function () { addItem('link'); }));
-    group.appendChild(railButton('eye', 'Image', function () { addItem('image'); }));
+    group.appendChild(railButton('file', 'File', function () { addItem('image'); }));
     group.appendChild(railButton('info', 'Comment', function () { addItem('comment'); }));
     group.appendChild(railButton('list', 'Line', function () { addItem('line'); }));
     group.appendChild(railButton('panel', 'Column', function () { addItem('column'); }));
