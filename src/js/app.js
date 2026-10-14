@@ -782,7 +782,7 @@ window.NoteApp = window.NoteApp || {};
     else if (fresh && old) old.parentNode.replaceChild(fresh, old);
     else if (fresh && !old) {
       var toolbar = editor.querySelector('.editor__toolbar');
-      if (toolbar && toolbar.nextSibling) editor.insertBefore(fresh, toolbar.nextSibling);
+      if (toolbar) editor.insertBefore(fresh, toolbar);
       else editor.appendChild(fresh);
     }
   }

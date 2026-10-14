@@ -1282,7 +1282,7 @@ window.NoteApp = window.NoteApp || {};
 
     host.textContent = '';
     host.appendChild(el('div', { class: 'editor' }, [
-      titleInput, dejavuChip, fmtBar, body, toolbar, renderNoteLinks(ctx.links),
+      titleInput, dejavuChip, fmtBar, body, renderNoteLinks(ctx.links), toolbar,
     ]));
   }
 
@@ -1292,6 +1292,22 @@ window.NoteApp = window.NoteApp || {};
     var backlinks = links.backlinks || [];
     if (!outgoing.length && !backlinks.length) return null;
     var wrap = el('div', { class: 'links' });
+    if (backlinks.length) {
+      wrap.appendChild(el('h3', { class: 'links__head' }, [
+        el('span', { text: 'Linked from' }),
+        el('span', { class: 'pane-section__count', text: String(backlinks.length) }),
+      ]));
+      var back = el('div', { class: 'links__row' });
+      backlinks.forEach(function (hit) {
+        back.appendChild(el('button', {
+          class: 'link-chip', type: 'button',
+          dataset: { action: 'open-note', id: hit.id, ctx: 'note', ctxLabel: hit.title },
+          title: 'Open \u201c' + hit.title + '\u201d',
+          text: hit.title,
+        }));
+      });
+      wrap.appendChild(back);
+    }
     if (outgoing.length) {
       wrap.appendChild(el('h3', { class: 'links__head' }, [
         el('span', { text: 'Links' }),
@@ -1323,22 +1339,6 @@ window.NoteApp = window.NoteApp || {};
         ]));
       });
       wrap.appendChild(out);
-    }
-    if (backlinks.length) {
-      wrap.appendChild(el('h3', { class: 'links__head' }, [
-        el('span', { text: 'Linked from' }),
-        el('span', { class: 'pane-section__count', text: String(backlinks.length) }),
-      ]));
-      var back = el('div', { class: 'links__row' });
-      backlinks.forEach(function (hit) {
-        back.appendChild(el('button', {
-          class: 'link-chip', type: 'button',
-          dataset: { action: 'open-note', id: hit.id, ctx: 'note', ctxLabel: hit.title },
-          title: 'Open \u201c' + hit.title + '\u201d',
-          text: hit.title,
-        }));
-      });
-      wrap.appendChild(back);
     }
     return wrap;
   }

@@ -1907,7 +1907,14 @@ mark {
 }
 .wikilink.is-missing:hover { color: var(--accent); border-color: var(--accent); }
 
-.links { margin-top: 22px; }
+.links {
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  max-height: 150px;
+  overflow-y: auto;
+}
+.links__head:first-child { margin-top: 0; }
 .links__head {
   display: flex;
   align-items: baseline;
@@ -1928,6 +1935,10 @@ mark {
   color: var(--accent);
   font-size: 12.5px;
   font-weight: 550;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   cursor: pointer;
   transition: background var(--fast), border-color var(--fast);
 }
