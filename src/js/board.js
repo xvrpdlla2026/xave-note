@@ -21,6 +21,9 @@ window.NoteApp = window.NoteApp || {};
     resize: null,
     viewTimer: null,
     picker: null,
+    pickerCount: null,
+    pickChecked: {},
+    pickExpanded: {},
     root: null,
     stage: null,
     canvas: null,
@@ -609,67 +612,6 @@ window.NoteApp = window.NoteApp || {};
     head.appendChild(shut);
     panel.appendChild(head);
     var body = node('div', 'board__picker-body');
-    var spaces = [];
-    try { spaces = App.db.listWorkspaces() || []; } catch (e) { spaces = []; }
-    if (!spaces.length) body.appendChild(node('p', 'board__picker-empty', 'No workspaces yet.'));
-    spaces.forEach(function (space) {
-      var group = node('div', 'board__pick-group');
-      var label = node('label', 'board__pick board__pick--ws');
-      var box = node('input', 'board__pick-box');
-      box.type = 'checkbox';
-      box.setAttribute('data-pick-ws', space.id);
-      label.appendChild(box);
-      label.appendChild(node('span', 'board__pick-name', space.name || 'Workspace'));
-      group.appendChild(label);
-      var kids = node('div', 'board__pick-kids');
-      var folders = [];
-      var notes = [];
-      var files = [];
-      try { folders = App.db.listFolders(space.id) || []; } catch (e) { folders = []; }
-      try { notes = App.db.listAllNotes(space.id) || []; } catch (e) { notes = []; }
-      try { files = App.db.listFilesIn(space.id, null) || []; } catch (e) { files = []; }
-      folders.forEach(function (folder) {
-        var row = node('label', 'board__pick');
-        var check = node('input', 'board__pick-box');
-        check.type = 'checkbox';
-        check.setAttribute('data-pick-kind', 'folder');
-        check.setAttribute('data-pick-id', folder.id);
-        check.setAttribute('data-pick-ws', space.id);
-        row.appendChild(check);
-        row.appendChild(node('span', 'board__pick-glyph', 'Folder'));
-        row.appendChild(node('span', 'board__pick-name', folder.name || 'Untitled folder'));
-        kids.appendChild(row);
-      });
-      notes.forEach(function (note) {
-        var row = node('label', 'board__pick');
-        var check = node('input', 'board__pick-box');
-        check.type = 'checkbox';
-        check.setAttribute('data-pick-kind', 'note');
-        check.setAttribute('data-pick-id', note.id);
-        check.setAttribute('data-pick-ws', space.id);
-        row.appendChild(check);
-        row.appendChild(node('span', 'board__pick-glyph', 'Note'));
-        row.appendChild(node('span', 'board__pick-name', note.title && note.title.trim() ? note.title : 'Untitled note'));
-        kids.appendChild(row);
-      });
-      files.forEach(function (file) {
-        var row = node('label', 'board__pick');
-        var check = node('input', 'board__pick-box');
-        check.type = 'checkbox';
-        check.setAttribute('data-pick-kind', 'file');
-        check.setAttribute('data-pick-id', file.id);
-        check.setAttribute('data-pick-ws', space.id);
-        row.appendChild(check);
-        row.appendChild(node('span', 'board__pick-glyph', (file.mime_type || '').split('/')[1] || 'File'));
-        row.appendChild(node('span', 'board__pick-name', file.filename || 'file'));
-        kids.appendChild(row);
-      });
-      if (!folders.length && !notes.length && !files.length) {
-        kids.appendChild(node('p', 'board__pick-empty', 'Empty workspace.'));
-      }
-      group.appendChild(kids);
-      body.appendChild(group);
-    });
     panel.appendChild(body);
     var foot = node('div', 'board__picker-foot');
     var count = node('span', 'board__picker-count', 'Nothing selected');
@@ -683,21 +625,185 @@ window.NoteApp = window.NoteApp || {};
     foot.appendChild(cancel);
     foot.appendChild(add);
     panel.appendChild(foot);
-    panel.addEventListener('change', function () { count.textContent = pickedCount(panel) + ' selected'; });
     board.picker = panel;
+    board.pickerCount = count;
     board.root.appendChild(panel);
+    paintPicker();
   }
 
-  function pickedCount(panel) {
-    return panel.querySelectorAll('.board__pick-box:checked').length;
+  function pickGlyph(kind) {
+    if (kind === 'folder') return 'dir';
+    if (kind === 'note') return 'note';
+    if (kind === 'file') return 'file';
+    return '';
+  }
+
+  function pickNode(spec) {
+    var wrap = node('div', 'pk-node');
+    var row = node('div', 'pk-row');
+    if (spec.kids) {
+      var twisty = node('button', 'pk-twisty' + (spec.open ? ' is-open' : ''));
+      twisty.type = 'button';
+      twisty.setAttribute('aria-expanded', spec.open ? 'true' : 'false');
+      twisty.setAttribute('aria-label', (spec.open ? 'Collapse ' : 'Expand ') + spec.name);
+      twisty.addEventListener('click', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (spec.open) delete board.pickExpanded[spec.key];
+        else board.pickExpanded[spec.key] = true;
+        paintPicker();
+      });
+      row.appendChild(twisty);
+    } else {
+      row.appendChild(node('span', 'pk-twisty pk-twisty--none'));
+    }
+    var hit = node('label', 'pk-hit');
+    var box = node('input', 'board__pick-box');
+    box.type = 'checkbox';
+    box.checked = !!board.pickChecked[spec.key];
+    box.addEventListener('change', function () {
+      if (box.checked) board.pickChecked[spec.key] = { kind: spec.kind || null, id: spec.id || null, ws: spec.ws };
+      else delete board.pickChecked[spec.key];
+      updatePickCount();
+    });
+    hit.appendChild(box);
+    hit.appendChild(node('span', 'pk-glyph', pickGlyph(spec.kind)));
+    hit.appendChild(node('span', 'board__pick-name', spec.name));
+    row.appendChild(hit);
+    if (spec.meta) row.appendChild(node('span', 'pk-meta', spec.meta));
+    wrap.appendChild(row);
+    if (spec.kids && spec.open) wrap.appendChild(spec.kids());
+    return wrap;
+  }
+
+  function noteNode(space, note) {
+    var title = note.title && note.title.trim() ? note.title : 'Untitled note';
+    return pickNode({ key: 'note:' + note.id, kind: 'note', id: note.id, ws: space.id, name: title, meta: util.formatWhen(note.updated_at) });
+  }
+
+  function fileNode(space, file) {
+    return pickNode({ key: 'file:' + file.id, kind: 'file', id: file.id, ws: space.id, name: file.filename || 'file', meta: util.formatBytes(file.size) });
+  }
+
+  function folderNode(space, folder, folders, notes, filesByFolder) {
+    var subs = folders.filter(function (row) { return row.parent_folder_id === folder.id; });
+    var inner = notes.filter(function (row) { return row.folder_id === folder.id; });
+    var key = 'folder:' + folder.id;
+    var open = !!board.pickExpanded[key];
+    var direct = subs.length + inner.length;
+    var kids = function () {
+      var host = node('div', 'pk-kids');
+      subs.forEach(function (sub) { host.appendChild(folderNode(space, sub, folders, notes)); });
+      inner.forEach(function (note) { host.appendChild(noteNode(space, note)); });
+      (filesByFolder[folder.id] || []).forEach(function (file) { host.appendChild(fileNode(space, file)); });
+      return host;
+    };
+    return pickNode({
+      key: key,
+      kind: 'folder',
+      id: folder.id,
+      ws: space.id,
+      name: folder.name || 'Untitled folder',
+      meta: direct ? String(direct) : '',
+      kids: direct ? kids : null,
+      open: open,
+    });
+  }
+
+  function paintPicker() {
+    var panel = board.picker;
+    if (!panel) return;
+    var body = panel.querySelector('.board__picker-body');
+    body.textContent = '';
+    var spaces = [];
+    try { spaces = App.db.listWorkspaces() || []; } catch (e) { spaces = []; }
+    if (!spaces.length) body.appendChild(node('p', 'board__picker-empty', 'No workspaces yet.'));
+    spaces.forEach(function (space) {
+      var folders = [];
+      var notes = [];
+      var rootFiles = [];
+      try { folders = App.db.listFolders(space.id) || []; } catch (e) { folders = []; }
+      try { notes = App.db.listAllNotes(space.id) || []; } catch (e) { notes = []; }
+      try { rootFiles = App.db.listFilesIn(space.id, null) || []; } catch (e) { rootFiles = []; }
+      var filesByFolder = {};
+      var nestedFiles = 0;
+      folders.forEach(function (folder) {
+        var list = [];
+        try { list = App.db.listFilesIn(space.id, folder.id) || []; } catch (e) { list = []; }
+        filesByFolder[folder.id] = list;
+        nestedFiles += list.length;
+      });
+      var key = 'ws:' + space.id;
+      var kids = function () {
+        var host = node('div', 'pk-kids');
+        folders.filter(function (row) { return !row.parent_folder_id; }).forEach(function (folder) {
+          host.appendChild(folderNode(space, folder, folders, notes, filesByFolder));
+        });
+        notes.filter(function (row) { return !row.folder_id; }).forEach(function (note) { host.appendChild(noteNode(space, note)); });
+        rootFiles.forEach(function (file) { host.appendChild(fileNode(space, file)); });
+        return host;
+      };
+      var group = node('div', 'pk-group');
+      group.appendChild(pickNode({
+        key: key,
+        kind: null,
+        id: null,
+        ws: space.id,
+        name: space.name || 'Workspace',
+        meta: folders.length + notes.length + rootFiles.length + nestedFiles + ' items',
+        kids: kids,
+        open: board.pickExpanded[key] !== false,
+      }));
+      body.appendChild(group);
+    });
+    updatePickCount();
+  }
+
+  function expandWorkspace(wsId, picks) {
+    var folders = [];
+    var notes = [];
+    try { folders = App.db.listFolders(wsId) || []; } catch (e) { folders = []; }
+    try { notes = App.db.listAllNotes(wsId) || []; } catch (e) { notes = []; }
+    folders.forEach(function (folder) {
+      picks.push({ kind: 'folder', id: folder.id, ws: wsId });
+      try {
+        (App.db.listFilesIn(wsId, folder.id) || []).forEach(function (file) { picks.push({ kind: 'file', id: file.id, ws: wsId }); });
+      } catch (e) { }
+    });
+    notes.forEach(function (note) { picks.push({ kind: 'note', id: note.id, ws: wsId }); });
+    try {
+      (App.db.listFilesIn(wsId, null) || []).forEach(function (file) { picks.push({ kind: 'file', id: file.id, ws: wsId }); });
+    } catch (e) { }
+  }
+
+  function collectPicks() {
+    var picks = [];
+    Object.keys(board.pickChecked).forEach(function (key) {
+      var entry = board.pickChecked[key];
+      if (!entry) return;
+      if (entry.kind && entry.id) {
+        picks.push({ kind: entry.kind, id: entry.id, ws: entry.ws });
+        return;
+      }
+      expandWorkspace(entry.ws, picks);
+    });
+    return picks;
+  }
+
+  function updatePickCount() {
+    if (!board.pickerCount) return;
+    var total = collectPicks().length;
+    board.pickerCount.textContent = total ? total + ' selected' : 'Nothing selected';
   }
 
   function closePicker() {
     if (!board.picker) return;
     if (board.picker.parentNode) board.picker.parentNode.removeChild(board.picker);
     board.picker = null;
+    board.pickerCount = null;
+    board.pickChecked = {};
+    board.pickExpanded = {};
   }
-
   function snapshotFor(kind, id, wsId) {
     var space = null;
     try {
@@ -750,22 +856,7 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function commitPicker(panel) {
-    var boxes = panel.querySelectorAll('.board__pick-box:checked');
-    var picks = [];
-    Array.prototype.forEach.call(boxes, function (box) {
-      var wsId = box.getAttribute('data-pick-ws');
-      var kind = box.getAttribute('data-pick-kind');
-      var id = box.getAttribute('data-pick-id');
-      if (kind && id) {
-        picks.push({ kind: kind, id: id, ws: wsId });
-        return;
-      }
-      try {
-        (App.db.listFolders(wsId) || []).forEach(function (folder) { picks.push({ kind: 'folder', id: folder.id, ws: wsId }); });
-        (App.db.listAllNotes(wsId) || []).forEach(function (note) { picks.push({ kind: 'note', id: note.id, ws: wsId }); });
-        (App.db.listFilesIn(wsId, null) || []).forEach(function (file) { picks.push({ kind: 'file', id: file.id, ws: wsId }); });
-      } catch (e) { }
-    });
+    var picks = collectPicks();
     closePicker();
     if (!picks.length) return;
     var base = centerOfView(0);
