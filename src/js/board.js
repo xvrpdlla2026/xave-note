@@ -1049,7 +1049,7 @@ window.NoteApp = window.NoteApp || {};
     if (!box) return;
     var item = findItem(box.getAttribute('data-board-id'));
     if (!item) return;
-    if (box.classList.contains('bd-item--column') && !(target.closest && target.closest('.bd-item__bar'))) return;
+    if (box.classList.contains('bd-item--column') && !(target.closest && (target.closest('.bd-item__bar') || target.closest('.bd-item__resize')))) return;
     var multi = board.selectedIds.length > 1 && board.selectedIds.indexOf(item.id) >= 0;
     if (!multi) select(item);
     if (lockOf(item) && !multi) return;
@@ -1347,7 +1347,7 @@ window.NoteApp = window.NoteApp || {};
     return false;
   }
 
-  var CONTAINER_GAP = 8;
+  var CONTAINER_GAP = 12;
   var CONTAINER_MIN_COL = 150;
 
   function gridSlots(container, skip) {
