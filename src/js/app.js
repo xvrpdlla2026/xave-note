@@ -3610,6 +3610,9 @@ window.NoteApp = window.NoteApp || {};
   }
 
   var ACTIONS = {
+    'open-board': function () {
+      if (App.board) App.board.open();
+    },
     'save-as-template': function () {
       var n = state.currentNote;
       if (!n) { util.toast('Open a note first, then save it as a template.', 'info'); return; }
@@ -4747,6 +4750,7 @@ window.NoteApp = window.NoteApp || {};
     }, true);
 
     document.addEventListener('keydown', function (event) {
+      if (App.board && App.board.isOpen()) return;
       if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'b') {
         event.preventDefault();
         toggleSidebar();

@@ -146,6 +146,33 @@ window.NoteApp = window.NoteApp || {};
     'ALTER TABLE tasks ADD COLUMN recurrence TEXT',
     'CREATE INDEX IF NOT EXISTS idx_tasks_remind ON tasks (remind_at, reminded_at)',
   ],
+  [
+      'CREATE TABLE IF NOT EXISTS boards (' +
+        '  id TEXT PRIMARY KEY,' +
+        '  name TEXT NOT NULL DEFAULT "",' +
+        '  vx REAL NOT NULL DEFAULT 0,' +
+        '  vy REAL NOT NULL DEFAULT 0,' +
+        '  vz REAL NOT NULL DEFAULT 1,' +
+        '  created_at TEXT NOT NULL,' +
+        '  updated_at TEXT NOT NULL' +
+        ')',
+      'CREATE TABLE IF NOT EXISTS board_items (' +
+        '  id TEXT PRIMARY KEY,' +
+        '  board_id TEXT NOT NULL,' +
+        '  kind TEXT NOT NULL,' +
+        '  ref_kind TEXT,' +
+        '  ref_id TEXT,' +
+        '  x REAL NOT NULL DEFAULT 0,' +
+        '  y REAL NOT NULL DEFAULT 0,' +
+        '  w REAL NOT NULL DEFAULT 240,' +
+        '  h REAL NOT NULL DEFAULT 160,' +
+        '  z INTEGER NOT NULL DEFAULT 0,' +
+        '  data TEXT NOT NULL DEFAULT "{}",' +
+        '  created_at TEXT NOT NULL,' +
+        '  updated_at TEXT NOT NULL' +
+        ')',
+      'CREATE INDEX IF NOT EXISTS idx_board_items_board ON board_items (board_id)',
+    ],
 ];
 
   var db = null;        
@@ -2046,6 +2073,49 @@ var vaultBusy = false;
         try { db.close(); } catch (err) {  }
         db = null;
       }
+    },
+    boardGet: function (id) {
+      var row = queryOne('SELECT * FROM boards WHERE id = ?', [id]);
+      return row ? { id: row.id, name: row.name, vx: Number(row.vx) || 0, vy: Number(row.vy) || 0, vz: Number(row.vz) || 1 } : null;
+    },
+    boardEnsure: function (id, name) {
+      var row = queryOne('SELECT id FROM boards WHERE id = ?', [id]);
+      if (row) return Promise.resolve();
+      var stamp = util.nowIso();
+      return write('INSERT INTO boards (id, name, vx, vy, vz, created_at, updated_at) VALUES (?, ?, 0, 0, 1, ?, ?)', [id, name, stamp, stamp]);
+    },
+    boardSaveView: function (id, vx, vy, vz) {
+      return write('UPDATE boards SET vx = ?, vy = ?, vz = ?, updated_at = ? WHERE id = ?', [vx, vy, vz, util.nowIso(), id]);
+    },
+    boardItems: function (id) {
+      return query('SELECT * FROM board_items WHERE board_id = ? ORDER BY z ASC, created_at ASC', [id]).map(function (row) {
+        var data = {};
+        try { data = JSON.parse(row.data || '{}'); } catch (e) { data = {}; }
+        return {
+          id: row.id,
+          board_id: row.board_id,
+          kind: row.kind,
+          ref_kind: row.ref_kind,
+          ref_id: row.ref_id,
+          x: Number(row.x) || 0,
+          y: Number(row.y) || 0,
+          w: Number(row.w) || 240,
+          h: Number(row.h) || 160,
+          z: Number(row.z) || 0,
+          data: data,
+          created_at: row.created_at,
+          updated_at: row.updated_at,
+        };
+      });
+    },
+    boardAddItem: function (item) {
+      return write('INSERT OR REPLACE INTO board_items (id, board_id, kind, ref_kind, ref_id, x, y, w, h, z, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [item.id, item.board_id, item.kind, item.ref_kind || null, item.ref_id || null, item.x, item.y, item.w, item.h, item.z || 0, JSON.stringify(item.data || {}), item.created_at, item.updated_at]);
+    },
+    boardUpdateItem: function (item) {
+      return write('UPDATE board_items SET x = ?, y = ?, w = ?, h = ?, z = ?, data = ?, updated_at = ? WHERE id = ?', [item.x, item.y, item.w, item.h, item.z || 0, JSON.stringify(item.data || {}), item.updated_at || util.nowIso(), item.id]);
+    },
+    boardDeleteItem: function (id) {
+      return write('DELETE FROM board_items WHERE id = ?', [id]);
     },
   };
 
