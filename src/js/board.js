@@ -351,6 +351,53 @@ window.NoteApp = window.NoteApp || {};
     return box;
   }
 
+  var FONTS = [9, 10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32, 40, 48, 56, 72];
+
+  function fontBox(item) {
+    return item.node ? item.node.querySelector('.bd-text') : null;
+  }
+
+  function fontNow(item) {
+    var box = fontBox(item);
+    var size = item.data && item.data.fs ? item.data.fs : (box ? parseFloat(getComputedStyle(box).fontSize) : 13);
+    return isNaN(size) ? 13 : size;
+  }
+
+  function applyFont(item) {
+    var box = fontBox(item);
+    var size = fontNow(item);
+    if (box) box.style.fontSize = item.data && item.data.fs ? item.data.fs + 'px' : '';
+    if (item.node) {
+      Array.prototype.forEach.call(item.node.querySelectorAll('.bd-item__font'), function (button) {
+        button.title = Math.round(size) + ' px';
+      });
+    }
+  }
+
+  function bumpFont(item, dir) {
+    if (lockOf(item)) return;
+    var now = fontNow(item);
+    var next = dir > 0 ? FONTS[FONTS.length - 1] : FONTS[0];
+    for (var i = 0; i < FONTS.length; i++) {
+      if (dir > 0 && FONTS[i] > now + 0.01) { next = FONTS[i]; break; }
+      if (dir < 0 && FONTS[i] < now - 0.01) next = FONTS[i];
+    }
+    if (next === now) return;
+    pushUndo('edit');
+    item.data.fs = next;
+    applyFont(item);
+    saveItem(item);
+  }
+
+  function fontButton(item, label, dir) {
+    var button = node('button', 'bd-item__font', label);
+    button.type = 'button';
+    button.setAttribute('aria-label', dir > 0 ? 'Bigger text' : 'Smaller text');
+    button.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
+    button.addEventListener('click', function (event) { event.stopPropagation(); bumpFont(item, dir); });
+    return button;
+  }
+
   function todoBody(item) {
     var wrap = node('div', 'bd-todo');
     var rows = node('div', 'bd-todo__rows');
@@ -827,6 +874,10 @@ window.NoteApp = window.NoteApp || {};
       removeItem(item);
     });
     var tools = node('div', 'bd-item__tools');
+    if (item.kind === 'note') {
+      tools.appendChild(fontButton(item, 'A-', -1));
+      tools.appendChild(fontButton(item, 'A+', 1));
+    }
     var lock = node('button', 'bd-item__lock', '');
     lock.type = 'button';
     lock.setAttribute('aria-label', 'Lock this card');
@@ -846,6 +897,7 @@ window.NoteApp = window.NoteApp || {};
     box.appendChild(grip);
     box.addEventListener('pointerdown', onItemDown);
     item.node = box;
+    applyFont(item);
     paintLock(item);
     placeItem(item);
     board.canvas.appendChild(box);

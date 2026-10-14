@@ -3880,6 +3880,8 @@ dialog:not([open]) { display: none; }
 .bd-table__num { width: 32px; height: 18px; padding: 0 2px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg-raised); color: var(--text-muted); font: inherit; font-size: 10.5px; text-align: center; appearance: textfield; }
 .bd-table__num:focus { outline: none; border-color: var(--accent); color: var(--text); }
 .bd-table__num::-webkit-inner-spin-button, .bd-table__num::-webkit-outer-spin-button { appearance: none; margin: 0; }
+.bd-item__font { min-width: 22px; height: 20px; padding: 0 4px; border: none; border-radius: 6px; background: none; color: var(--text-faint); font: inherit; font-size: 10.5px; font-weight: 600; line-height: 1; cursor: pointer; }
+.bd-item__font:hover { background: var(--bg-raised); color: var(--text); }
 .bd-table__btn { min-width: 18px; height: 18px; padding: 0 4px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg-raised); color: var(--text-muted); font: inherit; font-size: 12px; line-height: 1; cursor: pointer; }
 .bd-table__btn:hover:not(:disabled) { color: var(--text); border-color: var(--border-strong); }
 .bd-table__btn:disabled { opacity: 0.45; cursor: default; }
