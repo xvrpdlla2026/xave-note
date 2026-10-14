@@ -1049,6 +1049,7 @@ window.NoteApp = window.NoteApp || {};
     if (!box) return;
     var item = findItem(box.getAttribute('data-board-id'));
     if (!item) return;
+    if (box.classList.contains('bd-item--column') && !(target.closest && target.closest('.bd-item__bar'))) return;
     var multi = board.selectedIds.length > 1 && board.selectedIds.indexOf(item.id) >= 0;
     if (!multi) select(item);
     if (lockOf(item) && !multi) return;
@@ -1059,9 +1060,22 @@ window.NoteApp = window.NoteApp || {};
       rows = (multi ? board.selectedIds.map(findItem) : [item]).filter(function (row) {
         return row && !lockOf(row);
       });
+      var held = rows.filter(function (row) { return row.kind === 'column'; }).map(function (row) { return row.id; });
+      if (held.length) {
+        rows = rows.filter(function (row) {
+          return !(row.data && row.data.parent && held.indexOf(row.data.parent) >= 0);
+        });
+      }
       if (!rows.length) return;
+      clearDropSlot();
       pushUndo('move');
       rows.forEach(function (row) { detachChild(row, event.clientX, event.clientY); });
+    }
+    if (grip && isChild(item) && item.node) {
+      var boxed = item.node.getBoundingClientRect();
+      var unit = board.view.z || 1;
+      if (boxed.width) item.w = Math.round(boxed.width / unit);
+      if (boxed.height) item.h = Math.round(boxed.height / unit);
     }
     var start = { x: event.clientX, y: event.clientY, w: item.w, h: item.h, ix: item.x, iy: item.y };
     if (grip) pushUndo('resize');
@@ -1082,7 +1096,9 @@ window.NoteApp = window.NoteApp || {};
   function onStageDown(event) {
     if (event.button !== 0) return;
     var target = event.target;
-    if (target.closest && target.closest('.bd-item')) return;
+    var card = target.closest ? target.closest('.bd-item') : null;
+    var handle = target.closest ? target.closest('.bd-item__bar') : null;
+    if (card && (!card.classList.contains('bd-item--column') || handle)) return;
     if (target.closest && target.closest('.board__rail, .board__picker, .board__mode')) return;
     if (board.mode === 'select' && !board.space) {
       startMarquee(event);
@@ -1155,14 +1171,27 @@ window.NoteApp = window.NoteApp || {};
         row.item.y = Math.round(row.y + dy);
         placeItem(row.item);
       });
+      var over = containerUnder(event.clientX, event.clientY, drag.rows);
+      if (over) showDropSlot(over.item, over.index, drag.rows);
+      else clearDropSlot();
       paintLinks();
       return;
     }
     if (board.resize) {
       var size = board.resize;
-      size.item.w = Math.max(170, Math.round(size.start.w + (event.clientX - size.start.x) / scale));
-      size.item.h = Math.max(110, Math.round(size.start.h + (event.clientY - size.start.y) / scale));
-      placeItem(size.item);
+      if (isChild(size.item)) {
+        var parent = containerOf(size.item);
+        var geom = parent ? containerGeom(parent) : { cols: 1, colW: 200 };
+        var want = size.start.w + (event.clientX - size.start.x) / scale;
+        size.item.data.span = Math.max(1, Math.min(geom.cols, Math.round((want + CONTAINER_GAP) / (geom.colW + CONTAINER_GAP))));
+        size.item.h = Math.max(48, Math.round(size.start.h + (event.clientY - size.start.y) / scale));
+        if (parent) layoutContainer(parent, null);
+      } else {
+        size.item.w = Math.max(170, Math.round(size.start.w + (event.clientX - size.start.x) / scale));
+        size.item.h = Math.max(110, Math.round(size.start.h + (event.clientY - size.start.y) / scale));
+        placeItem(size.item);
+        if (size.item.kind === 'column') layoutContainer(size.item, null);
+      }
       paintLinks();
     }
   }
@@ -1174,10 +1203,13 @@ window.NoteApp = window.NoteApp || {};
     if (board.drag) {
       var dragged = board.drag.rows;
       var over = containerUnder(event.clientX, event.clientY, dragged);
+      var at = over ? over.index : 0;
+      clearDropSlot();
       dragged.forEach(function (row) {
         if (over) {
-          row.item.data.parent = over.id;
-          attachChild(row.item);
+          row.item.data.parent = over.item.id;
+          attachChildAt(row.item, at);
+          at++;
         } else if (isChild(row.item)) {
           releaseChild(row.item, null);
         }
@@ -1315,6 +1347,166 @@ window.NoteApp = window.NoteApp || {};
     return false;
   }
 
+  var CONTAINER_GAP = 8;
+  var CONTAINER_MIN_COL = 150;
+
+  function gridSlots(container, skip) {
+    var grid = container && container.grid;
+    if (!grid) return [];
+    return Array.prototype.filter.call(grid.children, function (child) {
+      return child.classList && child.classList.contains('bd-item') && child !== (skip && skip.node);
+    });
+  }
+
+  function containerGeom(container) {
+    var width = container.grid.clientWidth;
+    var cols = Math.max(1, Math.min(4, Math.floor((width + CONTAINER_GAP) / (CONTAINER_MIN_COL + CONTAINER_GAP))));
+    return { cols: cols, colW: Math.max(80, (width - CONTAINER_GAP * (cols - 1)) / cols) };
+  }
+
+  function packBoxes(entries, geom) {
+    var heights = [];
+    var i;
+    for (i = 0; i < geom.cols; i++) heights.push(0);
+    return entries.map(function (entry) {
+      var span = Math.max(1, Math.min(geom.cols, entry.span || 1));
+      var height = Math.max(40, Math.round(entry.height || 0));
+      var best = 0;
+      var bestTop = Infinity;
+      for (var c = 0; c + span <= geom.cols; c++) {
+        var top = 0;
+        for (var k = c; k < c + span; k++) top = Math.max(top, heights[k]);
+        if (top < bestTop - 0.5) { bestTop = top; best = c; }
+      }
+      for (var m = best; m < best + span; m++) heights[m] = bestTop + height + CONTAINER_GAP;
+      return {
+        left: Math.round(best * (geom.colW + CONTAINER_GAP)),
+        top: Math.round(bestTop),
+        width: Math.round(span * geom.colW + CONTAINER_GAP * (span - 1)),
+        height: height,
+        span: span,
+      };
+    });
+  }
+
+  function childEntries(container) {
+    return gridSlots(container).map(function (child) {
+      var item = findItem(child.getAttribute('data-board-id'));
+      return {
+        node: child,
+        item: item,
+        span: item && item.data && item.data.span ? item.data.span : 1,
+        height: item && item.h ? item.h : 60,
+      };
+    });
+  }
+
+  function containerSlot(container) {
+    var slot = container.grid.querySelector('.bd-slot');
+    if (!slot) {
+      slot = node('div', 'bd-slot');
+      container.grid.appendChild(slot);
+    }
+    return slot;
+  }
+
+  function layoutContainer(container, drop) {
+    var grid = container && container.grid;
+    if (!grid) return;
+    var geom = containerGeom(container);
+    var entries = childEntries(container);
+    var blank = drop ? { slot: true, span: drop.span || 1, height: drop.height || 60 } : null;
+    var index = drop ? Math.max(0, Math.min(drop.index, entries.length)) : -1;
+    var list = [];
+    entries.forEach(function (entry, i) {
+      if (i === index) list.push(blank);
+      list.push(entry);
+    });
+    if (blank && index === entries.length) list.push(blank);
+    var slot = containerSlot(container);
+    var boxes = packBoxes(list, geom);
+    var offsetX = 0;
+    var offsetY = 0;
+    if (container.node) {
+      var scale = board.view.z || 1;
+      var outer = container.node.getBoundingClientRect();
+      var inner = grid.getBoundingClientRect();
+      offsetX = (inner.left - outer.left) / scale;
+      offsetY = (inner.top - outer.top) / scale;
+    }
+    var bottom = 0;
+    boxes.forEach(function (box, i) {
+      var entry = list[i];
+      var target = entry.slot ? slot : entry.node;
+      if (!target) return;
+      target.style.display = '';
+      target.style.left = box.left + 'px';
+      target.style.top = box.top + 'px';
+      target.style.width = box.width + 'px';
+      target.style.height = box.height + 'px';
+      if (entry.item) {
+        entry.item.w = box.width;
+        entry.item.h = box.height;
+        entry.item.data.span = box.span;
+        entry.item.x = Math.round(container.x + offsetX + box.left);
+        entry.item.y = Math.round(container.y + offsetY + box.top);
+      }
+      bottom = Math.max(bottom, box.top + box.height);
+    });
+    if (!drop) slot.style.display = 'none';
+    grid.style.height = Math.max(60, Math.round(bottom)) + 'px';
+  }
+
+  function dropIndexAt(container, clientX, clientY) {
+    var rect = container.grid.getBoundingClientRect();
+    var boxes = packBoxes(childEntries(container), containerGeom(container));
+    var x = clientX - rect.left;
+    var y = clientY - rect.top;
+    for (var i = 0; i < boxes.length; i++) {
+      if (x < boxes[i].left - CONTAINER_GAP / 2) return i;
+      if (x <= boxes[i].left + boxes[i].width + CONTAINER_GAP / 2 && y < boxes[i].top + boxes[i].height / 2) return i;
+    }
+    return boxes.length;
+  }
+
+  function showDropSlot(container, index, rows) {
+    if (!container.grid) return;
+    var height = 0;
+    var span = 1;
+    rows.forEach(function (row) {
+      height = Math.max(height, row.item.h || 0);
+      if (row.item.data && row.item.data.span) span = Math.max(span, row.item.data.span);
+    });
+    board.drop = { container: container, index: index, span: span, height: Math.max(56, Math.min(240, height)) };
+    layoutContainer(container, board.drop);
+    paintDrop();
+  }
+
+  function clearDropSlot() {
+    if (!board.drop) return;
+    var container = board.drop.container;
+    board.drop = null;
+    if (container) layoutContainer(container, null);
+    paintDrop();
+  }
+
+  function paintDrop() {
+    board.items.forEach(function (item) {
+      if (item.node && item.kind === 'column') item.node.classList.toggle('is-drop', !!(board.drop && board.drop.container === item));
+    });
+  }
+
+  function attachChildAt(item, index) {
+    var parent = containerOf(item);
+    if (!parent || !parent.grid || !item.node) { attachChild(item); return; }
+    var slots = gridSlots(parent, item);
+    var before = slots[Math.max(0, Math.min(index, slots.length))] || null;
+    attachChild(item);
+    if (before) parent.grid.insertBefore(item.node, before);
+    else parent.grid.appendChild(item.node);
+    layoutContainer(parent, null);
+  }
+
   function attachChild(item) {
     var parent = containerOf(item);
     if (!parent || !parent.grid || !item.node) return false;
@@ -1325,6 +1517,8 @@ window.NoteApp = window.NoteApp || {};
     item.node.style.height = '';
     item.node.style.zIndex = '';
     if (item.node.parentNode !== parent.grid) parent.grid.appendChild(item.node);
+    if (!item.h) item.h = 120;
+    layoutContainer(parent, null);
     return true;
   }
 
@@ -1338,37 +1532,53 @@ window.NoteApp = window.NoteApp || {};
         placeItem(item);
       }
     });
+    board.items.forEach(function (item) {
+      if (item.kind === 'column' && item.grid) layoutContainer(item, null);
+    });
+    paintDrop();
   }
 
   function detachChild(item, clientX, clientY) {
     if (!isChild(item) || !item.node) return;
-    var width = item.node.offsetWidth;
-    var height = item.node.offsetHeight;
+    var parent = containerOf(item);
+    var rect = item.node.getBoundingClientRect();
+    var scale = board.view.z || 1;
     var point = canvasPoint(clientX, clientY);
-    if (width) item.w = Math.round(width);
-    if (height) item.h = Math.round(height);
+    if (rect.width) item.w = Math.round(rect.width / scale);
+    if (rect.height) item.h = Math.round(rect.height / scale);
     item.data.parent = null;
-    item.x = Math.round(point.x - (width || item.w) / 2);
-    item.y = Math.round(point.y - 22);
+    item.x = Math.round(point.x - (clientX - rect.left) / scale);
+    item.y = Math.round(point.y - (clientY - rect.top) / scale);
     item.node.classList.remove('is-child');
+    item.node.style.left = '';
+    item.node.style.top = '';
+    item.node.style.width = '';
+    item.node.style.height = '';
     board.canvas.appendChild(item.node);
     placeItem(item);
+    if (parent) layoutContainer(parent, null);
   }
 
   function releaseChild(item, parent) {
     if (!item.node) { item.data.parent = null; return; }
-    var width = item.node.offsetWidth;
-    var height = item.node.offsetHeight;
-    if (width) item.w = Math.round(width);
-    if (height) item.h = Math.round(height);
+    var holder = containerOf(item);
+    var rect = item.node.getBoundingClientRect();
+    var scale = board.view.z || 1;
+    if (rect.width) item.w = Math.round(rect.width / scale);
+    if (rect.height) item.h = Math.round(rect.height / scale);
     item.data.parent = null;
     if (parent) {
       item.x = Math.round(parent.x + 20);
       item.y = Math.round(parent.y + parent.h + 20);
     }
     item.node.classList.remove('is-child');
+    item.node.style.left = '';
+    item.node.style.top = '';
+    item.node.style.width = '';
+    item.node.style.height = '';
     board.canvas.appendChild(item.node);
     placeItem(item);
+    if (holder) layoutContainer(holder, null);
     saveItem(item);
   }
 
@@ -1376,16 +1586,17 @@ window.NoteApp = window.NoteApp || {};
     var point = canvasPoint(clientX, clientY);
     var best = null;
     board.items.forEach(function (item) {
-      if (item.kind !== 'column') return;
+      if (item.kind !== 'column' || !item.grid) return;
       for (var i = 0; i < rows.length; i++) {
-        if (rows[i].item.id === item.id) return;
-        if (insideParent(rows[i].item, item)) return;
+        if (rows[i].item === item) return;
+        if (insideParent(item, rows[i].item)) return;
       }
       if (point.x < item.x || point.x > item.x + item.w) return;
       if (point.y < item.y || point.y > item.y + item.h) return;
       if (!best || (item.z || 0) > (best.z || 0)) best = item;
     });
-    return best;
+    if (!best) return null;
+    return { item: best, index: dropIndexAt(best, clientX, clientY) };
   }
 
   function openAddMenu(item, button) {
@@ -1416,7 +1627,9 @@ window.NoteApp = window.NoteApp || {};
     var add = node('button', 'bd-container__add');
     add.type = 'button';
     add.setAttribute('aria-label', 'Add a block inside this group');
-    add.appendChild(App.ui.icon('plus', 13));
+    var badge = node('span', 'bd-container__add-badge');
+    badge.appendChild(App.ui.icon('plus', 12));
+    add.appendChild(badge);
     add.appendChild(node('span', 'bd-container__add-label', 'Add block'));
     add.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
     add.addEventListener('click', function (event) {
