@@ -1067,6 +1067,11 @@ window.NoteApp = window.NoteApp || {};
         });
       }
       if (!rows.length) return;
+      rows.forEach(function (row) {
+        var home = containerOf(row);
+        row.home = home && home.grid && row.node ? { left: row.node.offsetLeft, top: row.node.offsetTop } : null;
+        row.homeIndex = home && home.grid && row.node ? gridSlots(home).indexOf(row.node) : -1;
+      });
       clearDropSlot();
       pushUndo('move');
       rows.forEach(function (row) { detachChild(row, event.clientX, event.clientY); });
@@ -1085,7 +1090,7 @@ window.NoteApp = window.NoteApp || {};
       board.drag = {
         item: item,
         start: start,
-        rows: rows.map(function (row) { return { item: row, x: row.x, y: row.y }; }),
+        rows: rows.map(function (row) { return { item: row, x: row.x, y: row.y, home: row.home || null, homeIndex: row.homeIndex }; }),
       };
     }
     window.addEventListener('pointermove', onPointerMove);
@@ -1172,8 +1177,15 @@ window.NoteApp = window.NoteApp || {};
         placeItem(row.item);
       });
       var over = containerUnder(event.clientX, event.clientY, drag.rows);
-      if (over) showDropSlot(over.item, over.index, drag.rows);
-      else clearDropSlot();
+      var sib = over ? siblingUnder(over.item, event.clientX, event.clientY, drag.rows[0].item) : null;
+      if (sib && drag.rows.length === 1 && drag.rows[0].home && sameRowOrCol(drag.rows[0].home, sib.box)) {
+        clearDropSlot();
+        setSwap(sib.item);
+      } else {
+        clearSwap();
+        if (over) showDropSlot(over.item, over.index, drag.rows);
+        else clearDropSlot();
+      }
       paintLinks();
       return;
     }
@@ -1182,9 +1194,18 @@ window.NoteApp = window.NoteApp || {};
       if (isChild(size.item)) {
         var parent = containerOf(size.item);
         var geom = parent ? containerGeom(parent) : { cols: 1, colW: 200 };
-        var want = size.start.w + (event.clientX - size.start.x) / scale;
-        size.item.data.span = Math.max(1, Math.min(geom.cols, Math.round((want + CONTAINER_GAP) / (geom.colW + CONTAINER_GAP))));
-        size.item.h = Math.max(48, Math.round(size.start.h + (event.clientY - size.start.y) / scale));
+        var stepX = geom.colW + CONTAINER_GAP;
+        var stepY = CONTAINER_ROW + CONTAINER_GAP;
+        var baseSpan = Math.max(1, Math.min(geom.cols, Math.round((size.start.w + CONTAINER_GAP) / stepX)));
+        var baseRows = Math.max(1, Math.round((size.start.h + CONTAINER_GAP) / stepY));
+        var dCol = Math.round((event.clientX - size.start.x) / scale / stepX);
+        var dRow = Math.round((event.clientY - size.start.y) / scale / stepY);
+        var span = Math.max(1, Math.min(geom.cols, baseSpan + dCol));
+        var count = Math.max(1, baseRows + dRow);
+        size.item.data.span = span;
+        size.item.data.rows = count;
+        size.item.w = Math.round(span * geom.colW + CONTAINER_GAP * (span - 1));
+        size.item.h = Math.round(count * CONTAINER_ROW + CONTAINER_GAP * (count - 1));
         if (parent) layoutContainer(parent, null);
       } else {
         size.item.w = Math.max(170, Math.round(size.start.w + (event.clientX - size.start.x) / scale));
@@ -1203,10 +1224,14 @@ window.NoteApp = window.NoteApp || {};
     if (board.drag) {
       var dragged = board.drag.rows;
       var over = containerUnder(event.clientX, event.clientY, dragged);
+      var swap = board.swap && dragged.length === 1 ? board.swap.target : null;
+      clearSwap();
       var at = over ? over.index : 0;
       clearDropSlot();
       dragged.forEach(function (row) {
-        if (over) {
+        if (swap && row.item !== swap) {
+          swapChildren(row.item, swap, row.homeIndex);
+        } else if (over) {
           row.item.data.parent = over.item.id;
           attachChildAt(row.item, at);
           at++;
@@ -1348,6 +1373,7 @@ window.NoteApp = window.NoteApp || {};
   }
 
   var CONTAINER_GAP = 12;
+  var CONTAINER_ROW = 60;
   var CONTAINER_MIN_COL = 150;
 
   function gridSlots(container, skip) {
@@ -1365,26 +1391,38 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function packBoxes(entries, geom) {
-    var heights = [];
-    var i;
-    for (i = 0; i < geom.cols; i++) heights.push(0);
+    var taken = [];
+    var pitch = CONTAINER_ROW + CONTAINER_GAP;
+    var busy = function (r, c) { return !!(taken[r] && taken[r][c]); };
+    var free = function (r0, c0, span, rows) {
+      for (var r = r0; r < r0 + rows; r++) {
+        for (var c = c0; c < c0 + span; c++) if (busy(r, c)) return false;
+      }
+      return true;
+    };
+    var fill = function (r0, c0, span, rows) {
+      for (var r = r0; r < r0 + rows; r++) {
+        if (!taken[r]) taken[r] = [];
+        for (var c = c0; c < c0 + span; c++) taken[r][c] = true;
+      }
+    };
     return entries.map(function (entry) {
       var span = Math.max(1, Math.min(geom.cols, entry.span || 1));
-      var height = Math.max(40, Math.round(entry.height || 0));
-      var best = 0;
-      var bestTop = Infinity;
-      for (var c = 0; c + span <= geom.cols; c++) {
-        var top = 0;
-        for (var k = c; k < c + span; k++) top = Math.max(top, heights[k]);
-        if (top < bestTop - 0.5) { bestTop = top; best = c; }
+      var rows = Math.max(1, Math.round(entry.rows || 1));
+      var at = null;
+      for (var r = 0; !at; r++) {
+        for (var c = 0; c + span <= geom.cols; c++) {
+          if (free(r, c, span, rows)) { at = { r: r, c: c }; break; }
+        }
       }
-      for (var m = best; m < best + span; m++) heights[m] = bestTop + height + CONTAINER_GAP;
+      fill(at.r, at.c, span, rows);
       return {
-        left: Math.round(best * (geom.colW + CONTAINER_GAP)),
-        top: Math.round(bestTop),
+        left: Math.round(at.c * (geom.colW + CONTAINER_GAP)),
+        top: Math.round(at.r * pitch),
         width: Math.round(span * geom.colW + CONTAINER_GAP * (span - 1)),
-        height: height,
+        height: Math.round(rows * CONTAINER_ROW + CONTAINER_GAP * (rows - 1)),
         span: span,
+        rows: rows,
       };
     });
   }
@@ -1396,7 +1434,7 @@ window.NoteApp = window.NoteApp || {};
         node: child,
         item: item,
         span: item && item.data && item.data.span ? item.data.span : 1,
-        height: item && item.h ? item.h : 60,
+        rows: item && item.data && item.data.rows ? item.data.rows : 3,
       };
     });
   }
@@ -1415,7 +1453,7 @@ window.NoteApp = window.NoteApp || {};
     if (!grid) return;
     var geom = containerGeom(container);
     var entries = childEntries(container);
-    var blank = drop ? { slot: true, span: drop.span || 1, height: drop.height || 60 } : null;
+    var blank = drop ? { slot: true, span: drop.span || 1, rows: drop.rows || 3 } : null;
     var index = drop ? Math.max(0, Math.min(drop.index, entries.length)) : -1;
     var list = [];
     entries.forEach(function (entry, i) {
@@ -1471,13 +1509,13 @@ window.NoteApp = window.NoteApp || {};
 
   function showDropSlot(container, index, rows) {
     if (!container.grid) return;
-    var height = 0;
     var span = 1;
+    var count = 3;
     rows.forEach(function (row) {
-      height = Math.max(height, row.item.h || 0);
       if (row.item.data && row.item.data.span) span = Math.max(span, row.item.data.span);
+      if (row.item.data && row.item.data.rows) count = Math.max(count, row.item.data.rows);
     });
-    board.drop = { container: container, index: index, span: span, height: Math.max(56, Math.min(240, height)) };
+    board.drop = { container: container, index: index, span: span, rows: count };
     layoutContainer(container, board.drop);
     paintDrop();
   }
@@ -1494,6 +1532,65 @@ window.NoteApp = window.NoteApp || {};
     board.items.forEach(function (item) {
       if (item.node && item.kind === 'column') item.node.classList.toggle('is-drop', !!(board.drop && board.drop.container === item));
     });
+  }
+
+  var swapTarget = null;
+
+  function setSwap(target) {
+    if (swapTarget === target) { board.swap = { target: target }; return; }
+    clearSwap();
+    swapTarget = target;
+    if (target.node) target.node.classList.add('is-swap');
+    board.swap = { target: target };
+  }
+
+  function clearSwap() {
+    if (swapTarget && swapTarget.node) swapTarget.node.classList.remove('is-swap');
+    swapTarget = null;
+    board.swap = null;
+  }
+
+  function siblingUnder(container, clientX, clientY, skip) {
+    if (!container || !container.grid) return null;
+    var rect = container.grid.getBoundingClientRect();
+    var scale = board.view.z || 1;
+    var x = (clientX - rect.left) / scale;
+    var y = (clientY - rect.top) / scale;
+    var entries = childEntries(container);
+    var boxes = packBoxes(entries, containerGeom(container));
+    var found = null;
+    boxes.forEach(function (box, i) {
+      if (found) return;
+      var entry = entries[i];
+      if (!entry || !entry.item || entry.item === skip) return;
+      if (x >= box.left && x <= box.left + box.width && y >= box.top && y <= box.top + box.height) found = { item: entry.item, box: box };
+    });
+    return found;
+  }
+
+  function sameRowOrCol(home, box) {
+    if (!home || !box) return false;
+    return Math.abs(home.left - box.left) < 6 || Math.abs(home.top - box.top) < 6;
+  }
+
+  function swapChildren(item, target, homeIndex) {
+    var parent = containerOf(target);
+    if (!parent || !parent.grid || !item.node) return false;
+    item.data.parent = parent.id;
+    if (!attachChild(item)) return false;
+    var grid = parent.grid;
+    var order = gridSlots(parent);
+    var targetIndex = order.indexOf(target.node);
+    if (targetIndex < 0) { layoutContainer(parent, null); return true; }
+    var itemIndex = typeof homeIndex === 'number' && homeIndex >= 0 ? homeIndex : targetIndex;
+    order.splice(order.indexOf(item.node), 1);
+    order.splice(targetIndex, 0, item.node);
+    var from = order.indexOf(target.node);
+    if (from >= 0) order.splice(from, 1);
+    order.splice(Math.max(0, Math.min(itemIndex, order.length)), 0, target.node);
+    order.forEach(function (n) { grid.appendChild(n); });
+    layoutContainer(parent, null);
+    return true;
   }
 
   function attachChildAt(item, index) {

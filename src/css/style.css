@@ -3945,3 +3945,4 @@ dialog:not([open]) { display: none; }
 .bd-ref__preview .pane-preview__doc { overflow: auto; padding: 8px; font-size: 11px; }
 .bd-ref__preview .pane-preview__doc pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
 .bd-ref__preview .pane-preview__doc table { max-width: 100%; }
+.bd-item.is-swap { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-ring); }
