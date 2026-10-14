@@ -3877,6 +3877,7 @@ dialog:not([open]) { display: none; }
 .bd-container__add-badge { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 20px; height: 20px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); transition: background var(--fast), color var(--fast); }
 .bd-container__add-badge svg { display: block; }
 .bd-slot { position: absolute; border: 1px dashed var(--accent); border-radius: 10px; background: var(--accent-soft); }
+.bd-item.bd-ghost { border: 1px dashed var(--border); border-radius: 10px; background: transparent; box-shadow: none; opacity: .6; pointer-events: none; }
 .bd-item.is-drop { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-ring); }
 .bd-item.is-child { min-height: 0; margin: 0; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
 .bd-item.is-child .bd-item__body { overflow: auto; }

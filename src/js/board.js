@@ -1071,10 +1071,12 @@ window.NoteApp = window.NoteApp || {};
         var home = containerOf(row);
         row.home = home && home.grid && row.node ? { left: row.node.offsetLeft, top: row.node.offsetTop } : null;
         row.homeIndex = home && home.grid && row.node ? gridSlots(home).indexOf(row.node) : -1;
+        if (home && home.grid && row.node) liftChild(row, home);
       });
       clearDropSlot();
       pushUndo('move');
       rows.forEach(function (row) { detachChild(row, event.clientX, event.clientY); });
+      lift.forEach(function (entry) { layoutContainer(entry.container, null); });
     }
     if (grip && isChild(item) && item.node) {
       var boxed = item.node.getBoundingClientRect();
@@ -1240,6 +1242,7 @@ window.NoteApp = window.NoteApp || {};
         }
         saveItem(row.item);
       });
+      clearLift();
       board.drag = null;
       settleChildren();
       paintLinks();
@@ -1429,12 +1432,14 @@ window.NoteApp = window.NoteApp || {};
 
   function childEntries(container) {
     return gridSlots(container).map(function (child) {
-      var item = findItem(child.getAttribute('data-board-id'));
+      var held = child.classList.contains('bd-ghost');
+      var item = held ? null : findItem(child.getAttribute('data-board-id'));
       return {
         node: child,
         item: item,
-        span: item && item.data && item.data.span ? item.data.span : 1,
-        rows: item && item.data && item.data.rows ? item.data.rows : 3,
+        ghost: held,
+        span: held ? Number(child.getAttribute('data-span')) || 1 : (item && item.data && item.data.span ? item.data.span : 1),
+        rows: held ? Number(child.getAttribute('data-rows')) || 3 : (item && item.data && item.data.rows ? item.data.rows : 3),
       };
     });
   }
@@ -1453,6 +1458,7 @@ window.NoteApp = window.NoteApp || {};
     if (!grid) return;
     var geom = containerGeom(container);
     var entries = childEntries(container);
+    if (drop) entries = entries.filter(function (entry) { return !entry.ghost; });
     var blank = drop ? { slot: true, span: drop.span || 1, rows: drop.rows || 3 } : null;
     var index = drop ? Math.max(0, Math.min(drop.index, entries.length)) : -1;
     var list = [];
@@ -1633,6 +1639,27 @@ window.NoteApp = window.NoteApp || {};
       if (item.kind === 'column' && item.grid) layoutContainer(item, null);
     });
     paintDrop();
+  }
+
+  var lift = [];
+
+  function liftChild(item, container) {
+    if (!container || !container.grid || !item.node) return;
+    var ghost = node('div', 'bd-item bd-ghost');
+    ghost.setAttribute('data-span', String(item.data && item.data.span ? item.data.span : 1));
+    ghost.setAttribute('data-rows', String(item.data && item.data.rows ? item.data.rows : 3));
+    if (item.node.parentNode === container.grid) container.grid.insertBefore(ghost, item.node);
+    else container.grid.appendChild(ghost);
+    lift.push({ ghost: ghost, container: container });
+  }
+
+  function clearLift() {
+    var held = lift;
+    lift = [];
+    held.forEach(function (entry) {
+      if (entry.ghost && entry.ghost.parentNode) entry.ghost.parentNode.removeChild(entry.ghost);
+    });
+    held.forEach(function (entry) { layoutContainer(entry.container, null); });
   }
 
   function detachChild(item, clientX, clientY) {
