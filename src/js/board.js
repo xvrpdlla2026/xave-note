@@ -8,7 +8,7 @@ window.NoteApp = window.NoteApp || {};
   var MIN_Z = 0.3;
   var MAX_Z = 2.5;
   var STEP = 1.15;
-  var SIZES = { note: [268, 176], todo: [256, 196], link: [268, 96], image: [288, 216], comment: [232, 144], ref: [244, 168], line: [260, 44], column: [280, 340], table: [320, 208], group: [232, 62], file: [300, 236] };
+  var SIZES = { note: [268, 176], todo: [256, 196], link: [268, 96], image: [288, 216], comment: [268, 132], ref: [244, 168], line: [260, 44], column: [280, 340], table: [320, 208], group: [232, 62], file: [300, 236] };
 
   var board = {
     open: false,
@@ -181,6 +181,133 @@ window.NoteApp = window.NoteApp || {};
     });
     input.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
     return input;
+  }
+
+  function relTime(iso) {
+    var then = Date.parse(iso || '');
+    if (!then) return 'just now';
+    var secs = Math.max(0, Math.round((Date.now() - then) / 1000));
+    if (secs < 60) return 'just now';
+    if (secs < 3600) return Math.round(secs / 60) + 'm ago';
+    if (secs < 86400) return Math.round(secs / 3600) + 'h ago';
+    return Math.round(secs / 86400) + 'd ago';
+  }
+
+  function fitBody(item) {
+    if (!item.node || !item.node.isConnected) return;
+    var wrap = item.node.querySelector('.bd-item__body > *');
+    var bar = item.node.querySelector('.bd-item__bar');
+    if (!wrap) return;
+    if (item.data.fitH && Math.abs(item.h - item.data.fitH) > 4) return;
+    var want = clamp(wrap.offsetHeight + (bar ? bar.offsetHeight : 26) + 22, 92, 520);
+    item.data.fitH = want;
+    if (Math.abs(want - item.h) < 4) return;
+    item.h = want;
+    placeItem(item);
+    saveItem(item);
+  }
+
+  function avatarNode() {
+    return node('span', 'bd-comment__avatar', 'Y');
+  }
+
+  function commentBody(item) {
+    var data = item.data;
+    if (!data.comments) data.comments = [];
+    var wrap = node('div', 'bd-comment');
+    var list = node('div', 'bd-comment__list');
+    wrap.appendChild(list);
+    var composer = node('div', 'bd-comment__composer');
+    composer.appendChild(avatarNode());
+    var input = node('input', 'bd-comment__input');
+    input.type = 'text';
+    input.placeholder = 'Write a comment...';
+    var send = node('button', 'bd-comment__send', 'Send');
+    send.type = 'button';
+    send.disabled = true;
+    composer.appendChild(input);
+    composer.appendChild(send);
+    wrap.appendChild(composer);
+
+    function act(label, handler) {
+      var button = node('button', 'bd-comment__act', label);
+      button.type = 'button';
+      button.addEventListener('click', function (event) {
+        event.stopPropagation();
+        handler();
+      });
+      return button;
+    }
+
+    function finishEdit(row, value, keep) {
+      var text = String(value || '').trim();
+      if (keep && text) {
+        row.text = text;
+        row.edited = true;
+        saveItem(item);
+      }
+      row.editing = false;
+      paint();
+    }
+
+    function paint() {
+      list.textContent = '';
+      if (!data.comments.length) list.appendChild(node('p', 'bd-comment__empty', 'No comments yet'));
+      data.comments.forEach(function (row, index) {
+        var box = node('div', 'bd-comment__row');
+        box.appendChild(avatarNode());
+        var main = node('div', 'bd-comment__main');
+        var head = node('div', 'bd-comment__head');
+        head.appendChild(node('span', 'bd-comment__who', 'You'));
+        head.appendChild(node('span', 'bd-comment__when', relTime(row.at) + (row.edited ? ' \u00b7 edited' : '')));
+        main.appendChild(head);
+        if (row.editing) {
+          var field = node('textarea', 'bd-comment__edit');
+          field.value = row.text;
+          field.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
+          field.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); finishEdit(row, field.value, true); }
+            if (event.key === 'Escape') { event.preventDefault(); finishEdit(row, field.value, false); }
+          });
+          main.appendChild(field);
+          var editing = node('div', 'bd-comment__acts');
+          editing.appendChild(act('Save', function () { finishEdit(row, field.value, true); }));
+          editing.appendChild(act('Cancel', function () { finishEdit(row, field.value, false); }));
+          main.appendChild(editing);
+          box.appendChild(main);
+          list.appendChild(box);
+          setTimeout(function () { field.focus(); }, 0);
+          return;
+        }
+        main.appendChild(node('p', 'bd-comment__text', row.text));
+        var links = node('div', 'bd-comment__acts');
+        if (index === data.comments.length - 1) links.appendChild(act('Reply', function () { input.focus(); }));
+        links.appendChild(act('Edit', function () { row.editing = true; paint(); }));
+        main.appendChild(links);
+        box.appendChild(main);
+        list.appendChild(box);
+      });
+      fitBody(item);
+    }
+
+    function submit() {
+      var text = input.value.trim();
+      if (!text) return;
+      data.comments.push({ id: util.uuid(), text: text, at: util.nowIso() });
+      input.value = '';
+      send.disabled = true;
+      saveItem(item);
+      paint();
+    }
+
+    input.addEventListener('input', function () { send.disabled = !input.value.trim(); });
+    input.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') { event.preventDefault(); submit(); }
+    });
+    input.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
+    send.addEventListener('click', submit);
+    paint();
+    return wrap;
   }
 
   function textArea(item, key, placeholder) {
@@ -580,7 +707,7 @@ window.NoteApp = window.NoteApp || {};
     if (item.kind === 'line') return lineBody();
     if (item.kind === 'column') return columnBody(item);
     if (item.kind === 'table') return tableBody(item);
-    if (item.kind === 'comment') return textArea(item, 'text', 'Comment');
+    if (item.kind === 'comment') return commentBody(item);
     return textArea(item, 'text', 'Start typing...');
   }
 
