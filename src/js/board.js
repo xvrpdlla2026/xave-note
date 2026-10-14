@@ -611,6 +611,26 @@ window.NoteApp = window.NoteApp || {};
     return tile;
   }
 
+  function downloadItem(item) {
+    var data = item.data || {};
+    var name = data.filename || 'download';
+    function save(href, revoke) {
+      var link = document.createElement('a');
+      link.href = href;
+      link.download = name;
+      link.rel = 'noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      if (revoke) setTimeout(function () { URL.revokeObjectURL(href); }, 5000);
+      util.toast('Downloading ' + name);
+    }
+    if (data.src) { save(data.src, false); return; }
+    if (!data.fileId) { util.toast('This card holds no file'); return; }
+    App.db.getFileBlob(data.fileId).then(function (row) {
+      save(URL.createObjectURL(row.blob), true);
+    }).catch(function () { util.toast('Could not read that file'); });
+  }
 
   function imageBody(item) {
     var wrap = node('div', 'bd-image');
@@ -1298,17 +1318,18 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function showItemMenu(item, at) {
-    App.ui.openMenu({
-      x: at.x,
-      y: at.y,
-      title: itemLabel(item),
-      items: [
-        { label: 'Duplicate', shortcut: 'Ctrl+D', icon: 'copy', onclick: function () { duplicateItem(item); } },
-        { label: 'Remove', shortcut: 'Delete', icon: 'trash', danger: true, onclick: function () { removeItem(item); } },
-        { sep: true },
-        { label: 'Bring to front', icon: 'layers', onclick: function () { reorder(item, true); } },
-        { label: 'Send to back', icon: 'layers', onclick: function () { reorder(item, false); } },
-      ],
+    var items = [];
+    var data = item.data || {};
+    if (item.kind === 'image' && (data.fileId || data.src)) {
+      items.push({ label: 'Download', icon: 'download', onclick: function () { downloadItem(item); } });
+      items.push({ sep: true });
+    }
+    items.push({ label: 'Duplicate', shortcut: 'Ctrl+D', icon: 'copy', onclick: function () { duplicateItem(item); } });
+    items.push({ label: 'Remove', shortcut: 'Delete', icon: 'trash', danger: true, onclick: function () { removeItem(item); } });
+    items.push({ sep: true });
+    items.push({ label: 'Bring to front', icon: 'layers', onclick: function () { reorder(item, true); } });
+    items.push({ label: 'Send to back', icon: 'layers', onclick: function () { reorder(item, false); } });
+    App.ui.openMenu({ x: at.x, y: at.y, title: itemLabel(item), items: items });
   }
 
   function onBoardContext(event) {
