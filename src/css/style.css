@@ -3734,7 +3734,6 @@ dialog:not([open]) { display: none; }
 .board__zoom-btn { min-width: 28px; height: 26px; padding: 0 8px; border: none; border-radius: 7px; background: none; color: var(--text-muted); font: inherit; font-size: 12px; cursor: pointer; }
 .board__zoom-btn:hover { background: var(--bg-hover); color: var(--text); }
 .board__zoom-label { min-width: 46px; }
-.board__hint { position: absolute; bottom: 14px; left: 98px; font-size: 11px; color: var(--text-faint); pointer-events: none; }
 .bd-item { position: absolute; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-raised); box-shadow: 0 8px 22px rgba(0, 0, 0, 0.3); overflow: hidden; transition: border-color var(--fast) var(--ease), box-shadow var(--fast) var(--ease); }
 .bd-item.is-selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-ring), 0 8px 22px rgba(0, 0, 0, 0.3); }
 .bd-item--comment { background: var(--accent-soft); }

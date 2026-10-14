@@ -30,7 +30,6 @@ window.NoteApp = window.NoteApp || {};
     canvas: null,
     grid: null,
     zoomLabel: null,
-    hint: null,
     menuAt: null,
     undo: [],
     bg: 'dots',
@@ -870,7 +869,7 @@ window.NoteApp = window.NoteApp || {};
     if (event.button !== 0) return;
     var target = event.target;
     if (target.closest && target.closest('.bd-item')) return;
-    if (target.closest && target.closest('.board__rail, .board__hint, .board__picker')) return;
+    if (target.closest && target.closest('.board__rail, .board__picker')) return;
     select(null);
     board.pan = { x: event.clientX, y: event.clientY, vx: board.view.x, vy: board.view.y };
     board.stage.classList.add('is-panning');
@@ -1403,14 +1402,11 @@ window.NoteApp = window.NoteApp || {};
     zoom.appendChild(inside);
     root.appendChild(zoom);
     root.appendChild(top);
-    var hint = node('div', 'board__hint', 'Space + drag to pan \u00b7 Ctrl + scroll to zoom \u00b7 Ctrl + 0 to fit');
-    root.appendChild(hint);
     board.root = root;
     board.stage = stage;
     board.canvas = canvas;
     board.grid = grid;
     board.zoomLabel = label;
-    board.hint = hint;
     return root;
   }
 
