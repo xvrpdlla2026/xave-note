@@ -687,7 +687,7 @@ window.NoteApp = window.NoteApp || {};
 
   function downloadItem(item) {
     var data = item.data || {};
-    var name = data.filename || 'download';
+    var name = data.filename || data.title || 'download';
     function save(href, revoke) {
       var link = document.createElement('a');
       link.href = href;
@@ -702,6 +702,7 @@ window.NoteApp = window.NoteApp || {};
     if (data.src) { save(data.src, false); return; }
     if (!data.fileId) { util.toast('This card holds no file'); return; }
     App.db.getFileBlob(data.fileId).then(function (row) {
+      if (!row || !row.blob) { util.toast('Could not read that file'); return; }
       save(URL.createObjectURL(row.blob), true);
     }).catch(function () { util.toast('Could not read that file'); });
   }
@@ -2186,7 +2187,8 @@ window.NoteApp = window.NoteApp || {};
   function showItemMenu(item, at) {
     var items = [];
     var data = item.data || {};
-    if (item.kind === 'image' && (data.fileId || data.src)) {
+    var fileCard = item.kind === 'image' || (item.kind === 'ref' && item.ref_kind === 'file');
+    if (fileCard && (data.fileId || data.src)) {
       items.push({ label: 'Download', icon: 'download', onclick: function () { downloadItem(item); } });
       items.push({ sep: true });
     }
