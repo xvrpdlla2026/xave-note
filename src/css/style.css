@@ -3826,3 +3826,12 @@ dialog:not([open]) { display: none; }
 .bd-group__link { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 1px solid transparent; border-radius: 7px; background: none; color: var(--text-faint); cursor: pointer; }
 .bd-group__link:hover { background: var(--bg-hover); color: var(--text); }
 .bd-group__link.is-on { color: var(--accent); border-color: var(--accent-soft); background: var(--accent-soft); }
+
+.bd-ref__preview { flex: 1; min-height: 0; display: flex; overflow: hidden; border-radius: 8px; background: var(--bg-raised); }
+.bd-ref__preview > * { flex: 1; min-width: 0; min-height: 0; }
+.bd-ref__preview img, .bd-ref__preview video { display: block; width: 100%; height: 100%; object-fit: cover; }
+.bd-ref__preview audio { width: 100%; align-self: center; }
+.bd-ref__preview iframe { width: 100%; height: 100%; border: 0; background: #fff; }
+.bd-ref__preview .pane-preview__doc { overflow: auto; padding: 8px; font-size: 11px; }
+.bd-ref__preview .pane-preview__doc pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
+.bd-ref__preview .pane-preview__doc table { max-width: 100%; }

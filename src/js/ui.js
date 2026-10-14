@@ -2381,6 +2381,7 @@ App.ui = Object.assign(App.ui || {}, {
     renderTopbarViews: renderTopbarViews,
     renderEditor: renderEditor,
     renderFilePreview: renderFilePreview,
+    filePreviewContent: filePreviewContent,
     renderEmptyState: renderEmptyState,
     renderSearchResults: renderSearchResults,
     renderStorageInfo: renderStorageInfo,

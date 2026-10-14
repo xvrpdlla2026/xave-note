@@ -8,7 +8,7 @@ window.NoteApp = window.NoteApp || {};
   var MIN_Z = 0.3;
   var MAX_Z = 2.5;
   var STEP = 1.15;
-  var SIZES = { note: [268, 176], todo: [256, 196], link: [264, 128], image: [288, 216], comment: [232, 144], ref: [244, 168], line: [260, 44], column: [280, 340], table: [320, 208], group: [232, 62] };
+  var SIZES = { note: [268, 176], todo: [256, 196], link: [264, 128], image: [288, 216], comment: [232, 144], ref: [244, 168], line: [260, 44], column: [280, 340], table: [320, 208], group: [232, 62], file: [300, 236] };
 
   var board = {
     open: false,
@@ -312,6 +312,28 @@ window.NoteApp = window.NoteApp || {};
     return wrap;
   }
 
+  var TEXT_EXT = ['.txt', '.md', '.markdown', '.json', '.log', '.yml', '.yaml', '.ini', '.xml', '.html', '.css', '.js', '.ts'];
+
+  function filePreview(data) {
+    var name = String(data.filename || data.title || '');
+    var mime = String(data.mime || '');
+    var ext = (name.match(/\.[a-z0-9]+$/i) || [''])[0].toLowerCase();
+    return {
+      kind: 'file',
+      title: name,
+      id: data.fileId,
+      mime: mime,
+      image: /^image\//.test(mime),
+      video: /^video\//.test(mime),
+      audio: /^audio\//.test(mime),
+      pdf: mime === 'application/pdf' || ext === '.pdf',
+      docx: ext === '.docx' || mime.indexOf('wordprocessingml') !== -1,
+      xlsx: ext === '.xlsx' || mime.indexOf('spreadsheetml') !== -1,
+      csv: ext === '.csv' || ext === '.tsv',
+      text: /^text\//.test(mime) || TEXT_EXT.indexOf(ext) !== -1,
+    };
+  }
+
   function refBody(item) {
     var wrap = node('div', 'bd-ref');
     var data = item.data || {};
@@ -321,13 +343,21 @@ window.NoteApp = window.NoteApp || {};
     head.appendChild(glyph);
     head.appendChild(node('span', 'bd-ref__title', data.title || 'Untitled'));
     wrap.appendChild(head);
-    wrap.appendChild(node('span', 'bd-ref__meta', data.meta || ''));
-    if (data.snippet) wrap.appendChild(node('p', 'bd-ref__snippet', data.snippet));
-    if (data.src) {
-      var img = node('img', 'bd-ref__img');
-      img.src = data.src;
-      img.alt = data.title || '';
-      wrap.appendChild(img);
+    var stage = null;
+    if (item.ref_kind === 'file' && data.fileId && App.ui.filePreviewContent) {
+      var load = function () {
+        return Promise.resolve(App.db.getFileBlob(data.fileId)).then(function (res) { return res ? res.blob : null; });
+      };
+      var holder = App.ui.filePreviewContent(filePreview(data), load, {});
+      if (holder) {
+        stage = node('div', 'bd-ref__preview');
+        stage.appendChild(holder);
+        wrap.appendChild(stage);
+      }
+    }
+    if (!stage) {
+      wrap.appendChild(node('span', 'bd-ref__meta', data.meta || ''));
+      if (data.snippet) wrap.appendChild(node('p', 'bd-ref__snippet', data.snippet));
     }
     wrap.appendChild(node('span', 'bd-ref__badge', 'from ' + (data.workspace || 'notes')));
     return wrap;
@@ -410,20 +440,29 @@ window.NoteApp = window.NoteApp || {};
     return item;
   }
 
+  function descendantsOf(id) {
+    var out = [];
+    var queue = [id];
+    while (queue.length) {
+      childrenOf(queue.shift()).forEach(function (kid) {
+        out.push(kid);
+        queue.push(kid.id);
+      });
+    }
+    return out;
+  }
+
   function removeItem(item) {
     pushUndo('remove');
-    if (item.saveTimer) { clearTimeout(item.saveTimer); item.saveTimer = null; }
-    if (item.node && item.node.parentNode) item.node.parentNode.removeChild(item.node);
-    board.items = board.items.filter(function (other) { return other !== item; });
-    if (board.selectedId === item.id) board.selectedId = null;
-    board.items.forEach(function (other) {
-      if (other.data && other.data.group === item.id) {
-        other.data.group = null;
-        saveItem(other);
-      }
+    var doomed = [item].concat(descendantsOf(item.id));
+    doomed.forEach(function (row) {
+      if (row.saveTimer) { clearTimeout(row.saveTimer); row.saveTimer = null; }
+      if (row.node && row.node.parentNode) row.node.parentNode.removeChild(row.node);
+      try { App.db.boardDeleteItem(row.id); } catch (e) { }
     });
+    board.items = board.items.filter(function (other) { return doomed.indexOf(other) < 0; });
+    if (doomed.some(function (row) { return row.id === board.selectedId; })) board.selectedId = null;
     paintLinks();
-    try { App.db.boardDeleteItem(item.id); } catch (e) { }
   }
 
   function onItemDown(event) {
@@ -1104,9 +1143,9 @@ window.NoteApp = window.NoteApp || {};
     var direct = subs.length + inner.length;
     var kids = function () {
       var host = node('div', 'pk-kids');
-      subs.forEach(function (sub) { host.appendChild(folderNode(space, sub, folders, notes)); });
+      subs.forEach(function (sub) { host.appendChild(folderNode(space, sub, folders, notes, filesByFolder)); });
       inner.forEach(function (note) { host.appendChild(noteNode(space, note)); });
-      (filesByFolder[folder.id] || []).forEach(function (file) { host.appendChild(fileNode(space, file)); });
+      ((filesByFolder || {})[folder.id] || []).forEach(function (file) { host.appendChild(fileNode(space, file)); });
       return host;
     };
     return pickNode({
@@ -1279,7 +1318,7 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function subtreeHeight(entry) {
-    var own = entry.type === 'anchor' ? 66 : 190;
+    var own = entry.type === 'anchor' ? 66 : entry.kind === 'file' ? 250 : 190;
     var kids = entry.children || [];
     if (!kids.length) return own;
     var total = 0;
@@ -1335,19 +1374,9 @@ window.NoteApp = window.NoteApp || {};
     data.title = file ? file.filename : 'File';
     data.meta = file ? util.formatBytes(file.size) + ' \u00b7 ' + util.formatWhen(file.created_at) : '';
     data.snippet = file ? file.mime_type || '' : '';
-    if (file && util.isImageMime(file.mime_type) && typeof App.db.getFileBlob === 'function') {
-      try {
-        var blob = App.db.getFileBlob(id);
-        if (blob) {
-          var reader = new FileReader();
-          reader.onload = function () {
-            var target = findItem(data.__itemId);
-            if (target) { target.data.src = String(reader.result); saveItem(target); repaintBody(target); }
-          };
-          reader.readAsDataURL(blob);
-        }
-      } catch (e) { }
-    }
+    data.fileId = id;
+    data.filename = file ? file.filename : '';
+    data.mime = file ? file.mime_type || '' : '';
     return data;
   }
 
@@ -1368,13 +1397,14 @@ window.NoteApp = window.NoteApp || {};
       });
     } else {
       var snapshot = snapshotFor(entry.kind, entry.id, entry.ws);
+      var isFile = entry.kind === 'file';
       item = addItem('ref', {
         ref_kind: entry.kind,
         ref_id: entry.id,
         data: snapshot,
         at: { x: x, y: y },
-        w: SIZES.ref[0],
-        h: SIZES.ref[1],
+        w: isFile ? SIZES.file[0] : SIZES.ref[0],
+        h: isFile ? SIZES.file[1] : SIZES.ref[1],
       });
       snapshot.__itemId = item.id;
     }
