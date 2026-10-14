@@ -8,7 +8,7 @@ window.NoteApp = window.NoteApp || {};
   var MIN_Z = 0.3;
   var MAX_Z = 2.5;
   var STEP = 1.15;
-  var SIZES = { note: [268, 176], todo: [256, 196], link: [268, 96], image: [288, 216], comment: [268, 132], ref: [244, 168], column: [420, 320], table: [320, 208], group: [232, 62], file: [300, 236] };
+  var SIZES = { note: [268, 176], todo: [256, 196], link: [268, 96], image: [288, 216], comment: [268, 132], ref: [244, 168], column: [420, 320], table: [320, 208], group: [232, 62], file: [300, 236], draw: [380, 280] };
 
   var board = {
     open: false,
@@ -56,6 +56,7 @@ window.NoteApp = window.NoteApp || {};
   function defaultData(kind) {
     if (kind === 'group') return { title: 'Folder', lines: true };
     if (kind === 'column') return {};
+    if (kind === 'draw') return { strokes: [] };
     if (kind === 'table') return { cells: [['', '', ''], ['', '', ''], ['', '', '']] };
     if (kind === 'todo') return { title: '', items: [{ text: '', done: false }] };
     if (kind === 'link') return { title: '', url: '' };
@@ -831,6 +832,7 @@ window.NoteApp = window.NoteApp || {};
     if (item.kind === 'ref') return refBody(item);
     if (item.kind === 'group') return groupBody(item);
     if (item.kind === 'column') return containerBody(item);
+    if (item.kind === 'draw') return drawBody(item);
     if (item.kind === 'table') return tableBody(item);
     if (item.kind === 'comment') return commentBody(item);
     return textArea(item, 'text', 'Start typing...');
@@ -849,6 +851,7 @@ window.NoteApp = window.NoteApp || {};
   function kindLabel(item) {
     if (item.kind === 'ref') return item.ref_kind || 'item';
     if (item.kind === 'column') return 'group';
+    if (item.kind === 'draw') return 'draw';
     if (item.kind === 'group') return item.data && item.data.scope === 'workspace' ? 'workspace' : 'folder';
     if (item.kind === 'image') {
       var name = item.data && item.data.filename;
@@ -1205,6 +1208,7 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function onKeyDown(event) {
+    if (drawPad) return;
     if (!board.open) return;
     var editing = event.target && event.target.closest && event.target.closest('input, textarea, [contenteditable="true"]');
     if (event.key === 'Escape') {
@@ -1277,6 +1281,7 @@ window.NoteApp = window.NoteApp || {};
     group.appendChild(railButton('info', 'Comment', function () { addItem('comment'); }));
     group.appendChild(railButton('panel', 'Group', function () { addItem('column'); }));
     group.appendChild(railButton('grid', 'Table', function () { addItem('table'); }));
+    group.appendChild(railButton('pencil', 'Draw', function () { openDrawPad(null); }));
     rail.appendChild(group);
     var source = node('div', 'board__rail-group');
     source.appendChild(railButton('layers', 'From notes', openPicker));
@@ -1386,7 +1391,7 @@ window.NoteApp = window.NoteApp || {};
   function openAddMenu(item, button) {
     var rect = button.getBoundingClientRect();
     var add = function (kind) {
-      return function () { addItem(kind, { parent: item.id, at: { x: item.x + 18, y: item.y + 18 } }); };
+      return function () { addItem(kind, { parent: item.id }); };
     };
     App.ui.openMenu({
       x: Math.round(rect.left),
@@ -1718,6 +1723,7 @@ window.NoteApp = window.NoteApp || {};
         { label: 'New To-do', icon: 'check', onclick: newItem('todo') },
         { label: 'New Comment', icon: 'info', onclick: newItem('comment') },
         { label: 'New Group', icon: 'panel', onclick: newItem('column') },
+        { label: 'New drawing', icon: 'pencil', onclick: function () { openDrawPad(null); } },
         { label: 'New Table', icon: 'grid', onclick: newItem('table') },
         { label: 'New Image or File', icon: 'upload', onclick: newItem('image') },
         { label: 'Add from your notes', icon: 'layers', onclick: openPicker },
@@ -1760,6 +1766,10 @@ window.NoteApp = window.NoteApp || {};
       items.push({ label: 'Add column', icon: 'grid', onclick: function () { tableChange(item, 0, 1); } });
       items.push({ label: 'Remove row', icon: 'trash', disabled: cells.length <= 1, onclick: function () { tableChange(item, -1, 0); } });
       items.push({ label: 'Remove column', icon: 'trash', disabled: !cells[0] || cells[0].length <= 1, onclick: function () { tableChange(item, 0, -1); } });
+      items.push({ sep: true });
+    }
+    if (item.kind === 'draw') {
+      items.push({ label: 'Edit drawing', icon: 'pencil', onclick: function () { openDrawPad(item); } });
       items.push({ sep: true });
     }
     items.push({ label: 'Duplicate', shortcut: 'Ctrl+D', icon: 'copy', onclick: function () { duplicateItem(item); } });
@@ -1867,6 +1877,336 @@ window.NoteApp = window.NoteApp || {};
     saveItem(item);
     repaintBody(item);
     paintLinks();
+  }
+  var drawPad = null;
+  var DRAW_COLORS = ['#111827', '#e5484d', '#f5a524', '#30a46c', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#84cc16', '#0ea5e9', '#a16207'];
+  var DRAW_MUTED = ['#cbd5e1', '#94a3b8', '#64748b', '#e2e8f0', '#f1f5f9', '#7c3aed'];
+  var DRAW_WIDTHS = [2, 4, 8, 14];
+
+  function paintStroke(ctx, stroke) {
+    var points = stroke.p;
+    if (!points || !points.length) return;
+    ctx.strokeStyle = stroke.c;
+    ctx.fillStyle = stroke.c;
+    ctx.lineWidth = stroke.w;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    if (points.length === 1) {
+      ctx.beginPath();
+      ctx.arc(points[0][0], points[0][1], Math.max(0.5, stroke.w / 2), 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
+    ctx.beginPath();
+    ctx.moveTo(points[0][0], points[0][1]);
+    for (var i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
+    ctx.stroke();
+  }
+
+  function strokeBox(strokes) {
+    var minX = Infinity;
+    var minY = Infinity;
+    var maxX = -Infinity;
+    var maxY = -Infinity;
+    strokes.forEach(function (stroke) {
+      var half = stroke.w / 2 + 1;
+      stroke.p.forEach(function (point) {
+        minX = Math.min(minX, point[0] - half);
+        minY = Math.min(minY, point[1] - half);
+        maxX = Math.max(maxX, point[0] + half);
+        maxY = Math.max(maxY, point[1] + half);
+      });
+    });
+    if (!isFinite(minX)) return { x: 0, y: 0, w: 1, h: 1 };
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+  }
+
+  function closeDrawPad() {
+    if (!drawPad) return;
+    window.removeEventListener('keydown', onPadKey);
+    if (drawPad.pad.parentNode) drawPad.pad.parentNode.removeChild(drawPad.pad);
+    drawPad = null;
+  }
+
+  function onPadKey(event) {
+    if (!drawPad) return;
+    var key = event.key;
+    if (key === 'Escape') { event.preventDefault(); closeDrawPad(); return; }
+    if ((event.ctrlKey || event.metaKey) && (key === 'z' || key === 'Z')) {
+      event.preventDefault();
+      if (event.shiftKey) padRedo(); else padUndo();
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && (key === 'y' || key === 'Y')) { event.preventDefault(); padRedo(); }
+  }
+
+  function padRedraw() {
+    var pad = drawPad;
+    if (!pad) return;
+    var rect = pad.canvas.getBoundingClientRect();
+    var dpr = window.devicePixelRatio || 1;
+    var ctx = pad.ctx;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, pad.canvas.width, pad.canvas.height);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, rect.width, rect.height);
+    pad.state.strokes.forEach(function (stroke) { paintStroke(ctx, stroke); });
+    if (pad.state.drawing) paintStroke(ctx, pad.state.drawing);
+  }
+
+  function padUndo() {
+    if (!drawPad || !drawPad.state.strokes.length) return;
+    drawPad.state.redo.push(drawPad.state.strokes.pop());
+    padTools();
+    padRedraw();
+  }
+
+  function padRedo() {
+    if (!drawPad || !drawPad.state.redo.length) return;
+    drawPad.state.strokes.push(drawPad.state.redo.pop());
+    padTools();
+    padRedraw();
+  }
+
+  function padTools() {
+    var pad = drawPad;
+    if (!pad) return;
+    pad.undo.disabled = !pad.state.strokes.length;
+    pad.redo.disabled = !pad.state.redo.length;
+    pad.widthBar.style.height = Math.max(2, Math.min(14, pad.state.width)) + 'px';
+    pad.swatch.style.background = pad.state.color;
+    pad.tools.forEach(function (button) {
+      button.classList.toggle('is-active', button.getAttribute('data-draw-tool') === pad.state.tool);
+    });
+    Array.prototype.forEach.call(pad.pop.querySelectorAll('.drawpad__dot'), function (dot) {
+      dot.classList.toggle('is-active', dot.getAttribute('data-color') === pad.state.color);
+    });
+  }
+
+  function padColor(hex) {
+    if (!drawPad) return;
+    drawPad.state.color = hex;
+    drawPad.state.tool = drawPad.state.tool === 'eraser' ? 'pen' : drawPad.state.tool;
+    drawPad.pop.classList.add('is-hidden');
+    padTools();
+  }
+
+  function padDot(hex) {
+    var dot = node('button', 'drawpad__dot');
+    dot.type = 'button';
+    dot.setAttribute('data-color', hex);
+    dot.style.background = hex;
+    dot.setAttribute('aria-label', 'Colour ' + hex);
+    dot.addEventListener('click', function () { padColor(hex); });
+    return dot;
+  }
+
+  function padSave() {
+    var pad = drawPad;
+    if (!pad) return;
+    if (!pad.state.strokes.length) { closeDrawPad(); return; }
+    var box = strokeBox(pad.state.strokes);
+    var strokes = pad.state.strokes.map(function (stroke) {
+      return {
+        c: stroke.c,
+        w: stroke.w,
+        p: stroke.p.map(function (point) {
+          return [Math.round((point[0] - box.x) * 10) / 10, Math.round((point[1] - box.y) * 10) / 10];
+        }),
+      };
+    });
+    var data = { strokes: strokes, w: Math.max(24, Math.round(box.w)), h: Math.max(24, Math.round(box.h)) };
+    var target = pad.state.item;
+    closeDrawPad();
+    if (target) {
+      pushUndo('edit');
+      target.data.strokes = data.strokes;
+      target.data.w = data.w;
+      target.data.h = data.h;
+      saveItem(target);
+      repaintBody(target);
+      return;
+    }
+    addItem('draw', { data: data });
+  }
+
+  function drawBody(item) {
+    var wrap = node('div', 'bd-draw');
+    var canvas = node('canvas', 'bd-draw__canvas');
+    wrap.appendChild(canvas);
+    var strokes = (item.data && item.data.strokes) || [];
+    var paint = function () {
+      var rect = wrap.getBoundingClientRect();
+      if (rect.width < 2 || rect.height < 2) return;
+      var dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.max(1, Math.round(rect.width * dpr));
+      canvas.height = Math.max(1, Math.round(rect.height * dpr));
+      var ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, rect.width, rect.height);
+      var box = item.data && item.data.w ? { w: item.data.w, h: item.data.h } : strokeBox(strokes);
+      var scale = Math.min(rect.width / Math.max(1, box.w), rect.height / Math.max(1, box.h));
+      ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * (rect.width - box.w * scale) / 2, dpr * (rect.height - box.h * scale) / 2);
+      strokes.forEach(function (stroke) { paintStroke(ctx, stroke); });
+    };
+    wrap.addEventListener('dblclick', function (event) {
+      event.stopPropagation();
+      if (!lockOf(item)) openDrawPad(item);
+    });
+    if (typeof ResizeObserver === 'function') new ResizeObserver(paint).observe(wrap);
+    requestAnimationFrame(paint);
+    return wrap;
+  }
+
+  function openDrawPad(item) {
+    if (drawPad) return;
+    var pad = node('div', 'drawpad');
+    pad.setAttribute('role', 'dialog');
+    pad.setAttribute('aria-label', 'Drawing board');
+    var canvas = node('canvas', 'drawpad__canvas');
+    pad.appendChild(canvas);
+    var state = {
+      tool: 'pen',
+      color: '#111827',
+      width: DRAW_WIDTHS[1],
+      strokes: item && item.data && item.data.strokes ? JSON.parse(JSON.stringify(item.data.strokes)) : [],
+      redo: [],
+      drawing: null,
+      item: item || null,
+    };
+    var tools = node('div', 'drawpad__tools');
+    var toolButtons = [];
+    var addTool = function (name, icon, label) {
+      var button = node('button', 'drawpad__tool');
+      button.type = 'button';
+      button.setAttribute('data-draw-tool', name);
+      button.setAttribute('aria-label', label);
+      button.title = label;
+      button.appendChild(App.ui.icon(icon, 16));
+      button.addEventListener('click', function () {
+        state.tool = name;
+        state.width = name === 'eraser' ? DRAW_WIDTHS[3] : state.width;
+        padTools();
+      });
+      toolButtons.push(button);
+      tools.appendChild(button);
+      return button;
+    };
+    addTool('pen', 'pencil', 'Pen');
+    addTool('line', 'slash', 'Line');
+    addTool('eraser', 'eraser', 'Eraser');
+    var swatch = node('button', 'drawpad__swatch');
+    swatch.type = 'button';
+    swatch.setAttribute('aria-label', 'Colour');
+    swatch.addEventListener('click', function () { drawPad.pop.classList.toggle('is-hidden'); });
+    tools.appendChild(swatch);
+    var widthButton = node('button', 'drawpad__width');
+    widthButton.type = 'button';
+    widthButton.setAttribute('aria-label', 'Stroke thickness');
+    var widthBar = node('span', '');
+    widthButton.appendChild(widthBar);
+    widthButton.addEventListener('click', function () {
+      var at = DRAW_WIDTHS.indexOf(state.width);
+      state.width = DRAW_WIDTHS[(at + 1) % DRAW_WIDTHS.length];
+      padTools();
+    });
+    tools.appendChild(widthButton);
+    tools.appendChild(node('span', 'drawpad__sep'));
+    var undoButton = node('button', 'drawpad__tool');
+    undoButton.type = 'button';
+    undoButton.setAttribute('aria-label', 'Undo');
+    undoButton.appendChild(App.ui.icon('undo', 16));
+    undoButton.addEventListener('click', padUndo);
+    tools.appendChild(undoButton);
+    var redoButton = node('button', 'drawpad__tool');
+    redoButton.type = 'button';
+    redoButton.setAttribute('aria-label', 'Redo');
+    redoButton.appendChild(App.ui.icon('redo', 16));
+    redoButton.addEventListener('click', padRedo);
+    tools.appendChild(redoButton);
+    tools.appendChild(node('span', 'drawpad__sep'));
+    var cancel = node('button', 'drawpad__btn', 'Discard');
+    cancel.type = 'button';
+    cancel.addEventListener('click', closeDrawPad);
+    tools.appendChild(cancel);
+    var save = node('button', 'drawpad__btn drawpad__btn--go', 'Save');
+    save.type = 'button';
+    save.addEventListener('click', padSave);
+    tools.appendChild(save);
+    pad.appendChild(tools);
+    var pop = node('div', 'drawpad__pop is-hidden');
+    DRAW_COLORS.forEach(function (hex) { pop.appendChild(padDot(hex)); });
+    pop.appendChild(node('div', 'drawpad__rule'));
+    DRAW_MUTED.forEach(function (hex) { pop.appendChild(padDot(hex)); });
+    var custom = node('button', 'drawpad__custom');
+    custom.type = 'button';
+    custom.appendChild(App.ui.icon('sun', 13));
+    custom.appendChild(node('span', '', 'Custom colour'));
+    var picker = node('input', 'drawpad__picker');
+    picker.type = 'color';
+    picker.value = state.color;
+    picker.addEventListener('input', function () { padColor(picker.value); });
+    custom.appendChild(picker);
+    custom.addEventListener('click', function () { picker.click(); });
+    pop.appendChild(custom);
+    pad.appendChild(pop);
+    document.body.appendChild(pad);
+    drawPad = {
+      pad: pad,
+      canvas: canvas,
+      ctx: canvas.getContext('2d'),
+      state: state,
+      pop: pop,
+      swatch: swatch,
+      widthBar: widthBar,
+      tools: toolButtons,
+      undo: undoButton,
+      redo: redoButton,
+    };
+    var fit = function () {
+      var rect = canvas.getBoundingClientRect();
+      var dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.max(1, Math.round(rect.width * dpr));
+      canvas.height = Math.max(1, Math.round(rect.height * dpr));
+      padRedraw();
+    };
+    var padPoint = function (event) {
+      var rect = canvas.getBoundingClientRect();
+      return [Math.round((event.clientX - rect.left) * 10) / 10, Math.round((event.clientY - rect.top) * 10) / 10];
+    };
+    var onMove = function (event) {
+      if (!state.drawing) return;
+      var point = padPoint(event);
+      if (state.tool === 'line') state.drawing.p = [state.drawing.p[0], point];
+      else state.drawing.p.push(point);
+      padRedraw();
+    };
+    var onUp = function () {
+      if (!state.drawing) return;
+      state.drawing = null;
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      padTools();
+      padRedraw();
+    };
+    canvas.addEventListener('pointerdown', function (event) {
+      if (event.button !== 0) return;
+      var erase = state.tool === 'eraser';
+      state.drawing = { c: erase ? '#ffffff' : state.color, w: erase ? state.width * 2.5 : state.width, p: [padPoint(event)] };
+      state.strokes.push(state.drawing);
+      state.redo.length = 0;
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      padTools();
+      padRedraw();
+      event.preventDefault();
+    });
+    window.addEventListener('resize', fit);
+    window.addEventListener('keydown', onPadKey);
+    pad.addEventListener('contextmenu', function (event) { event.preventDefault(); event.stopPropagation(); });
+    fit();
+    padTools();
   }
   function buildRoot() {
     var root = node('div', 'board');
