@@ -16,6 +16,7 @@ window.NoteApp = window.NoteApp || {};
     view: { x: 0, y: 0, z: 1 },
     selectedId: null,
     selectedIds: [],
+    redo: [],
     mode: 'grab',
     marquee: null,
     modeButton: null,
@@ -1319,6 +1320,18 @@ window.NoteApp = window.NoteApp || {};
       undoLast();
       return;
     }
+    if ((event.ctrlKey || event.metaKey) && (event.key === 'y' || event.key === 'Y')) {
+      if (editing) return;
+      event.preventDefault();
+      redoLast();
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && (event.key === 'z' || event.key === 'Z')) {
+      if (editing) return;
+      event.preventDefault();
+      redoLast();
+      return;
+    }
     if ((event.ctrlKey || event.metaKey) && (event.key === 'd' || event.key === 'D')) {
       if (editing) return;
       var copy = board.selectedId ? findItem(board.selectedId) : null;
@@ -2015,6 +2028,7 @@ window.NoteApp = window.NoteApp || {};
     if (!board.open || board.batch) return;
     board.undo.push({ label: label, snap: snapshotBoard() });
     if (board.undo.length > 30) board.undo.shift();
+    board.redo.length = 0;
   }
 
   function repaintAll() {
@@ -2029,13 +2043,7 @@ window.NoteApp = window.NoteApp || {};
     paintSelection();
   }
 
-  function undoLast() {
-    var entry = board.undo.pop();
-    if (!entry) {
-      util.toast('Nothing to undo');
-      return;
-    }
-    var snap = entry.snap;
+  function applySnap(snap) {
     var keep = {};
     snap.items.forEach(function (row) { keep[row.id] = true; });
     board.items.forEach(function (item) {
@@ -2058,6 +2066,28 @@ window.NoteApp = window.NoteApp || {};
     applyView();
     repaintAll();
     queueViewSave();
+  }
+
+  function undoLast() {
+    var entry = board.undo.pop();
+    if (!entry) {
+      util.toast('Nothing to undo');
+      return;
+    }
+    board.redo.push({ label: entry.label, snap: snapshotBoard() });
+    if (board.redo.length > 30) board.redo.shift();
+    applySnap(entry.snap);
+  }
+
+  function redoLast() {
+    var entry = board.redo.pop();
+    if (!entry) {
+      util.toast('Nothing to redo');
+      return;
+    }
+    board.undo.push({ label: entry.label, snap: snapshotBoard() });
+    if (board.undo.length > 30) board.undo.shift();
+    applySnap(entry.snap);
   }
 
   function duplicateItem(item) {
