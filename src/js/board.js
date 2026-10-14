@@ -929,7 +929,7 @@ window.NoteApp = window.NoteApp || {};
       else el.removeAttribute('readonly');
     });
     Array.prototype.forEach.call(body.querySelectorAll('input[type="checkbox"], input[type="radio"], button, select'), function (el) {
-      el.disabled = locked;
+      el.disabled = locked || el.getAttribute('data-blocked') === '1';
     });
   }
 
@@ -1223,6 +1223,72 @@ window.NoteApp = window.NoteApp || {};
     return wrap;
   }
 
+  var TABLE_ROW = 30;
+  var TABLE_MIN_H = 140;
+
+  function tableBlankRow(width) {
+    var row = [];
+    for (var i = 0; i < width; i++) row.push('');
+    return row;
+  }
+
+  function tableAddRow(item) {
+    var cells = item.data.cells;
+    cells.push(tableBlankRow(cells[0] ? cells[0].length : 1));
+  }
+
+  function tableAddColumn(item) {
+    item.data.cells.forEach(function (row) { row.push(''); });
+  }
+
+  function tableIndex(item, key, fallback) {
+    var at = item.tableAt;
+    return at && typeof at[key] === 'number' ? at[key] : fallback;
+  }
+
+  function tableRemoveRow(item) {
+    var cells = item.data.cells;
+    if (cells.length <= 1) return;
+    var at = Math.min(Math.max(tableIndex(item, 'r', cells.length - 1), 0), cells.length - 1);
+    cells.splice(at, 1);
+    item.tableAt = null;
+  }
+
+  function tableRemoveColumn(item) {
+    var cells = item.data.cells;
+    if (!cells[0] || cells[0].length <= 1) return;
+    var at = Math.min(Math.max(tableIndex(item, 'c', cells[0].length - 1), 0), cells[0].length - 1);
+    cells.forEach(function (row) { row.splice(at, 1); });
+    item.tableAt = null;
+  }
+
+  function tableChange(item, rows, cols) {
+    if (lockOf(item)) return;
+    var cells = item.data.cells;
+    if (!cells || !cells.length) return;
+    if (rows > 0 && cols > 0) return;
+    if ((rows < 0 && cells.length <= 1) || (cols < 0 && cells[0].length <= 1)) return;
+    pushUndo('edit');
+    if (rows > 0) tableAddRow(item);
+    if (cols > 0) tableAddColumn(item);
+    if (rows < 0) tableRemoveRow(item);
+    if (cols < 0) tableRemoveColumn(item);
+    if (rows) item.h = Math.max(TABLE_MIN_H, item.h + rows * TABLE_ROW);
+    saveItem(item);
+    placeItem(item);
+    repaintBody(item);
+  }
+
+  function tableStep(item, label, disabled, run) {
+    var button = node('button', 'bd-table__btn', label);
+    button.type = 'button';
+    button.disabled = !!disabled;
+    button.setAttribute('data-blocked', disabled ? '1' : '0');
+    button.setAttribute('aria-label', label === '+' ? 'Add' : 'Remove');
+    button.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
+    button.addEventListener('click', function (event) { event.stopPropagation(); run(); });
+    return button;
+  }
   function tableBody(item) {
     var cells = item.data && item.data.cells;
     if (!cells || !cells.length) {
@@ -1242,6 +1308,8 @@ window.NoteApp = window.NoteApp || {};
           item.updated_at = util.nowIso();
           queueItemSave(item);
         });
+        cell.addEventListener('pointerdown', function () { item.tableAt = { r: r, c: c }; });
+        cell.addEventListener('focus', function () { item.tableAt = { r: r, c: c }; });
         cell.addEventListener('keydown', function (event) {
           if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); cell.blur(); }
         });
@@ -1249,6 +1317,14 @@ window.NoteApp = window.NoteApp || {};
       });
       wrap.appendChild(line);
     });
+    var bar = node('div', 'bd-table__bar');
+    bar.appendChild(node('span', 'bd-table__lbl', 'Rows'));
+    bar.appendChild(tableStep(item, '\u2212', cells.length <= 1, function () { tableChange(item, -1, 0); }));
+    bar.appendChild(tableStep(item, '+', false, function () { tableChange(item, 1, 0); }));
+    bar.appendChild(node('span', 'bd-table__lbl', 'Cols'));
+    bar.appendChild(tableStep(item, '\u2212', cells[0].length <= 1, function () { tableChange(item, 0, -1); }));
+    bar.appendChild(tableStep(item, '+', false, function () { tableChange(item, 0, 1); }));
+    wrap.appendChild(bar);
     return wrap;
   }
 
@@ -1391,7 +1467,7 @@ window.NoteApp = window.NoteApp || {};
   function onPaste(event) {
     if (!board.open || board.picker) return;
     var target = event.target;
-    if (target && target.closest && target.closest('input, textarea, [contenteditable="true"]')) return;
+    if (target && target.closest && target.closest('input, textarea, [contenteditable="true"]') && !target.closest('.bd-table__cell')) return;
     var data = event.clipboardData;
     if (!data) return;
     var at = board.menuAt || centerOfView(board.items.length);
@@ -1464,6 +1540,14 @@ window.NoteApp = window.NoteApp || {};
       items.push({ label: 'Download', icon: 'download', onclick: function () { downloadItem(item); } });
       items.push({ sep: true });
     }
+    var cells = (item.data && item.data.cells) || [];
+    if (item.kind === 'table' && cells.length) {
+      items.push({ label: 'Add row', icon: 'grid', onclick: function () { tableChange(item, 1, 0); } });
+      items.push({ label: 'Add column', icon: 'grid', onclick: function () { tableChange(item, 0, 1); } });
+      items.push({ label: 'Remove row', icon: 'trash', disabled: cells.length <= 1, onclick: function () { tableChange(item, -1, 0); } });
+      items.push({ label: 'Remove column', icon: 'trash', disabled: !cells[0] || cells[0].length <= 1, onclick: function () { tableChange(item, 0, -1); } });
+      items.push({ sep: true });
+    }
     items.push({ label: 'Duplicate', shortcut: 'Ctrl+D', icon: 'copy', onclick: function () { duplicateItem(item); } });
     items.push({ label: lockOf(item) ? 'Unlock' : 'Lock', icon: lockOf(item) ? 'unlock' : 'lock', onclick: function () { toggleLock(item); } });
     items.push({ label: 'Remove', shortcut: 'Delete', icon: 'trash', danger: true, onclick: function () { removeItem(item); } });
@@ -1481,7 +1565,7 @@ window.NoteApp = window.NoteApp || {};
       event.stopPropagation();
       return;
     }
-    if (target && target.closest && target.closest('input, textarea, [contenteditable="true"]')) return;
+    if (target && target.closest && target.closest('input, textarea, [contenteditable="true"]') && !target.closest('.bd-table__cell')) return;
     event.preventDefault();
     event.stopPropagation();
     board.menuAt = canvasPoint(event.clientX, event.clientY);
