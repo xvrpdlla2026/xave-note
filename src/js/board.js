@@ -8,7 +8,7 @@ window.NoteApp = window.NoteApp || {};
   var MIN_Z = 0.3;
   var MAX_Z = 2.5;
   var STEP = 1.15;
-  var SIZES = { note: [268, 176], todo: [256, 196], link: [268, 96], image: [288, 216], comment: [268, 132], ref: [244, 168], column: [280, 340], table: [320, 208], group: [232, 62], file: [300, 236] };
+  var SIZES = { note: [268, 176], todo: [256, 196], link: [268, 96], image: [288, 216], comment: [268, 132], ref: [244, 168], column: [420, 320], table: [320, 208], group: [232, 62], file: [300, 236] };
 
   var board = {
     open: false,
@@ -55,7 +55,7 @@ window.NoteApp = window.NoteApp || {};
 
   function defaultData(kind) {
     if (kind === 'group') return { title: 'Folder', lines: true };
-    if (kind === 'column') return { text: '' };
+    if (kind === 'column') return {};
     if (kind === 'table') return { cells: [['', '', ''], ['', '', ''], ['', '', '']] };
     if (kind === 'todo') return { title: '', items: [{ text: '', done: false }] };
     if (kind === 'link') return { title: '', url: '' };
@@ -178,6 +178,7 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function placeItem(item) {
+    if (isChild(item)) return;
     item.node.style.left = item.x + 'px';
     item.node.style.top = item.y + 'px';
     item.node.style.width = item.w + 'px';
@@ -829,7 +830,7 @@ window.NoteApp = window.NoteApp || {};
     if (item.kind === 'image') return imageBody(item);
     if (item.kind === 'ref') return refBody(item);
     if (item.kind === 'group') return groupBody(item);
-    if (item.kind === 'column') return columnBody(item);
+    if (item.kind === 'column') return containerBody(item);
     if (item.kind === 'table') return tableBody(item);
     if (item.kind === 'comment') return commentBody(item);
     return textArea(item, 'text', 'Start typing...');
@@ -842,10 +843,12 @@ window.NoteApp = window.NoteApp || {};
     body.textContent = '';
     body.appendChild(bodyFor(item));
     applyReadOnly(item);
+    settleChildren();
   }
 
   function kindLabel(item) {
     if (item.kind === 'ref') return item.ref_kind || 'item';
+    if (item.kind === 'column') return 'group';
     if (item.kind === 'group') return item.data && item.data.scope === 'workspace' ? 'workspace' : 'folder';
     if (item.kind === 'image') {
       var name = item.data && item.data.filename;
@@ -901,6 +904,7 @@ window.NoteApp = window.NoteApp || {};
     paintLock(item);
     placeItem(item);
     board.canvas.appendChild(box);
+    if (isChild(item)) attachChild(item);
     if (item.kind === 'link') renderLinkCard(item);
     return box;
   }
@@ -910,6 +914,8 @@ window.NoteApp = window.NoteApp || {};
     var now = util.nowIso();
     var size = SIZES[kind] || SIZES.note;
     var at = payload && payload.at ? payload.at : centerOfView(board.items.length);
+    var data = payload && payload.data ? payload.data : defaultData(kind);
+    if (payload && payload.parent) data.parent = payload.parent;
     var item = {
       id: util.uuid(),
       board_id: BOARD_ID,
@@ -921,7 +927,7 @@ window.NoteApp = window.NoteApp || {};
       w: payload && payload.w ? payload.w : size[0],
       h: payload && payload.h ? payload.h : size[1],
       z: nextZ(),
-      data: payload && payload.data ? payload.data : defaultData(kind),
+      data: data,
       created_at: now,
       updated_at: now,
     };
@@ -994,6 +1000,7 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function deleteRow(row) {
+    containerKids(row.id).forEach(function (kid) { releaseChild(kid, row); });
     if (row.saveTimer) { clearTimeout(row.saveTimer); row.saveTimer = null; }
     if (row.node && row.node.parentNode) row.node.parentNode.removeChild(row.node);
     try { App.db.boardDeleteItem(row.id); } catch (e) { }
@@ -1002,6 +1009,7 @@ window.NoteApp = window.NoteApp || {};
   function removeItem(item) {
     if (lockOf(item)) { util.toast('Unlock this card first'); return; }
     pushUndo('remove');
+    containerKids(item.id).forEach(function (kid) { releaseChild(kid, item); });
     var doomed = [item].concat(descendantsOf(item.id)).filter(function (row) { return !lockOf(row); });
     doomed.forEach(deleteRow);
     board.items = board.items.filter(function (other) { return doomed.indexOf(other) < 0; });
@@ -1049,9 +1057,11 @@ window.NoteApp = window.NoteApp || {};
         return row && !lockOf(row);
       });
       if (!rows.length) return;
+      pushUndo('move');
+      rows.forEach(function (row) { detachChild(row, event.clientX, event.clientY); });
     }
     var start = { x: event.clientX, y: event.clientY, w: item.w, h: item.h, ix: item.x, iy: item.y };
-    pushUndo(grip ? 'resize' : 'move');
+    if (grip) pushUndo('resize');
     if (grip) {
       board.resize = { item: item, start: start };
     } else {
@@ -1154,13 +1164,25 @@ window.NoteApp = window.NoteApp || {};
     }
   }
 
-  function onPointerUp() {
+  function onPointerUp(event) {
     window.removeEventListener('pointermove', onPointerMove);
     window.removeEventListener('pointerup', onPointerUp);
     board.stage.classList.remove('is-panning');
     if (board.drag) {
-      board.drag.rows.forEach(saveItem);
+      var dragged = board.drag.rows;
+      var over = containerUnder(event.clientX, event.clientY, dragged);
+      dragged.forEach(function (row) {
+        if (over) {
+          row.item.data.parent = over.id;
+          attachChild(row.item);
+        } else if (isChild(row.item)) {
+          releaseChild(row.item, null);
+        }
+        saveItem(row.item);
+      });
       board.drag = null;
+      settleChildren();
+      paintLinks();
     }
     if (board.resize) { saveItem(board.resize.item); board.resize = null; }
     if (board.marquee) {
@@ -1253,7 +1275,7 @@ window.NoteApp = window.NoteApp || {};
     group.appendChild(railButton('external', 'Link', function () { addItem('link'); }));
     group.appendChild(railButton('file', 'File', function () { addItem('image'); }));
     group.appendChild(railButton('info', 'Comment', function () { addItem('comment'); }));
-    group.appendChild(railButton('panel', 'Column', function () { addItem('column'); }));
+    group.appendChild(railButton('panel', 'Group', function () { addItem('column'); }));
     group.appendChild(railButton('grid', 'Table', function () { addItem('table'); }));
     rail.appendChild(group);
     var source = node('div', 'board__rail-group');
@@ -1266,15 +1288,140 @@ window.NoteApp = window.NoteApp || {};
     return rail;
   }
 
-  function columnBody(item) {
-    var wrap = node('div', 'bd-column');
-    var head = textArea(item, 'text', 'Column title');
-    head.classList.add('bd-column__title');
-    wrap.appendChild(head);
-    wrap.appendChild(node('div', 'bd-column__space'));
-    return wrap;
+  function isChild(item) {
+    return !!(item.data && item.data.parent);
   }
 
+  function containerOf(item) {
+    return isChild(item) ? findItem(item.data.parent) : null;
+  }
+
+  function containerKids(id) {
+    return board.items.filter(function (other) { return other.data && other.data.parent && String(other.data.parent) === String(id); });
+  }
+
+  function insideParent(item, ancestor) {
+    var node = item;
+    var guard = 0;
+    while (node && node.data && node.data.parent && guard++ < 40) {
+      if (String(node.data.parent) === String(ancestor.id)) return true;
+      node = findItem(node.data.parent);
+    }
+    return false;
+  }
+
+  function attachChild(item) {
+    var parent = containerOf(item);
+    if (!parent || !parent.grid || !item.node) return false;
+    item.node.classList.add('is-child');
+    item.node.style.left = '';
+    item.node.style.top = '';
+    item.node.style.width = '';
+    item.node.style.height = '';
+    item.node.style.zIndex = '';
+    if (item.node.parentNode !== parent.grid) parent.grid.appendChild(item.node);
+    return true;
+  }
+
+  function settleChildren() {
+    board.items.forEach(function (item) {
+      if (!isChild(item) || !item.node) return;
+      if (!attachChild(item)) {
+        item.data.parent = null;
+        item.node.classList.remove('is-child');
+        board.canvas.appendChild(item.node);
+        placeItem(item);
+      }
+    });
+  }
+
+  function detachChild(item, clientX, clientY) {
+    if (!isChild(item) || !item.node) return;
+    var width = item.node.offsetWidth;
+    var height = item.node.offsetHeight;
+    var point = canvasPoint(clientX, clientY);
+    if (width) item.w = Math.round(width);
+    if (height) item.h = Math.round(height);
+    item.data.parent = null;
+    item.x = Math.round(point.x - (width || item.w) / 2);
+    item.y = Math.round(point.y - 22);
+    item.node.classList.remove('is-child');
+    board.canvas.appendChild(item.node);
+    placeItem(item);
+  }
+
+  function releaseChild(item, parent) {
+    if (!item.node) { item.data.parent = null; return; }
+    var width = item.node.offsetWidth;
+    var height = item.node.offsetHeight;
+    if (width) item.w = Math.round(width);
+    if (height) item.h = Math.round(height);
+    item.data.parent = null;
+    if (parent) {
+      item.x = Math.round(parent.x + 20);
+      item.y = Math.round(parent.y + parent.h + 20);
+    }
+    item.node.classList.remove('is-child');
+    board.canvas.appendChild(item.node);
+    placeItem(item);
+    saveItem(item);
+  }
+
+  function containerUnder(clientX, clientY, rows) {
+    var point = canvasPoint(clientX, clientY);
+    var best = null;
+    board.items.forEach(function (item) {
+      if (item.kind !== 'column') return;
+      for (var i = 0; i < rows.length; i++) {
+        if (rows[i].item.id === item.id) return;
+        if (insideParent(rows[i].item, item)) return;
+      }
+      if (point.x < item.x || point.x > item.x + item.w) return;
+      if (point.y < item.y || point.y > item.y + item.h) return;
+      if (!best || (item.z || 0) > (best.z || 0)) best = item;
+    });
+    return best;
+  }
+
+  function openAddMenu(item, button) {
+    var rect = button.getBoundingClientRect();
+    var add = function (kind) {
+      return function () { addItem(kind, { parent: item.id, at: { x: item.x + 18, y: item.y + 18 } }); };
+    };
+    App.ui.openMenu({
+      x: Math.round(rect.left),
+      y: Math.round(rect.bottom + 4),
+      items: [
+        { label: 'Note', icon: 'note', onclick: add('note') },
+        { label: 'To-do', icon: 'check', onclick: add('todo') },
+        { label: 'Link', icon: 'external', onclick: add('link') },
+        { label: 'Comment', icon: 'info', onclick: add('comment') },
+        { label: 'Table', icon: 'grid', onclick: add('table') },
+        { label: 'Image or File', icon: 'upload', onclick: add('image') },
+      ],
+    });
+  }
+
+  function containerBody(item) {
+    var wrap = node('div', 'bd-container');
+    var grid = node('div', 'bd-container__grid');
+    grid.setAttribute('data-board-grid', item.id);
+    wrap.appendChild(grid);
+    item.grid = grid;
+    var add = node('button', 'bd-container__add');
+    add.type = 'button';
+    add.setAttribute('aria-label', 'Add a block inside this group');
+    add.appendChild(App.ui.icon('plus', 13));
+    add.appendChild(node('span', 'bd-container__add-label', 'Add block'));
+    add.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
+    add.addEventListener('click', function (event) {
+      event.stopPropagation();
+      if (lockOf(item)) return;
+      openAddMenu(item, add);
+    });
+    wrap.appendChild(add);
+    return wrap;
+  }
   var TABLE_ROW = 30;
   var TABLE_MIN_H = 140;
 
@@ -1440,6 +1587,7 @@ window.NoteApp = window.NoteApp || {};
       delete item.node;
       paintItem(item);
     });
+    settleChildren();
     paintLinks();
     paintSelection();
   }
@@ -1569,7 +1717,7 @@ window.NoteApp = window.NoteApp || {};
         { label: 'New Link', icon: 'external', onclick: newItem('link') },
         { label: 'New To-do', icon: 'check', onclick: newItem('todo') },
         { label: 'New Comment', icon: 'info', onclick: newItem('comment') },
-        { label: 'New Column', icon: 'panel', onclick: newItem('column') },
+        { label: 'New Group', icon: 'panel', onclick: newItem('column') },
         { label: 'New Table', icon: 'grid', onclick: newItem('table') },
         { label: 'New Image or File', icon: 'upload', onclick: newItem('image') },
         { label: 'Add from your notes', icon: 'layers', onclick: openPicker },
