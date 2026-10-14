@@ -1352,6 +1352,7 @@ window.NoteApp = window.NoteApp || {};
       items.push({ sep: true });
     }
     items.push({ label: 'Duplicate', shortcut: 'Ctrl+D', icon: 'copy', onclick: function () { duplicateItem(item); } });
+    items.push({ label: lockOf(item) ? 'Unlock' : 'Lock', icon: lockOf(item) ? 'unlock' : 'lock', onclick: function () { toggleLock(item); } });
     items.push({ label: 'Remove', shortcut: 'Delete', icon: 'trash', danger: true, onclick: function () { removeItem(item); } });
     items.push({ sep: true });
     items.push({ label: 'Bring to front', icon: 'layers', onclick: function () { reorder(item, true); } });
