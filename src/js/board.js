@@ -1301,6 +1301,58 @@ window.NoteApp = window.NoteApp || {};
     var total = countPicks(pickTree());
     board.pickerCount.textContent = total ? total + ' selected' : 'Nothing selected';
   }
+  function commitPicker(panel) {
+    var roots = pickTree();
+    closePicker();
+    if (!roots.length) return;
+    var plan = planPicks(roots);
+    var size = planSize(plan);
+    var spot = findSpot(size.w, size.h);
+    var made = [];
+    board.batch = true;
+    pushUndo('picker');
+    plan.forEach(function (row) {
+      var entry = row.entry;
+      var at = { x: spot.x + row.x, y: spot.y + row.y };
+      var item;
+      if (entry.type === 'anchor') {
+        item = addItem('group', {
+          at: at,
+          w: SIZES.group[0],
+          h: SIZES.group[1],
+          data: {
+            title: entry.name,
+            lines: true,
+            scope: entry.kind,
+            refId: entry.id,
+            wsId: entry.ws,
+          },
+        });
+      } else {
+        var snapshot = snapshotFor(entry.kind, entry.id, entry.ws);
+        var isFile = entry.kind === 'file';
+        item = addItem('ref', {
+          ref_kind: entry.kind,
+          ref_id: entry.id,
+          data: snapshot,
+          at: at,
+          w: isFile ? SIZES.file[0] : SIZES.ref[0],
+          h: isFile ? SIZES.file[1] : SIZES.ref[1],
+        });
+        snapshot.__itemId = item.id;
+      }
+      if (row.parent !== null && made[row.parent]) {
+        item.data.group = made[row.parent].id;
+        saveItem(item);
+      }
+      made.push(item);
+    });
+    board.batch = false;
+    paintLinks();
+    showSpot(spot, size);
+    util.toast(made.length + ' items added to the board');
+  }
+
   function closePicker() {
     if (!board.picker) return;
     if (board.picker.parentNode) board.picker.parentNode.removeChild(board.picker);
@@ -1351,70 +1403,84 @@ window.NoteApp = window.NoteApp || {};
     return data;
   }
 
-  function placePick(entry, x, y, parentId, added) {
-    var item;
-    if (entry.type === 'anchor') {
-      item = addItem('group', {
-        at: { x: x, y: y },
-        w: SIZES.group[0],
-        h: SIZES.group[1],
-        data: {
-          title: entry.name,
-          lines: true,
-          scope: entry.kind,
-          refId: entry.id,
-          wsId: entry.ws,
-        },
-      });
-    } else {
-      var snapshot = snapshotFor(entry.kind, entry.id, entry.ws);
+  function planPicks(roots) {
+    var plan = [];
+    var walk = function (entry, x, y, parent) {
+      var index = plan.length;
       var isFile = entry.kind === 'file';
-      item = addItem('ref', {
-        ref_kind: entry.kind,
-        ref_id: entry.id,
-        data: snapshot,
-        at: { x: x, y: y },
-        w: isFile ? SIZES.file[0] : SIZES.ref[0],
-        h: isFile ? SIZES.file[1] : SIZES.ref[1],
+      plan.push({
+        entry: entry,
+        x: x,
+        y: y,
+        parent: parent,
+        w: entry.type === 'anchor' ? SIZES.group[0] : isFile ? SIZES.file[0] : SIZES.ref[0],
+        h: entry.type === 'anchor' ? SIZES.group[1] : isFile ? SIZES.file[1] : SIZES.ref[1],
       });
-      snapshot.__itemId = item.id;
-    }
-    if (parentId) {
-      item.data.group = parentId;
-      saveItem(item);
-    }
-    added.push(item);
-    var kids = entry.children || [];
-    if (!kids.length) return item;
-    var cx = x + 300;
-    var cursor = y;
-    kids.forEach(function (kid) {
-      placePick(kid, cx, cursor, item.id, added);
-      cursor += subtreeHeight(kid);
-    });
-    return item;
-  }
-
-  function commitPicker(panel) {
-    var roots = pickTree();
-    closePicker();
-    if (!roots.length) return;
-    var base = centerOfView(0);
-    var added = [];
-    var cursor = Math.round(base.y - 60);
-    board.batch = true;
-    pushUndo('picker');
+      var cursor = y;
+      (entry.children || []).forEach(function (kid) {
+        walk(kid, x + 300, cursor, index);
+        cursor += subtreeHeight(kid);
+      });
+      return index;
+    };
+    var cursor = 0;
     roots.forEach(function (entry) {
-      placePick(entry, Math.round(base.x - 120), cursor, null, added);
+      walk(entry, 0, cursor, null);
       cursor += subtreeHeight(entry) + 40;
     });
-    board.batch = false;
-    paintLinks();
-    fitView();
-    util.toast(added.length + ' items added to the board');
+    return plan;
   }
 
-  function load() {
+  function planSize(plan) {
+    var w = 0;
+    var h = 0;
+    plan.forEach(function (row) {
+      w = Math.max(w, row.x + row.w);
+      h = Math.max(h, row.y + row.h);
+    });
+    return { w: w, h: h };
+  }
+
+  function blocked(x, y, w, h, margin) {
+    return board.items.some(function (other) {
+      return x < other.x + other.w + margin && x + w + margin > other.x
+        && y < other.y + other.h + margin && y + h + margin > other.y;
+    });
+  }
+
+  function findSpot(w, h) {
+    var base = centerOfView(0);
+    var margin = 28;
+    var step = 80;
+    var span = 24;
+    var rect = board.stage.getBoundingClientRect();
+    var z = board.view.z || 1;
+    var rx = Math.floor(Math.max(0, rect.width / 2 / z - w / 2 - 20) / step);
+    var ry = Math.floor(Math.max(0, rect.height / 2 / z - h / 2 - 20) / step);
+    var cells = [];
+    for (var gx = -span; gx <= span; gx++) {
+      for (var gy = -span; gy <= span; gy++) {
+        cells.push({ gx: gx, gy: gy, vis: Math.abs(gx) <= rx && Math.abs(gy) <= ry ? 0 : 1, d: Math.max(Math.abs(gx), Math.abs(gy)) });
+      }
+    }
+    cells.sort(function (a, c) { return a.vis - c.vis || a.d - c.d; });
+    for (var i = 0; i < cells.length; i++) {
+      var x = Math.round(base.x - w / 2 + cells[i].gx * step);
+      var y = Math.round(base.y - h / 2 + cells[i].gy * step);
+      if (!blocked(x, y, w, h, margin)) return { x: x, y: y, visible: cells[i].vis === 0 };
+    }
+    var right = 0;
+    board.items.forEach(function (other) { right = Math.max(right, other.x + other.w); });
+    return { x: right + 80, y: Math.round(base.y - h / 2), visible: false };
+  }
+
+  function showSpot(spot, size) {
+    if (spot.visible) return;
+    var rect = board.stage.getBoundingClientRect();
+    board.view.x = Math.round(rect.width / 2 - (spot.x + size.w / 2) * board.view.z);
+    board.view.y = Math.round(rect.height / 2 - (spot.y + size.h / 2) * board.view.z);
+    applyView();
+  }  function load() {
     clearCanvas();
     board.items = [];
     var stored = [];
