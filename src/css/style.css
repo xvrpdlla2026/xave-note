@@ -3724,6 +3724,8 @@ dialog:not([open]) { display: none; }
 .board__tool-label { white-space: nowrap; }
 .board__stage { position: relative; flex: 1; min-width: 0; overflow: hidden; }
 .board__stage.is-select-mode { cursor: crosshair; }
+.board { user-select: none; -webkit-user-select: none; }
+.board .bd-item__body, .board .bd-item__body * { user-select: text; -webkit-user-select: text; }
 .board__mode { position: absolute; top: 50%; right: 16px; z-index: 6; width: 34px; height: 34px; margin-top: -17px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-raised); color: var(--text-muted); cursor: pointer; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22); }
 .board__mode:hover { color: var(--text); }
 .board__mode.is-select { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
