@@ -198,6 +198,7 @@ window.NoteApp = window.NoteApp || {};
       if (item.data.syncLink) item.data.syncLink();
     });
     input.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
+    input.addEventListener('focus', function () { pushUndo('edit'); });
     return input;
   }
 
@@ -241,6 +242,7 @@ window.NoteApp = window.NoteApp || {};
     var input = node('input', 'bd-comment__input');
     input.type = 'text';
     input.placeholder = 'Write a comment...';
+    input.addEventListener('focus', function () { pushUndo('edit'); });
     var send = node('button', 'bd-comment__send', 'Send');
     send.type = 'button';
     send.disabled = true;
@@ -284,6 +286,7 @@ window.NoteApp = window.NoteApp || {};
         main.appendChild(head);
         if (row.editing) {
           var field = node('textarea', 'bd-comment__edit');
+          field.addEventListener('focus', function () { pushUndo('edit'); });
           field.value = row.text;
           field.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
           field.addEventListener('keydown', function (event) {
@@ -345,6 +348,7 @@ window.NoteApp = window.NoteApp || {};
       queueItemSave(item);
     });
     box.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
+    box.addEventListener('focus', function () { pushUndo('edit'); });
     return box;
   }
 
@@ -359,6 +363,7 @@ window.NoteApp = window.NoteApp || {};
         box.type = 'checkbox';
         box.checked = !!entry.done;
         box.addEventListener('change', function () {
+          pushUndo('edit');
           entry.done = box.checked;
           row.classList.toggle('is-done', entry.done);
           queueItemSave(item);
@@ -367,10 +372,12 @@ window.NoteApp = window.NoteApp || {};
         text.type = 'text';
         text.value = entry.text || '';
         text.setAttribute('placeholder', 'To-do');
+        text.addEventListener('focus', function () { pushUndo('edit'); });
         text.addEventListener('input', function () { entry.text = text.value; queueItemSave(item); });
         text.addEventListener('keydown', function (event) {
           if (event.key !== 'Enter') return;
           event.preventDefault();
+          pushUndo('edit');
           item.data.items.splice(index + 1, 0, { text: '', done: false });
           saveItem(item);
           paint();
@@ -381,6 +388,7 @@ window.NoteApp = window.NoteApp || {};
         drop.type = 'button';
         drop.addEventListener('click', function (event) {
           event.stopPropagation();
+          pushUndo('edit');
           item.data.items.splice(index, 1);
           if (!item.data.items.length) item.data.items.push({ text: '', done: false });
           saveItem(item);
@@ -699,6 +707,7 @@ window.NoteApp = window.NoteApp || {};
         if (!wsId) { util.toast('Create a workspace first'); return; }
         util.toast('Adding ' + file.name + '\u2026');
         App.db.addFile(wsId, null, file.name, file.type || 'application/octet-stream', file).then(function (row) {
+          pushUndo('file');
           item.data.fileId = row.id;
           item.data.filename = row.filename;
           item.data.mime = row.mime_type;
