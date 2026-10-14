@@ -174,6 +174,7 @@ window.NoteApp = window.NoteApp || {};
     if (placeholder) input.setAttribute('placeholder', placeholder);
     if (item.data && item.data[key]) input.value = item.data[key];
     input.addEventListener('input', function () {
+      if (lockOf(item)) return;
       item.data[key] = input.value;
       queueItemSave(item);
       if (item.data.syncLink) item.data.syncLink();
@@ -213,6 +214,7 @@ window.NoteApp = window.NoteApp || {};
   function commentBody(item) {
     var data = item.data;
     if (!data.comments) data.comments = [];
+    data.comments.forEach(function (row) { row.editing = false; });
     var wrap = node('div', 'bd-comment');
     var list = node('div', 'bd-comment__list');
     wrap.appendChild(list);
@@ -233,12 +235,14 @@ window.NoteApp = window.NoteApp || {};
       button.type = 'button';
       button.addEventListener('click', function (event) {
         event.stopPropagation();
+        if (lockOf(item)) return;
         handler();
       });
       return button;
     }
 
     function finishEdit(row, value, keep) {
+      if (lockOf(item)) { row.editing = false; paint(); return; }
       var text = String(value || '').trim();
       if (keep && text) {
         row.text = text;
@@ -287,9 +291,11 @@ window.NoteApp = window.NoteApp || {};
         list.appendChild(box);
       });
       fitBody(item);
+      applyReadOnly(item);
     }
 
     function submit() {
+      if (lockOf(item)) return;
       var text = input.value.trim();
       if (!text) return;
       data.comments.push({ id: util.uuid(), text: text, at: util.nowIso() });
@@ -316,6 +322,7 @@ window.NoteApp = window.NoteApp || {};
     if (placeholder) box.setAttribute('data-placeholder', placeholder);
     box.textContent = (item.data && item.data[key]) || '';
     box.addEventListener('input', function () {
+      if (lockOf(item)) return;
       item.data[key] = box.textContent;
       queueItemSave(item);
     });
@@ -762,6 +769,7 @@ window.NoteApp = window.NoteApp || {};
     if (!body) return;
     body.textContent = '';
     body.appendChild(bodyFor(item));
+    applyReadOnly(item);
   }
 
   function kindLabel(item) {
@@ -879,6 +887,25 @@ window.NoteApp = window.NoteApp || {};
     }
     if (remove) remove.style.display = locked ? 'none' : '';
     if (grip) grip.style.display = locked ? 'none' : '';
+    applyReadOnly(item);
+  }
+
+  function applyReadOnly(item) {
+    if (!item.node) return;
+    var locked = lockOf(item);
+    var body = item.node.querySelector('.bd-item__body');
+    if (!body) return;
+    body.classList.toggle('is-readonly', locked);
+    Array.prototype.forEach.call(body.querySelectorAll('[contenteditable]'), function (el) {
+      el.setAttribute('contenteditable', locked ? 'false' : 'true');
+    });
+    Array.prototype.forEach.call(body.querySelectorAll('input:not([type="checkbox"]):not([type="radio"]), textarea'), function (el) {
+      if (locked) el.setAttribute('readonly', 'readonly');
+      else el.removeAttribute('readonly');
+    });
+    Array.prototype.forEach.call(body.querySelectorAll('input[type="checkbox"], input[type="radio"], button, select'), function (el) {
+      el.disabled = locked;
+    });
   }
 
   function toggleLock(item) {

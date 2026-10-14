@@ -3748,6 +3748,7 @@ dialog:not([open]) { display: none; }
 .bd-item.is-locked .bd-item__lock { color: var(--accent); }
 .bd-item.is-locked .bd-item__resize { display: none; }
 .bd-item.is-locked .bd-item__bar { cursor: default; }
+.bd-item__body.is-readonly { cursor: default; }
 .bd-comment { display: flex; flex-direction: column; gap: 9px; }
 .bd-comment__list { display: flex; flex-direction: column; gap: 10px; }
 .bd-comment__empty { margin: 0; font-size: 11.5px; color: var(--text-faint); }
