@@ -1071,7 +1071,8 @@ window.NoteApp = window.NoteApp || {};
         var home = containerOf(row);
         row.home = home && home.grid && row.node ? { left: row.node.offsetLeft, top: row.node.offsetTop } : null;
         row.homeIndex = home && home.grid && row.node ? gridSlots(home).indexOf(row.node) : -1;
-        if (home && home.grid && row.node) liftChild(row, home);
+        row.homeCell = home && home.grid ? cellOf(home, row) : null;
+        if (home && home.grid && row.node) liftChild(row, home, row.homeCell);
       });
       clearDropSlot();
       pushUndo('move');
@@ -1092,7 +1093,7 @@ window.NoteApp = window.NoteApp || {};
       board.drag = {
         item: item,
         start: start,
-        rows: rows.map(function (row) { return { item: row, x: row.x, y: row.y, home: row.home || null, homeIndex: row.homeIndex }; }),
+        rows: rows.map(function (row) { return { item: row, x: row.x, y: row.y, home: row.home || null, homeIndex: row.homeIndex, homeCell: row.homeCell || null, span: row.data && row.data.span ? row.data.span : 1, rows: row.data && row.data.rows ? row.data.rows : 3 }; }),
       };
     }
     window.addEventListener('pointermove', onPointerMove);
@@ -1179,13 +1180,14 @@ window.NoteApp = window.NoteApp || {};
         placeItem(row.item);
       });
       var over = containerUnder(event.clientX, event.clientY, drag.rows);
-      var sib = over ? siblingUnder(over.item, event.clientX, event.clientY, drag.rows[0].item) : null;
-      if (sib && drag.rows.length === 1 && drag.rows[0].home && sameRowOrCol(drag.rows[0].home, sib.box)) {
+      var overItem = over ? over.item : null;
+      var sib = overItem ? siblingUnder(overItem, event.clientX, event.clientY, drag.rows[0].item) : null;
+      if (sib && drag.rows.length === 1 && drag.rows[0].homeCell && sameRowOrCol(drag.rows[0].homeCell, sib.box)) {
         clearDropSlot();
         setSwap(sib.item);
       } else {
         clearSwap();
-        if (over) showDropSlot(over.item, over.index, drag.rows);
+        if (overItem) showDropSlot(overItem, freeCell(overItem, cellUnder(overItem, event.clientX, event.clientY, drag.rows[0].span, drag.rows[0].rows), drag.rows[0].item));
         else clearDropSlot();
       }
       paintLinks();
@@ -1226,17 +1228,15 @@ window.NoteApp = window.NoteApp || {};
     if (board.drag) {
       var dragged = board.drag.rows;
       var over = containerUnder(event.clientX, event.clientY, dragged);
+      var overItem = over ? over.item : null;
       var swap = board.swap && dragged.length === 1 ? board.swap.target : null;
       clearSwap();
-      var at = over ? over.index : 0;
       clearDropSlot();
       dragged.forEach(function (row) {
         if (swap && row.item !== swap) {
-          swapChildren(row.item, swap, row.homeIndex);
-        } else if (over) {
-          row.item.data.parent = over.item.id;
-          attachChildAt(row.item, at);
-          at++;
+          swapCells(row.item, swap, containerOf(swap));
+        } else if (overItem) {
+          placeChild(row.item, overItem, event.clientX, event.clientY);
         } else if (isChild(row.item)) {
           releaseChild(row.item, null);
         }
@@ -1395,9 +1395,10 @@ window.NoteApp = window.NoteApp || {};
 
   function packBoxes(entries, geom) {
     var taken = [];
-    var pitch = CONTAINER_ROW + CONTAINER_GAP;
+    var pitchY = CONTAINER_ROW + CONTAINER_GAP;
     var busy = function (r, c) { return !!(taken[r] && taken[r][c]); };
-    var free = function (r0, c0, span, rows) {
+    var fits = function (r0, c0, span, rows) {
+      if (c0 < 0 || c0 + span > geom.cols || r0 < 0) return false;
       for (var r = r0; r < r0 + rows; r++) {
         for (var c = c0; c < c0 + span; c++) if (busy(r, c)) return false;
       }
@@ -1409,23 +1410,48 @@ window.NoteApp = window.NoteApp || {};
         for (var c = c0; c < c0 + span; c++) taken[r][c] = true;
       }
     };
+    var depth = function () {
+      var max = 0;
+      for (var r = 0; r < taken.length; r++) if (taken[r]) max = r + 1;
+      return max;
+    };
+    var firstFit = function (span, rows) {
+      for (var r = 0; r < 400; r++) {
+        for (var c = 0; c + span <= geom.cols; c++) if (fits(r, c, span, rows)) return { c: c, r: r };
+      }
+      return { c: 0, r: 0 };
+    };
+    var nearestFit = function (col, row, span, rows) {
+      var limit = depth() + rows + 2;
+      var best = null;
+      var bestD = Infinity;
+      for (var r = 0; r <= limit; r++) {
+        for (var c = 0; c + span <= geom.cols; c++) {
+          if (!fits(r, c, span, rows)) continue;
+          var d = Math.abs(c - col) + Math.abs(r - row);
+          if (d < bestD) { bestD = d; best = { c: c, r: r }; }
+        }
+      }
+      return best || firstFit(span, rows);
+    };
     return entries.map(function (entry) {
       var span = Math.max(1, Math.min(geom.cols, entry.span || 1));
       var rows = Math.max(1, Math.round(entry.rows || 1));
+      var col = typeof entry.col === 'number' ? Math.max(0, Math.min(Math.max(0, geom.cols - span), entry.col)) : null;
+      var row = typeof entry.row === 'number' ? Math.max(0, entry.row) : null;
       var at = null;
-      for (var r = 0; !at; r++) {
-        for (var c = 0; c + span <= geom.cols; c++) {
-          if (free(r, c, span, rows)) { at = { r: r, c: c }; break; }
-        }
-      }
+      if (col !== null && row !== null) at = fits(row, col, span, rows) ? { c: col, r: row } : nearestFit(col, row, span, rows);
+      if (!at) at = firstFit(span, rows);
       fill(at.r, at.c, span, rows);
       return {
         left: Math.round(at.c * (geom.colW + CONTAINER_GAP)),
-        top: Math.round(at.r * pitch),
+        top: Math.round(at.r * pitchY),
         width: Math.round(span * geom.colW + CONTAINER_GAP * (span - 1)),
         height: Math.round(rows * CONTAINER_ROW + CONTAINER_GAP * (rows - 1)),
         span: span,
         rows: rows,
+        col: at.c,
+        row: at.r,
       };
     });
   }
@@ -1434,14 +1460,93 @@ window.NoteApp = window.NoteApp || {};
     return gridSlots(container).map(function (child) {
       var held = child.classList.contains('bd-ghost');
       var item = held ? null : findItem(child.getAttribute('data-board-id'));
+      var data = item && item.data ? item.data : null;
+      var col = held ? Number(child.getAttribute('data-col')) : (data && typeof data.col === 'number' ? data.col : NaN);
+      var row = held ? Number(child.getAttribute('data-row')) : (data && typeof data.row === 'number' ? data.row : NaN);
       return {
         node: child,
         item: item,
         ghost: held,
-        span: held ? Number(child.getAttribute('data-span')) || 1 : (item && item.data && item.data.span ? item.data.span : 1),
-        rows: held ? Number(child.getAttribute('data-rows')) || 3 : (item && item.data && item.data.rows ? item.data.rows : 3),
+        col: isNaN(col) ? undefined : col,
+        row: isNaN(row) ? undefined : row,
+        span: held ? Number(child.getAttribute('data-span')) || 1 : (data && data.span ? data.span : 1),
+        rows: held ? Number(child.getAttribute('data-rows')) || 3 : (data && data.rows ? data.rows : 3),
       };
     });
+  }
+
+  function cellOf(container, item) {
+    if (!container || !container.grid || !item || !item.node) return null;
+    var geom = containerGeom(container);
+    var pitchX = geom.colW + CONTAINER_GAP;
+    var pitchY = CONTAINER_ROW + CONTAINER_GAP;
+    if (item.data && typeof item.data.col === 'number' && typeof item.data.row === 'number') {
+      return { col: item.data.col, row: item.data.row };
+    }
+    return {
+      col: Math.round(item.node.offsetLeft / pitchX),
+      row: Math.round(item.node.offsetTop / pitchY),
+    };
+  }
+
+  function cellUnder(container, clientX, clientY, span, rows) {
+    if (!container || !container.grid) return null;
+    var rect = container.grid.getBoundingClientRect();
+    var scale = board.view.z || 1;
+    var geom = containerGeom(container);
+    var pitchX = geom.colW + CONTAINER_GAP;
+    var pitchY = CONTAINER_ROW + CONTAINER_GAP;
+    var wide = Math.max(1, Math.min(geom.cols, span || 1));
+    var tall = Math.max(1, Math.round(rows || 1));
+    var col = Math.floor((clientX - rect.left) / scale / pitchX);
+    var row = Math.floor((clientY - rect.top) / scale / pitchY);
+    return {
+      col: Math.max(0, Math.min(Math.max(0, geom.cols - wide), col)),
+      row: Math.max(0, row),
+      span: wide,
+      rows: tall,
+    };
+  }
+
+  function freeCell(container, cell, skip) {
+    if (!container || !container.grid || !cell) return null;
+    var geom = containerGeom(container);
+    var entries = childEntries(container).filter(function (entry) {
+      return !entry.ghost && (!skip || entry.item !== skip);
+    });
+    var boxes = packBoxes(entries, geom);
+    var taken = function (probe) {
+      return boxes.some(function (box) {
+        return box.col < probe.col + probe.span && box.col + box.span > probe.col &&
+          box.row < probe.row + probe.rows && box.row + box.rows > probe.row;
+      });
+    };
+    if (!taken(cell)) return cell;
+    var limit = 0;
+    boxes.forEach(function (box) { limit = Math.max(limit, box.row + box.rows); });
+    limit += cell.rows + 2;
+    var best = null;
+    var bestD = Infinity;
+    for (var r = 0; r <= limit; r++) {
+      for (var c = 0; c + cell.span <= geom.cols; c++) {
+        var probe = { col: c, row: r, span: cell.span, rows: cell.rows };
+        if (taken(probe)) continue;
+        var d = Math.abs(c - cell.col) + Math.abs(r - cell.row);
+        if (d < bestD) { bestD = d; best = probe; }
+      }
+    }
+    return best || cell;
+  }
+
+  function placeChild(item, container, clientX, clientY) {
+    if (!container || !container.grid || !item.node) return false;
+    var span = item.data && item.data.span ? item.data.span : 1;
+    var rows = item.data && item.data.rows ? item.data.rows : 3;
+    var cell = freeCell(container, cellUnder(container, clientX, clientY, span, rows), item);
+    item.data.parent = container.id;
+    item.data.col = cell.col;
+    item.data.row = cell.row;
+    return attachChild(item);
   }
 
   function containerSlot(container) {
@@ -1459,14 +1564,9 @@ window.NoteApp = window.NoteApp || {};
     var geom = containerGeom(container);
     var entries = childEntries(container);
     if (drop) entries = entries.filter(function (entry) { return !entry.ghost; });
-    var blank = drop ? { slot: true, span: drop.span || 1, rows: drop.rows || 3 } : null;
-    var index = drop ? Math.max(0, Math.min(drop.index, entries.length)) : -1;
-    var list = [];
-    entries.forEach(function (entry, i) {
-      if (i === index) list.push(blank);
-      list.push(entry);
-    });
-    if (blank && index === entries.length) list.push(blank);
+    var blank = drop ? { slot: true, col: drop.col, row: drop.row, span: drop.span || 1, rows: drop.rows || 3 } : null;
+    var list = entries.slice();
+    if (blank) list.push(blank);
     var slot = containerSlot(container);
     var boxes = packBoxes(list, geom);
     var offsetX = 0;
@@ -1492,6 +1592,8 @@ window.NoteApp = window.NoteApp || {};
         entry.item.w = box.width;
         entry.item.h = box.height;
         entry.item.data.span = box.span;
+        if (typeof entry.item.data.col !== 'number') entry.item.data.col = box.col;
+        if (typeof entry.item.data.row !== 'number') entry.item.data.row = box.row;
         entry.item.x = Math.round(container.x + offsetX + box.left);
         entry.item.y = Math.round(container.y + offsetY + box.top);
       }
@@ -1501,27 +1603,10 @@ window.NoteApp = window.NoteApp || {};
     grid.style.height = Math.max(60, Math.round(bottom)) + 'px';
   }
 
-  function dropIndexAt(container, clientX, clientY) {
-    var rect = container.grid.getBoundingClientRect();
-    var boxes = packBoxes(childEntries(container), containerGeom(container));
-    var x = clientX - rect.left;
-    var y = clientY - rect.top;
-    for (var i = 0; i < boxes.length; i++) {
-      if (x < boxes[i].left - CONTAINER_GAP / 2) return i;
-      if (x <= boxes[i].left + boxes[i].width + CONTAINER_GAP / 2 && y < boxes[i].top + boxes[i].height / 2) return i;
-    }
-    return boxes.length;
-  }
 
-  function showDropSlot(container, index, rows) {
-    if (!container.grid) return;
-    var span = 1;
-    var count = 3;
-    rows.forEach(function (row) {
-      if (row.item.data && row.item.data.span) span = Math.max(span, row.item.data.span);
-      if (row.item.data && row.item.data.rows) count = Math.max(count, row.item.data.rows);
-    });
-    board.drop = { container: container, index: index, span: span, rows: count };
+  function showDropSlot(container, cell) {
+    if (!container.grid || !cell) return;
+    board.drop = { container: container, col: cell.col, row: cell.row, span: cell.span || 1, rows: cell.rows || 3 };
     layoutContainer(container, board.drop);
     paintDrop();
   }
@@ -1576,39 +1661,27 @@ window.NoteApp = window.NoteApp || {};
 
   function sameRowOrCol(home, box) {
     if (!home || !box) return false;
-    return Math.abs(home.left - box.left) < 6 || Math.abs(home.top - box.top) < 6;
+    return home.col === box.col || home.row === box.row;
   }
 
-  function swapChildren(item, target, homeIndex) {
-    var parent = containerOf(target);
-    if (!parent || !parent.grid || !item.node) return false;
-    item.data.parent = parent.id;
-    if (!attachChild(item)) return false;
-    var grid = parent.grid;
-    var order = gridSlots(parent);
-    var targetIndex = order.indexOf(target.node);
-    if (targetIndex < 0) { layoutContainer(parent, null); return true; }
-    var itemIndex = typeof homeIndex === 'number' && homeIndex >= 0 ? homeIndex : targetIndex;
-    order.splice(order.indexOf(item.node), 1);
-    order.splice(targetIndex, 0, item.node);
-    var from = order.indexOf(target.node);
-    if (from >= 0) order.splice(from, 1);
-    order.splice(Math.max(0, Math.min(itemIndex, order.length)), 0, target.node);
-    order.forEach(function (n) { grid.appendChild(n); });
-    layoutContainer(parent, null);
+  function swapCells(a, b, container) {
+    if (!container || !container.grid) return false;
+    var ca = cellOf(container, a);
+    var cb = cellOf(container, b);
+    if (!ca || !cb) return false;
+    a.data.col = cb.col;
+    a.data.row = cb.row;
+    b.data.col = ca.col;
+    b.data.row = ca.row;
+    [a, b].forEach(function (item) {
+      if (isChild(item)) return;
+      item.data.parent = container.id;
+      attachChild(item);
+    });
+    layoutContainer(container, null);
     return true;
   }
 
-  function attachChildAt(item, index) {
-    var parent = containerOf(item);
-    if (!parent || !parent.grid || !item.node) { attachChild(item); return; }
-    var slots = gridSlots(parent, item);
-    var before = slots[Math.max(0, Math.min(index, slots.length))] || null;
-    attachChild(item);
-    if (before) parent.grid.insertBefore(item.node, before);
-    else parent.grid.appendChild(item.node);
-    layoutContainer(parent, null);
-  }
 
   function attachChild(item) {
     var parent = containerOf(item);
@@ -1643,11 +1716,15 @@ window.NoteApp = window.NoteApp || {};
 
   var lift = [];
 
-  function liftChild(item, container) {
+  function liftChild(item, container, cell) {
     if (!container || !container.grid || !item.node) return;
     var ghost = node('div', 'bd-item bd-ghost');
     ghost.setAttribute('data-span', String(item.data && item.data.span ? item.data.span : 1));
     ghost.setAttribute('data-rows', String(item.data && item.data.rows ? item.data.rows : 3));
+    if (cell) {
+      ghost.setAttribute('data-col', String(cell.col));
+      ghost.setAttribute('data-row', String(cell.row));
+    }
     if (item.node.parentNode === container.grid) container.grid.insertBefore(ghost, item.node);
     else container.grid.appendChild(ghost);
     lift.push({ ghost: ghost, container: container });
@@ -1719,8 +1796,7 @@ window.NoteApp = window.NoteApp || {};
       if (point.y < item.y || point.y > item.y + item.h) return;
       if (!best || (item.z || 0) > (best.z || 0)) best = item;
     });
-    if (!best) return null;
-    return { item: best, index: dropIndexAt(best, clientX, clientY) };
+    return best ? { item: best } : null;
   }
 
   function openAddMenu(item, button) {
