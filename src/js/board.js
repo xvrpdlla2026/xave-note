@@ -2323,7 +2323,8 @@ window.NoteApp = window.NoteApp || {};
     ctx.lineWidth = stroke.w;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.globalCompositeOperation = stroke.e ? 'destination-out' : 'source-over';
+    var erase = stroke.e || String(stroke.c).toLowerCase() === '#ffffff';
+    ctx.globalCompositeOperation = erase ? 'destination-out' : 'source-over';
     if (points.length === 1) {
       ctx.beginPath();
       ctx.arc(points[0][0], points[0][1], Math.max(0.5, stroke.w / 2), 0, Math.PI * 2);
