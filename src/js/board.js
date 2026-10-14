@@ -1226,59 +1226,71 @@ window.NoteApp = window.NoteApp || {};
   var TABLE_ROW = 30;
   var TABLE_MIN_H = 140;
 
-  function tableBlankRow(width) {
-    var row = [];
-    for (var i = 0; i < width; i++) row.push('');
-    return row;
-  }
-
-  function tableAddRow(item) {
-    var cells = item.data.cells;
-    cells.push(tableBlankRow(cells[0] ? cells[0].length : 1));
-  }
-
-  function tableAddColumn(item) {
-    item.data.cells.forEach(function (row) { row.push(''); });
-  }
-
-  function tableIndex(item, key, fallback) {
-    var at = item.tableAt;
-    return at && typeof at[key] === 'number' ? at[key] : fallback;
-  }
-
-  function tableRemoveRow(item) {
-    var cells = item.data.cells;
-    if (cells.length <= 1) return;
-    var at = Math.min(Math.max(tableIndex(item, 'r', cells.length - 1), 0), cells.length - 1);
-    cells.splice(at, 1);
-    item.tableAt = null;
-  }
-
-  function tableRemoveColumn(item) {
-    var cells = item.data.cells;
-    if (!cells[0] || cells[0].length <= 1) return;
-    var at = Math.min(Math.max(tableIndex(item, 'c', cells[0].length - 1), 0), cells[0].length - 1);
-    cells.forEach(function (row) { row.splice(at, 1); });
-    item.tableAt = null;
-  }
-
-  function tableChange(item, rows, cols) {
-    if (lockOf(item)) return;
+  function tableShape(item, rows, cols, drop) {
     var cells = item.data.cells;
     if (!cells || !cells.length) return;
-    if (rows > 0 && cols > 0) return;
-    if ((rows < 0 && cells.length <= 1) || (cols < 0 && cells[0].length <= 1)) return;
+    var oldRows = cells.length;
+    var oldCols = cells[0].length;
+    var at = item.tableAt;
+    var skipRow = drop === 'r' && at && typeof at.r === 'number' ? Math.min(at.r, oldRows - 1) : -1;
+    var skipCol = drop === 'c' && at && typeof at.c === 'number' ? Math.min(at.c, oldCols - 1) : -1;
+    var wantRows = Math.max(1, Math.min(40, rows));
+    var wantCols = Math.max(1, Math.min(40, cols));
+    if (skipRow < 0 && skipCol < 0 && wantRows === oldRows && wantCols === oldCols) return;
+    if (lockOf(item)) return;
     pushUndo('edit');
-    if (rows > 0) tableAddRow(item);
-    if (cols > 0) tableAddColumn(item);
-    if (rows < 0) tableRemoveRow(item);
-    if (cols < 0) tableRemoveColumn(item);
-    if (rows) item.h = Math.max(TABLE_MIN_H, item.h + rows * TABLE_ROW);
+    var source = [];
+    for (var r = 0; r < oldRows; r++) {
+      if (r === skipRow) continue;
+      var row = [];
+      for (var col = 0; col < oldCols; col++) {
+        if (col === skipCol) continue;
+        row.push(cells[r][col] || '');
+      }
+      source.push(row);
+    }
+    var next = [];
+    for (var i = 0; i < wantRows; i++) {
+      var line = source[i] ? source[i].slice(0, wantCols) : [];
+      while (line.length < wantCols) line.push('');
+      next.push(line);
+    }
+    item.data.cells = next;
+    item.tableAt = null;
+    item.h = Math.max(TABLE_MIN_H, Math.min(1600, item.h + (wantRows - oldRows) * TABLE_ROW));
     saveItem(item);
     placeItem(item);
     repaintBody(item);
   }
 
+  function tableChange(item, rows, cols) {
+    var cells = item.data.cells;
+    if (!cells || !cells.length) return;
+    tableShape(item, cells.length + rows, cells[0].length + cols, rows === -1 ? 'r' : (cols === -1 ? 'c' : null));
+  }
+
+  function tableTyped(item, axis, raw) {
+    var cells = item.data.cells;
+    if (!cells || !cells.length) return;
+    var want = parseInt(raw, 10);
+    if (isNaN(want)) return;
+    if (axis === 'r') tableShape(item, want, cells[0].length, null);
+    else tableShape(item, cells.length, want, null);
+  }
+  function tableNum(item, axis, value) {
+    var input = node('input', 'bd-table__num');
+    input.type = 'number';
+    input.min = '1';
+    input.max = '40';
+    input.value = String(value);
+    input.setAttribute('aria-label', axis === 'r' ? 'Rows' : 'Columns');
+    input.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
+    input.addEventListener('change', function () { tableTyped(item, axis, input.value); });
+    input.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') { event.preventDefault(); tableTyped(item, axis, input.value); }
+    });
+    return input;
+  }
   function tableStep(item, label, disabled, run) {
     var button = node('button', 'bd-table__btn', label);
     button.type = 'button';
@@ -1319,9 +1331,11 @@ window.NoteApp = window.NoteApp || {};
     });
     var bar = node('div', 'bd-table__bar');
     bar.appendChild(node('span', 'bd-table__lbl', 'Rows'));
+    bar.appendChild(tableNum(item, 'r', cells.length));
     bar.appendChild(tableStep(item, '\u2212', cells.length <= 1, function () { tableChange(item, -1, 0); }));
     bar.appendChild(tableStep(item, '+', false, function () { tableChange(item, 1, 0); }));
     bar.appendChild(node('span', 'bd-table__lbl', 'Cols'));
+    bar.appendChild(tableNum(item, 'c', cells[0].length));
     bar.appendChild(tableStep(item, '\u2212', cells[0].length <= 1, function () { tableChange(item, 0, -1); }));
     bar.appendChild(tableStep(item, '+', false, function () { tableChange(item, 0, 1); }));
     wrap.appendChild(bar);
