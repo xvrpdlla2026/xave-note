@@ -8,7 +8,7 @@ window.NoteApp = window.NoteApp || {};
   var MIN_Z = 0.3;
   var MAX_Z = 2.5;
   var STEP = 1.15;
-  var SIZES = { note: [268, 176], todo: [256, 196], link: [264, 128], image: [288, 216], comment: [232, 144], ref: [244, 168], line: [260, 44], column: [280, 340], table: [320, 208], group: [232, 62], file: [300, 236] };
+  var SIZES = { note: [268, 176], todo: [256, 196], link: [268, 272], image: [288, 216], comment: [232, 144], ref: [244, 168], line: [260, 44], column: [280, 340], table: [320, 208], group: [232, 62], file: [300, 236] };
 
   var board = {
     open: false,
@@ -177,6 +177,7 @@ window.NoteApp = window.NoteApp || {};
     input.addEventListener('input', function () {
       item.data[key] = input.value;
       queueItemSave(item);
+      if (item.data.syncLink) item.data.syncLink();
     });
     input.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
     return input;
@@ -257,21 +258,173 @@ window.NoteApp = window.NoteApp || {};
     return wrap;
   }
 
+  function hostOf(url) {
+    try { return new URL(url).hostname.replace(/^www\./, ''); } catch (e) { return ''; }
+  }
+
+  function linkUrl(value) {
+    var raw = String(value || '').trim();
+    if (!raw) return '';
+    if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) {
+      if (!/^[\w-]+(\.[\w-]+)+(\/|$|:)/.test(raw) && raw.indexOf('localhost') !== 0) return '';
+      raw = 'https://' + raw;
+    }
+    try {
+      var url = new URL(raw);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return '';
+      return url.href;
+    } catch (e) { return ''; }
+  }
+
+  function absolute(src, base) {
+    try { return new URL(src, base).href; } catch (e) { return ''; }
+  }
+
+  function metaFromHtml(html, url) {
+    var head = String(html || '').slice(0, 300000);
+    var metas = {};
+    var re = /<meta\s+([^>]+?)\/?>/gi;
+    var m;
+    while ((m = re.exec(head))) {
+      var key = (m[1].match(/(?:property|name)\s*=\s*["']([^"']+)["']/i) || [])[1];
+      var val = (m[1].match(/content\s*=\s*["']([^"']*)["']/i) || [])[1];
+      if (key && val && !metas[key.toLowerCase()]) metas[key.toLowerCase()] = val;
+    }
+    var title = metas['og:title'] || metas['twitter:title'] || ((head.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '');
+    var icon = (head.match(/<link[^>]+rel=["'][^"']*icon[^"']*["'][^>]*>/i) || [''])[0];
+    icon = (icon.match(/href\s*=\s*["']([^"']+)["']/i) || [])[1] || '';
+    return {
+      title: util.decodeEntities(String(title).trim()),
+      description: util.decodeEntities((metas['og:description'] || metas['twitter:description'] || metas['description'] || '').trim()),
+      image: absolute(metas['og:image:secure_url'] || metas['og:image'] || metas['twitter:image'] || '', url),
+      favicon: absolute(icon, url),
+      host: hostOf(url),
+    };
+  }
+
+  function fetchWithTimeout(url, ms) {
+    if (typeof AbortController !== 'function') return fetch(url);
+    var ctrl = new AbortController();
+    var timer = setTimeout(function () { ctrl.abort(); }, ms);
+    return fetch(url, { signal: ctrl.signal }).then(function (res) { clearTimeout(timer); return res; }, function (err) { clearTimeout(timer); throw err; });
+  }
+
+  function unfurlDirect(url) {
+    return fetchWithTimeout(url, 8000).then(function (res) {
+      if (!res || !res.ok) throw new Error('bad response');
+      return res.text();
+    }).then(function (html) {
+      var meta = metaFromHtml(html, url);
+      if (!meta.title && !meta.image && !meta.description) throw new Error('no metadata');
+      return meta;
+    });
+  }
+
+  function unfurlService(url) {
+    var api = 'https://api.microlink.io/?meta=true&url=' + encodeURIComponent(url);
+    return fetchWithTimeout(api, 10000).then(function (res) { return res.json(); }).then(function (json) {
+      var data = json && json.data;
+      if (!data) throw new Error('no data');
+      return {
+        title: data.title || '',
+        description: data.description || '',
+        image: data.image && data.image.url ? data.image.url : '',
+        favicon: data.logo && data.logo.url ? data.logo.url : '',
+        host: hostOf(url),
+      };
+    });
+  }
+
+  function unfurl(url) {
+    return unfurlDirect(url).catch(function () { return unfurlService(url); });
+  }
+
+  function renderLinkCard(item) {
+    if (!item.node) return;
+    var box = item.node.querySelector('.bd-linkcard__preview');
+    if (!box) return;
+    box.textContent = '';
+    var url = linkUrl(item.data.url);
+    if (!url) { box.style.display = 'none'; return; }
+    box.style.display = '';
+    var data = item.data.link && item.data.link.url === url ? item.data.link : null;
+    if (!data) {
+      box.appendChild(node('span', 'bd-linkcard__status', 'Reading link...'));
+      return;
+    }
+    if (data.image) {
+      var shot = node('img', 'bd-linkcard__shot');
+      shot.src = data.image;
+      shot.alt = '';
+      shot.setAttribute('referrerpolicy', 'no-referrer');
+      shot.setAttribute('loading', 'lazy');
+      shot.addEventListener('error', function () { if (shot.parentNode) shot.parentNode.removeChild(shot); });
+      box.appendChild(shot);
+    }
+    var row = node('div', 'bd-linkcard__row');
+    var glyph = node('span', 'bd-linkcard__glyph');
+    glyph.appendChild(App.ui.icon('link', 13));
+    if (data.favicon) {
+      var icon = node('img', 'bd-linkcard__icon');
+      icon.src = data.favicon;
+      icon.alt = '';
+      icon.setAttribute('referrerpolicy', 'no-referrer');
+      icon.addEventListener('error', function () { if (icon.parentNode) icon.parentNode.replaceChild(glyph, icon); });
+      row.appendChild(icon);
+    } else {
+      row.appendChild(glyph);
+    }
+    row.appendChild(node('span', 'bd-linkcard__host', data.host || hostOf(url)));
+    box.appendChild(row);
+    var name = String(item.data.title || data.title || '').trim() || data.host || hostOf(url);
+    box.appendChild(node('span', 'bd-linkcard__name', name));
+    if (data.description) box.appendChild(node('p', 'bd-linkcard__desc', data.description));
+    if (data.failed) box.appendChild(node('span', 'bd-linkcard__status', 'No preview available for this page'));
+  }
+
+  function unfurlLink(item) {
+    var url = linkUrl(item.data.url);
+    if (!url || !item.node) return;
+    var known = item.data.link;
+    if (known && known.url === url && !known.failed) { renderLinkCard(item); return; }
+    if (item.data.linkBusy === url) return;
+    item.data.linkBusy = url;
+    renderLinkCard(item);
+    unfurl(url).then(function (meta) {
+      if (item.data.linkBusy !== url) return;
+      item.data.linkBusy = '';
+      item.data.link = { url: url, title: meta.title, description: meta.description, image: meta.image, favicon: meta.favicon, host: meta.host || hostOf(url) };
+      saveItem(item);
+      renderLinkCard(item);
+    }).catch(function () {
+      if (item.data.linkBusy !== url) return;
+      item.data.linkBusy = '';
+      item.data.link = { url: url, title: '', description: '', image: '', favicon: '', host: hostOf(url), failed: true };
+      saveItem(item);
+      renderLinkCard(item);
+    });
+  }
+
   function linkBody(item) {
-    var wrap = node('div', 'bd-link');
-    wrap.appendChild(field(item, 'title', 'input', 'bd-title', 'Link title'));
+    var wrap = node('div', 'bd-linkcard');
+    wrap.appendChild(node('span', 'bd-linkcard__label', 'Link title'));
+    wrap.appendChild(field(item, 'title', 'input', 'bd-title', ''));
     wrap.appendChild(field(item, 'url', 'input', 'bd-url', 'https://'));
-    var open = node('a', 'bd-link__open', 'Open link');
+    wrap.appendChild(node('div', 'bd-linkcard__preview'));
+    var open = node('a', 'bd-linkcard__open', 'Open link');
     open.setAttribute('data-board-nodrag', '1');
     open.setAttribute('rel', 'noreferrer noopener');
     open.setAttribute('target', '_blank');
+    var queue = util.debounce(function () { unfurlLink(item); }, 700);
     function sync() {
-      var url = (item.data.url || '').trim();
-      open.setAttribute('href', url || '#', );
+      var url = linkUrl(item.data.url);
+      open.setAttribute('href', url || '#');
       open.style.display = url ? '' : 'none';
+      renderLinkCard(item);
+      if (url && (!item.data.link || item.data.link.url !== url)) queue();
     }
-    sync();
     item.data.syncLink = sync;
+    sync();
     wrap.appendChild(open);
     return wrap;
   }
