@@ -10,21 +10,6 @@ window.NoteApp = window.NoteApp || {};
   var STEP = 1.15;
   var SIZES = { note: [268, 176], todo: [256, 196], link: [268, 96], image: [288, 216], comment: [268, 132], ref: [244, 168], column: [420, 320], table: [320, 208], group: [232, 62], file: [300, 236], draw: [380, 280] };
 
-
-  var SHAPES = {
-    rectangle: { label: 'Rectangle', w: 240, h: 160, markup: '<rect x="2" y="2" width="96" height="96"/>' },
-    rounded: { label: 'Rounded', w: 240, h: 160, markup: '<rect x="2" y="2" width="96" height="96" rx="12"/>' },
-    ellipse: { label: 'Ellipse', w: 220, h: 160, markup: '<ellipse cx="50" cy="50" rx="48" ry="48"/>' },
-    triangle: { label: 'Triangle', w: 200, h: 170, markup: '<polygon points="50,3 97,97 3,97"/>' },
-    diamond: { label: 'Diamond', w: 180, h: 180, markup: '<polygon points="50,3 97,50 50,97 3,50"/>' },
-    star: { label: 'Star', w: 170, h: 170, markup: '<polygon points="50,2 61.5,34.2 95.7,35.2 68.5,56 78.2,88.8 50,69.5 21.8,88.8 31.5,56 4.3,35.2 38.5,34.2"/>' },
-    line: { label: 'Line', w: 260, h: 80, markup: '<line x1="2" y1="50" x2="98" y2="50"/>' },
-    arrow: { label: 'Arrow', w: 260, h: 90, markup: '<path d="M2 50H92M76 36L97 50L76 64"/>' },
-  };
-  var SHAPE_ORDER = ['rectangle', 'rounded', 'ellipse', 'triangle', 'diamond', 'star', 'line', 'arrow'];
-
-
-
   var board = {
     open: false,
     items: [],
@@ -2489,7 +2474,6 @@ window.NoteApp = window.NoteApp || {};
 
   var SHAPES = {
     rect: { label: 'Rectangle', icon: 'rect', def: [240, 160], points: function (w, h) { return [[0, 0], [w, 0], [w, h], [0, h], [0, 0]]; } },
-    rounded: { label: 'Rounded', icon: 'rounded', def: [240, 160], points: shapeRounded },
     ellipse: { label: 'Ellipse', icon: 'ellipse', def: [240, 170], points: shapeEllipse },
     triangle: { label: 'Triangle', icon: 'triangle', def: [210, 170], points: function (w, h) { return [[w / 2, 0], [w, h], [0, h], [w / 2, 0]]; } },
     diamond: { label: 'Diamond', icon: 'diamond', def: [180, 180], points: function (w, h) { return [[w / 2, 0], [w, h / 2], [w / 2, h], [0, h / 2], [w / 2, 0]]; } },
@@ -2497,7 +2481,7 @@ window.NoteApp = window.NoteApp || {};
     line: { label: 'Line', icon: 'line', free: true, def: [240, 0], points: function (dx, dy) { return [[0, 0], [dx, dy]]; } },
     arrow: { label: 'Arrow', icon: 'arrow', free: true, def: [240, 0], points: shapeArrow },
   };
-  var SHAPE_ORDER = ['rect', 'rounded', 'ellipse', 'triangle', 'diamond', 'star', 'line', 'arrow'];
+  var SHAPE_ORDER = ['rect', 'ellipse', 'triangle', 'diamond', 'star', 'line', 'arrow'];
 
   function shapeEllipse(w, h) {
     var out = [];
@@ -2505,22 +2489,6 @@ window.NoteApp = window.NoteApp || {};
       var a = (i / 48) * Math.PI * 2;
       out.push([(w / 2) * (1 + Math.cos(a)), (h / 2) * (1 + Math.sin(a))]);
     }
-    return out;
-  }
-
-  function shapeRounded(w, h) {
-    var r = Math.min(w, h) * 0.18;
-    var out = [];
-    var arc = function (cx, cy, from, to) {
-      for (var i = 0; i <= 6; i++) {
-        var a = from + ((to - from) * i) / 6;
-        out.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
-      }
-    };
-    arc(w - r, r, -Math.PI / 2, 0);
-    arc(w - r, h - r, 0, Math.PI / 2);
-    arc(r, h - r, Math.PI / 2, Math.PI);
-    arc(r, r, Math.PI, Math.PI * 1.5);
     return out;
   }
 
