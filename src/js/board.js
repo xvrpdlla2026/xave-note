@@ -2907,6 +2907,7 @@ window.NoteApp = window.NoteApp || {};
   }
 
   var INK_GRIP = 26;
+  var INK_NEAR = 18;
   var inkChromeColor = null;
 
   function inkChrome() {
@@ -3015,6 +3016,28 @@ window.NoteApp = window.NoteApp || {};
       if ((a[1] > point[1]) !== (b[1] > point[1]) && point[0] < ((b[0] - a[0]) * (point[1] - a[1])) / (b[1] - a[1]) + a[0]) inside = !inside;
     }
     return inside;
+  }
+
+  function inkBoxNear(box, point) {
+    var dx = Math.max(box.x - point[0], 0, point[0] - (box.x + box.w));
+    var dy = Math.max(box.y - point[1], 0, point[1] - (box.y + box.h));
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  function inkBoxAt(point) {
+    var best = -1;
+    var bestPair = null;
+    for (var i = 0; i < inkState.strokes.length; i++) {
+      var box = strokeBox([inkScreenStroke(inkState.strokes[i])]);
+      var away = inkBoxNear(box, point);
+      if (away > INK_NEAR) continue;
+      var pair = [away, box.w * box.h];
+      if (!bestPair || pair[0] < bestPair[0] || (pair[0] === bestPair[0] && pair[1] <= bestPair[1])) {
+        best = i;
+        bestPair = pair;
+      }
+    }
+    return best;
   }
 
   function inkStrokeAt(point) {
@@ -3431,6 +3454,7 @@ window.NoteApp = window.NoteApp || {};
     }
     if (inkState.tool === 'move') {
       var at = inkStrokeAt(point);
+      if (at < 0) at = inkBoxAt(point);
       inkState.sel = at >= 0 ? at : null;
       inkState.drag = at >= 0 ? inkGrab(point) : null;
       inkRepaint();
@@ -3445,6 +3469,7 @@ window.NoteApp = window.NoteApp || {};
       inkRepaint();
       return;
     }
+    inkState.sel = null;
     var erase = inkState.tool === 'eraser';
     var stroke = {
       c: erase ? '#ffffff' : inkState.color,
