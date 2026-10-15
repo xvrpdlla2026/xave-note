@@ -4017,6 +4017,5 @@ dialog:not([open]) { display: none; }
 .board__map { position: absolute; top: 12px; right: 14px; z-index: 12; width: 216px; padding: 8px; display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-raised); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28); }
 .board__map-title { margin-right: auto; padding-left: 2px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-faint); }
 .board__map .board__zoom { position: static; top: auto; right: auto; margin-left: auto; }
-.board__map-canvas { display: block; width: 200px; height: 132px; border: 1px solid var(--border); border-radius: 8px; background: rgba(0, 0, 0, 0.3); cursor: grab; touch-action: none; }
-.board__map-canvas.is-dragging { cursor: grabbing; }
+.board__map-canvas { display: block; width: 200px; height: 132px; border: 1px solid var(--border); border-radius: 8px; background: rgba(0, 0, 0, 0.3); cursor: default; touch-action: none; }
 .board__map-canvas:hover { border-color: var(--border-strong); }

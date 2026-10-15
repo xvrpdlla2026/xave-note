@@ -256,6 +256,26 @@ window.NoteApp = window.NoteApp || {};
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.78)';
     ctx.lineWidth = 1.5;
     ctx.strokeRect(mx(-view.x / view.z), my(-view.y / view.z), Math.max((rect.width / view.z) * fit.k, 3), Math.max((rect.height / view.z) * fit.k, 3));
+    if (board.mapHover) {
+      var hx = board.mapHover.x;
+      var hy = board.mapHover.y;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(hx + 0.5, 0);
+      ctx.lineTo(hx + 0.5, MAP_H);
+      ctx.moveTo(0, hy + 0.5);
+      ctx.lineTo(MAP_W, hy + 0.5);
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(hx, hy, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
+      ctx.beginPath();
+      ctx.arc(hx, hy, 4.6, 0, Math.PI * 2);
+      ctx.stroke();
+    }
   }
 
   function mapCenter(worldX, worldY) {
@@ -4655,10 +4675,19 @@ window.NoteApp = window.NoteApp || {};
       if (event.button !== 0) return;
       event.preventDefault();
       try { mapCanvas.setPointerCapture(event.pointerId); } catch (e) { }
-      mapCanvas.classList.add('is-dragging');
+      mapHover(event);
       mapDrag(event);
     });
+    var mapHover = function (event) {
+      var rect = mapCanvas.getBoundingClientRect();
+      board.mapHover = {
+        x: (event.clientX - rect.left) * (MAP_W / Math.max(rect.width, 1)),
+        y: (event.clientY - rect.top) * (MAP_H / Math.max(rect.height, 1)),
+      };
+      mapDraw();
+    };
     mapCanvas.addEventListener('pointermove', function (event) {
+      mapHover(event);
       try {
         if (!mapCanvas.hasPointerCapture(event.pointerId)) return;
       } catch (e) {
@@ -4666,16 +4695,17 @@ window.NoteApp = window.NoteApp || {};
       }
       mapDrag(event);
     });
+    mapCanvas.addEventListener('pointerleave', function () {
+      board.mapHover = null;
+      mapDraw();
+    });
     var mapRelease = function (event) {
-      mapCanvas.classList.remove('is-dragging');
       try {
         if (mapCanvas.hasPointerCapture(event.pointerId)) mapCanvas.releasePointerCapture(event.pointerId);
       } catch (e) { }
     };
     mapCanvas.addEventListener('pointerup', mapRelease);
     mapCanvas.addEventListener('pointercancel', mapRelease);
-    window.addEventListener('pointerup', function () { mapCanvas.classList.remove('is-dragging'); });
-    window.addEventListener('pointercancel', function () { mapCanvas.classList.remove('is-dragging'); });
     map.appendChild(mapTitle);
     map.appendChild(zoom);
     map.appendChild(mapCanvas);
