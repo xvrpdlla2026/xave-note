@@ -946,6 +946,21 @@ window.NoteApp = window.NoteApp || {};
     richSync(ctx);
   }
 
+  function richDirty(ctx) {
+    var frag = ctx.range.cloneContents();
+    var nodes = Array.prototype.slice.call(frag.querySelectorAll('*'));
+    if (nodes.some(function (el) {
+      return el.getAttribute('style') || /^(B|I|U|S|EM|STRONG|FONT|MARK|H[1-6])$/.test(el.tagName);
+    })) return true;
+    var el = ctx.range.commonAncestorContainer;
+    if (el && el.nodeType === 3) el = el.parentNode;
+    while (el && el !== ctx.box) {
+      if (el.nodeType === 1 && (el.getAttribute('style') || /^(B|I|U|S|EM|STRONG|FONT|MARK|H[1-6])$/.test(el.tagName))) return true;
+      el = el.parentNode;
+    }
+    return false;
+  }
+
   function richClearSelection(ctx) {
     pushUndo('format');
     var chain = [];
@@ -1002,6 +1017,10 @@ window.NoteApp = window.NoteApp || {};
   function clearFormatting(item) {
     var ctx = richSelection();
     if (ctx && (!item || ctx.item === item)) {
+      if (!richDirty(ctx)) {
+        util.toast('Nothing to clear here.', 'info');
+        return;
+      }
       richClearSelection(ctx);
       return;
     }
@@ -1205,7 +1224,7 @@ window.NoteApp = window.NoteApp || {};
     var pop = node('div', 'bd-rich__pop');
     bar.appendChild(pop);
     var done = group();
-    var clear = richButton('bd-rich__btn--clear', '\u2715', 'Clear formatting');
+    var clear = richButton('bd-rich__btn--clear bd-rich__btn--wide', 'Clear', 'Clear formatting');
     clear.addEventListener('click', function () { clearFormatting(null); });
     done.appendChild(clear);
     document.body.appendChild(bar);
