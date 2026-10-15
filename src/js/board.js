@@ -110,6 +110,7 @@ window.NoteApp = window.NoteApp || {};
   function applyView() {
     var view = board.view;
     board.canvas.style.transform = 'translate(' + view.x + 'px, ' + view.y + 'px) scale(' + view.z + ')';
+    board.canvas.style.setProperty('--bd-z', view.z);
     board.grid.style.backgroundSize = (26 * view.z) + 'px ' + (26 * view.z) + 'px';
     board.grid.style.backgroundPosition = view.x + 'px ' + view.y + 'px';
     board.zoomLabel.textContent = Math.round(view.z * 100) + '%';
@@ -1261,7 +1262,7 @@ window.NoteApp = window.NoteApp || {};
       var load = function () {
         return Promise.resolve(App.db.getFileBlob(data.fileId)).then(function (res) { return res ? res.blob : null; });
       };
-      var holder = App.ui.filePreviewContent(filePreview(data), load, { pdfChrome: false });
+      var holder = App.ui.filePreviewContent(filePreview(data), load, { pdfChrome: false, pdf: 'bd-file__pdf' });
       if (holder) {
         stage = node('div', 'bd-ref__preview');
         stage.appendChild(holder);

@@ -3826,10 +3826,11 @@ dialog:not([open]) { display: none; }
 .bd-todo__x:hover { color: var(--danger); }
 .bd-todo__add { align-self: flex-start; margin-top: 2px; padding: 3px 6px; border: none; border-radius: 6px; background: none; color: var(--text-faint); font: inherit; font-size: 11px; cursor: pointer; }
 .bd-todo__add:hover { background: var(--bg-hover); color: var(--text); }
-.bd-image { display: flex; align-items: center; justify-content: center; height: 100%; overflow: hidden; }
+.bd-image { display: flex; align-items: center; justify-content: center; height: 100%; overflow: hidden; position: relative; }
 .bd-file__video { display: block; width: 100%; height: 100%; border-radius: 6px; background: #000; object-fit: contain; }
 .bd-file__audio { width: 100%; align-self: center; }
 .bd-file__pdf { width: 100%; height: 100%; border: 0; border-radius: 6px; background: #fff; }
+.bd-image > .bd-file__pdf, .bd-ref__preview > .bd-file__pdf { position: absolute; top: 0; left: 0; width: calc(100% * var(--bd-z, 1)); height: calc(100% * var(--bd-z, 1)); transform: scale(calc(1 / var(--bd-z, 1))); transform-origin: 0 0; }
 .bd-file__doc { flex: 1; min-height: 0; width: 100%; overflow: auto; font-size: 11px; text-align: left; }
 .bd-file__doc .pane-preview__doc { overflow: auto; padding: 8px; font-size: 11px; }
 .bd-file__doc pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
@@ -3955,7 +3956,7 @@ dialog:not([open]) { display: none; }
 .bd-group__link:hover { background: var(--bg-hover); color: var(--text); }
 .bd-group__link.is-on { color: var(--accent); border-color: var(--accent-soft); background: var(--accent-soft); }
 
-.bd-ref__preview { flex: 1; min-height: 0; display: flex; overflow: hidden; border-radius: 8px; background: var(--bg-raised); }
+.bd-ref__preview { flex: 1; min-height: 0; display: flex; overflow: hidden; border-radius: 8px; background: var(--bg-raised); position: relative; }
 .bd-ref__preview > * { flex: 1; min-width: 0; min-height: 0; }
 .bd-ref__preview img, .bd-ref__preview video { display: block; width: 100%; height: 100%; object-fit: cover; }
 .bd-ref__preview audio { width: 100%; align-self: center; }
