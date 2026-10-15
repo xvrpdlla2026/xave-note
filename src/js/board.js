@@ -930,6 +930,7 @@ window.NoteApp = window.NoteApp || {};
     var finish = function (commit) {
       if (closed) return;
       closed = true;
+      document.removeEventListener('pointerdown', onClickAway, true);
       var text = input.value.trim();
       if (commit && text !== (item.data.title || '')) {
         pushUndo('rename');
@@ -939,6 +940,14 @@ window.NoteApp = window.NoteApp || {};
       if (input.parentNode) input.parentNode.removeChild(input);
       span.textContent = labelText(item);
       span.style.display = '';
+    };
+    var onClickAway = function (event) {
+      if (!document.contains(input)) {
+        finish(false);
+        return;
+      }
+      if (event.target === input || input.contains(event.target)) return;
+      finish(true);
     };
     input.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
     input.addEventListener('dblclick', function (event) { event.stopPropagation(); });
@@ -955,6 +964,7 @@ window.NoteApp = window.NoteApp || {};
     input.addEventListener('blur', function () { finish(true); });
     span.style.display = 'none';
     span.parentNode.insertBefore(input, span.nextSibling);
+    document.addEventListener('pointerdown', onClickAway, true);
     input.focus();
     input.select();
   }
