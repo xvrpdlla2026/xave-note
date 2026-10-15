@@ -910,7 +910,17 @@ window.NoteApp = window.NoteApp || {};
     input.value = item.data.title || '';
     input.placeholder = kindLabel(item);
     input.setAttribute('aria-label', 'Rename card');
+    var measure = document.createElement('canvas').getContext('2d');
+    var grow = function () {
+      var style = getComputedStyle(input);
+      measure.font = style.fontSize + ' ' + style.fontFamily;
+      var gap = parseFloat(style.letterSpacing) || 0;
+      var text = (input.value || input.placeholder || '').toUpperCase();
+      var wide = measure.measureText(text).width + gap * text.length;
+      input.style.width = Math.max(48, Math.ceil(wide) + 18) + 'px';
+    };
     input.style.width = Math.max(48, span.offsetWidth + 14) + 'px';
+    input.addEventListener('input', grow);
     var closed = false;
     var finish = function (commit) {
       if (closed) return;
