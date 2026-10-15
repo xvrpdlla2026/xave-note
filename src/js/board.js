@@ -2477,11 +2477,16 @@ window.NoteApp = window.NoteApp || {};
     ellipse: { label: 'Ellipse', icon: 'ellipse', def: [240, 170], points: shapeEllipse },
     triangle: { label: 'Triangle', icon: 'triangle', def: [210, 170], points: function (w, h) { return [[w / 2, 0], [w, h], [0, h], [w / 2, 0]]; } },
     diamond: { label: 'Diamond', icon: 'diamond', def: [180, 180], points: function (w, h) { return [[w / 2, 0], [w, h / 2], [w / 2, h], [0, h / 2], [w / 2, 0]]; } },
+    hexagon: { label: 'Hexagon', icon: 'hexagon', def: [220, 150], points: function (w, h) { return [[w * 0.25, 0], [w * 0.75, 0], [w, h / 2], [w * 0.75, h], [w * 0.25, h], [0, h / 2], [w * 0.25, 0]]; } },
     star: { label: 'Star', icon: 'star', def: [180, 180], points: shapeStar },
+    cross: { label: 'Cross', icon: 'cross', def: [170, 170], points: shapeCross },
+    heart: { label: 'Heart', icon: 'heart', def: [180, 160], points: shapeHeart },
+    callout: { label: 'Callout', icon: 'callout', def: [240, 160], points: shapeCallout },
+    cylinder: { label: 'Cylinder', icon: 'cylinder', def: [200, 170], points: shapeCylinder },
     line: { label: 'Line', icon: 'line', free: true, def: [240, 0], points: function (dx, dy) { return [[0, 0], [dx, dy]]; } },
     arrow: { label: 'Arrow', icon: 'arrow', free: true, def: [240, 0], points: shapeArrow },
   };
-  var SHAPE_ORDER = ['rect', 'ellipse', 'triangle', 'diamond', 'star', 'line', 'arrow'];
+  var SHAPE_ORDER = ['rect', 'ellipse', 'triangle', 'diamond', 'hexagon', 'star', 'cross', 'heart', 'callout', 'cylinder', 'line', 'arrow'];
 
   function shapeEllipse(w, h) {
     var out = [];
@@ -2489,6 +2494,66 @@ window.NoteApp = window.NoteApp || {};
       var a = (i / 48) * Math.PI * 2;
       out.push([(w / 2) * (1 + Math.cos(a)), (h / 2) * (1 + Math.sin(a))]);
     }
+    return out;
+  }
+
+  function shapeCross(w, h) {
+    var t = Math.min(w, h) / 3;
+    var a = (w - t) / 2;
+    var b = (h - t) / 2;
+    return [
+      [a, 0], [w - a, 0], [w - a, b], [w, b], [w, h - b], [w - a, h - b],
+      [w - a, h], [a, h], [a, h - b], [0, h - b], [0, b], [a, b], [a, 0],
+    ];
+  }
+
+  function shapeHeart(w, h) {
+    var out = [];
+    for (var i = 0; i <= 48; i++) {
+      var t = -Math.PI + (i / 48) * Math.PI * 2;
+      var x = 16 * Math.pow(Math.sin(t), 3);
+      var y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+      out.push([((x + 16) / 32) * w, ((13 - y) / 30) * h]);
+    }
+    return out;
+  }
+
+  function shapeCallout(w, h) {
+    var r = Math.min(w, h) * 0.14;
+    var bh = h * 0.76;
+    var out = [];
+    var corner = function (cx, cy, from, to) {
+      for (var i = 0; i <= 5; i++) {
+        var a = from + ((to - from) * i) / 5;
+        out.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+      }
+    };
+    corner(r, r, Math.PI, Math.PI * 1.5);
+    out.push([w - r, 0]);
+    corner(w - r, r, -Math.PI / 2, 0);
+    out.push([w, bh - r]);
+    corner(w - r, bh - r, 0, Math.PI / 2);
+    out.push([w * 0.36, bh], [w * 0.2, h], [w * 0.14, bh]);
+    out.push([r, bh]);
+    corner(r, bh - r, Math.PI / 2, Math.PI);
+    out.push([0, r]);
+    return out;
+  }
+
+  function shapeCylinder(w, h) {
+    var ry = Math.min(h * 0.18, w * 0.5);
+    var out = [];
+    var i;
+    for (i = 0; i <= 40; i++) {
+      var a = Math.PI + (i / 40) * Math.PI * 2;
+      out.push([w / 2 + (w / 2) * Math.cos(a), ry + ry * Math.sin(a)]);
+    }
+    out.push([0, h - ry]);
+    for (i = 0; i <= 20; i++) {
+      var t = Math.PI * (i / 20);
+      out.push([w / 2 - (w / 2) * Math.cos(t), h - ry + ry * Math.sin(t)]);
+    }
+    out.push([w, ry]);
     return out;
   }
 
