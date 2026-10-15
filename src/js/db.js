@@ -2206,6 +2206,24 @@ var vaultBusy = false;
     boardDeleteItem: function (id) {
       return write('DELETE FROM board_items WHERE id = ?', [id]);
     },
+    listBoards: function () {
+      return query('SELECT id, name, created_at, updated_at FROM boards ORDER BY created_at ASC').map(function (row) {
+        return { id: row.id, name: row.name || 'Untitled board', created_at: row.created_at, updated_at: row.updated_at };
+      });
+    },
+    boardRename: function (id, name) {
+      return write('UPDATE boards SET name = ?, updated_at = ? WHERE id = ?', [name, util.nowIso(), id]);
+    },
+    boardDelete: function (id) {
+      return write(function (run) {
+        run('DELETE FROM board_items WHERE board_id = ?', [id]);
+        run('DELETE FROM boards WHERE id = ?', [id]);
+      });
+    },
+    boardItemCount: function (id) {
+      var row = queryOne('SELECT COUNT(*) AS n FROM board_items WHERE board_id = ?', [id]);
+      return row ? Number(row.n) || 0 : 0;
+    },
   };
 
   App.db = API;

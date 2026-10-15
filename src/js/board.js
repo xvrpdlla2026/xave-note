@@ -4,7 +4,8 @@ window.NoteApp = window.NoteApp || {};
   'use strict';
 
   var util = App.util;
-  var BOARD_ID = 'xave';
+  var DEFAULT_BOARD_ID = 'xave';
+  var BOARD_ID = DEFAULT_BOARD_ID;
   var MIN_Z = 0.3;
   var MAX_Z = 2.5;
   var STEP = 1.15;
@@ -3184,6 +3185,116 @@ window.NoteApp = window.NoteApp || {};
     addItem('note', { at: at, data: { text: util.escapeHtml(text).replace(/\n/g, '<br>') } });
   }
 
+  function activeBoardId() {
+    try { return App.prefs.get('board.id', DEFAULT_BOARD_ID) || DEFAULT_BOARD_ID; } catch (e) { return DEFAULT_BOARD_ID; }
+  }
+
+  function boardName(id) {
+    try {
+      var row = App.db.boardGet(id);
+      return (row && row.name) || id;
+    } catch (e) { return id; }
+  }
+
+  function boardList() {
+    try {
+      var rows = App.db.listBoards() || [];
+      if (rows.length) return rows;
+    } catch (e) {  }
+    return [{ id: BOARD_ID, name: boardName(BOARD_ID) }];
+  }
+
+  function switchBoard(id) {
+    if (!id || id === BOARD_ID) return;
+    try { App.db.boardSaveView(BOARD_ID, board.view.x, board.view.y, board.view.z); } catch (e) {  }
+    try { App.prefs.set('board.id', id); } catch (e) {  }
+    util.toast('Opening ' + boardName(id) + '\u2026');
+    location.reload();
+  }
+
+  function newBoard() {
+    App.ui.prompt({
+      title: 'New board',
+      label: 'Board name',
+      value: '',
+      placeholder: 'Work',
+      confirmLabel: 'Create board',
+    }).then(function (name) {
+      if (name === null) return;
+      var id = 'board-' + util.uuid();
+      App.db.boardEnsure(id, name || 'Untitled board').then(function () {
+        switchBoard(id);
+      }).catch(function (err) {
+        util.toast('Could not create the board: ' + err.message, 'error');
+      });
+    });
+  }
+
+  function renameThisBoard() {
+    App.ui.prompt({
+      title: 'Rename board',
+      label: 'Board name',
+      value: boardName(BOARD_ID),
+      placeholder: 'Untitled board',
+      confirmLabel: 'Rename',
+    }).then(function (name) {
+      if (name === null) return;
+      App.db.boardRename(BOARD_ID, name || 'Untitled board').then(function () {
+        util.toast('Board renamed.', 'success');
+      }).catch(function (err) {
+        util.toast('Rename failed: ' + err.message, 'error');
+      });
+    });
+  }
+
+  function deleteThisBoard() {
+    var boards = boardList();
+    if (boards.length < 2) {
+      util.toast('This is the only board.', 'info');
+      return;
+    }
+    var count = 0;
+    try { count = App.db.boardItemCount(BOARD_ID); } catch (e) { count = 0; }
+    App.ui.dialog({
+      title: 'Delete this board?',
+      icon: 'warning',
+      danger: true,
+      message: '"' + boardName(BOARD_ID) + '" and its ' + count + ' card' + (count === 1 ? '' : 's') + ' are removed for good.',
+      consequences: [
+        'Notes and files on it stay in your library.',
+        'Export a bundle from Settings first if any of it matters.',
+      ],
+      confirmLabel: 'Delete board',
+    }).then(function (ok) {
+      if (!ok) return;
+      var next = boards.filter(function (row) { return row.id !== BOARD_ID; })[0];
+      App.db.boardDelete(BOARD_ID).then(function () {
+        switchBoard(next ? next.id : DEFAULT_BOARD_ID);
+      }).catch(function (err) {
+        util.toast('Delete failed: ' + err.message, 'error');
+      });
+    });
+  }
+
+  function showBoardsMenu(at) {
+    var items = [
+      { label: 'Back', icon: 'arrowLeft', onclick: function () { showBoardMenu(at); } },
+      { sep: true },
+    ];
+    boardList().forEach(function (row) {
+      items.push({
+        label: row.name,
+        checked: row.id === BOARD_ID,
+        onclick: function () { switchBoard(row.id); },
+      });
+    });
+    items.push({ sep: true });
+    items.push({ label: 'New board\u2026', icon: 'plus', onclick: newBoard });
+    items.push({ label: 'Rename this board\u2026', icon: 'pencil', onclick: renameThisBoard });
+    items.push({ label: 'Delete this board\u2026', icon: 'trash', onclick: deleteThisBoard });
+    App.ui.openMenu({ x: at.x, y: at.y, items: items });
+  }
+
   function showBoardMenu(at) {
     var newItem = function (kind) { return function () { addItem(kind, { at: board.menuAt }); }; };
     App.ui.openMenu({
@@ -3204,6 +3315,7 @@ window.NoteApp = window.NoteApp || {};
         { label: 'Add from your notes', icon: 'layers', onclick: openPicker },
         { sep: true },
         { label: 'Change Board Background', icon: 'eye', onclick: function () { showBackgroundMenu(at); } },
+        { label: 'Boards\u2026', icon: 'layers', onclick: function () { showBoardsMenu(at); } },
         { sep: true },
         { label: 'Fit to view', shortcut: 'Ctrl+0', icon: 'restore', onclick: fitView },
       ],
@@ -5413,6 +5525,7 @@ window.NoteApp = window.NoteApp || {};
 
   function open() {
     if (board.open) return;
+    BOARD_ID = activeBoardId();
     board.open = true;
     try { App.prefs.set('board.open', true); } catch (e) { }
     board.marking = false;
