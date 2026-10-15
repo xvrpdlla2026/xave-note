@@ -5617,6 +5617,7 @@ window.NoteApp = window.NoteApp || {};
         });
       });
     }).then(function () {
+      if (App.board) App.board.restore();
       render();
       renderFooter();
       startReminders();

@@ -5380,6 +5380,7 @@ window.NoteApp = window.NoteApp || {};
   function open() {
     if (board.open) return;
     board.open = true;
+    try { App.prefs.set('board.open', true); } catch (e) { }
     board.marking = false;
     board.railMarks = false;
     board.editors = [];
@@ -5413,6 +5414,7 @@ window.NoteApp = window.NoteApp || {};
     board.open = false;
     setSelection([], null);
     setInkMode(false);
+    try { App.prefs.set('board.open', false); } catch (e) { }
     board.root.classList.remove('is-open');
     document.body.classList.remove('is-board');
     document.removeEventListener('keydown', onKeyDown, true);
@@ -5423,8 +5425,13 @@ window.NoteApp = window.NoteApp || {};
     try { App.db.boardSaveView(BOARD_ID, board.view.x, board.view.y, board.view.z); } catch (e) { }
   }
 
+  function restore() {
+    if (App.prefs.get('board.open', false)) open();
+  }
+
   App.board = {
     open: open,
+    restore: restore,
     close: close,
     isOpen: function () { return board.open; },
     state: board,
