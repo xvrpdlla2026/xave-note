@@ -141,7 +141,13 @@ window.NoteApp = window.NoteApp || {};
 
   function materializeItem(item) {
     if (item.node) return;
-    paintItem(item);
+    try {
+      paintItem(item);
+    } catch (err) {
+      if (item.node && item.node.parentNode) item.node.parentNode.removeChild(item.node);
+      delete item.node;
+      return;
+    }
     if (board.selectedIds.indexOf(item.id) >= 0) item.node.classList.add('is-selected');
   }
 
@@ -178,8 +184,6 @@ window.NoteApp = window.NoteApp || {};
       if (!keep) keep = {};
       for (i = 0; i < sel.length; i++) keep[sel[i]] = true;
     }
-    board.cullAt = { x: view.x, y: view.y, z: view.z, n: items.length };
-    board.cullForce = false;
     for (i = 0; i < items.length; i++) {
       item = items[i];
       if (keep && keep[item.id]) { materializeItem(item); continue; }
@@ -188,6 +192,8 @@ window.NoteApp = window.NoteApp || {};
       if (item.node.parentNode) item.node.parentNode.removeChild(item.node);
       delete item.node;
     }
+    board.cullAt = { x: view.x, y: view.y, z: view.z, n: items.length };
+    board.cullForce = false;
   }
 
   function zoomAt(factor, point) {
@@ -303,6 +309,75 @@ window.NoteApp = window.NoteApp || {};
     }
   }
 
+  function mapLayer() {
+    var items = board.items;
+    var marks = board.marks;
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, sum = 0;
+    var i, item, mark;
+    for (i = 0; i < items.length; i++) {
+      item = items[i];
+      if (item.x < minX) minX = item.x;
+      if (item.y < minY) minY = item.y;
+      if (item.x + item.w > maxX) maxX = item.x + item.w;
+      if (item.y + item.h > maxY) maxY = item.y + item.h;
+      sum += item.x * 7 + item.y * 13 + item.w * 3 + item.h * 5;
+    }
+    for (i = 0; i < marks.length; i++) {
+      mark = marks[i];
+      if (mark.x - 24 < minX) minX = mark.x - 24;
+      if (mark.y - 24 < minY) minY = mark.y - 24;
+      if (mark.x + 24 > maxX) maxX = mark.x + 24;
+      if (mark.y + 24 > maxY) maxY = mark.y + 24;
+      sum += mark.x * 11 + mark.y * 17;
+    }
+    if (!isFinite(minX) || !isFinite(minY)) { minX = 0; minY = 0; maxX = 1; maxY = 1; }
+    var accent = mapColor('--accent', 'rgb(125, 141, 255)');
+    var sig = items.length + ':' + marks.length + ':' + Math.round(sum) + ':' + Math.round(maxX - minX) + 'x' + Math.round(maxY - minY) + ':' + accent;
+    if (board.mapLayer && board.mapLayer.sig === sig) return board.mapLayer;
+    var box = { x: minX, y: minY, w: Math.max(maxX - minX, 1), h: Math.max(maxY - minY, 1) };
+    var pad = Math.max(box.w, box.h) * 0.08 + 24;
+    box.x -= pad;
+    box.y -= pad;
+    box.w += pad * 2;
+    box.h += pad * 2;
+    var k = Math.min(MAP_W / box.w, MAP_H / box.h);
+    var ox = (MAP_W - box.w * k) / 2 - box.x * k;
+    var oy = (MAP_H - box.h * k) / 2 - box.y * k;
+    var canvas = board.mapLayerCanvas;
+    if (!canvas) {
+      canvas = document.createElement('canvas');
+      board.mapLayerCanvas = canvas;
+    }
+    var dpr = window.devicePixelRatio || 1;
+    var wide = Math.round(MAP_W * dpr);
+    var tall = Math.round(MAP_H * dpr);
+    if (canvas.width !== wide || canvas.height !== tall) {
+      canvas.width = wide;
+      canvas.height = tall;
+    }
+    var lctx = canvas.getContext('2d');
+    lctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    lctx.clearRect(0, 0, MAP_W, MAP_H);
+    var lx = function (x) { return ox + x * k; };
+    var ly = function (y) { return oy + y * k; };
+    for (i = 0; i < items.length; i++) {
+      item = items[i];
+      lctx.fillStyle = item.kind === 'draw' ? 'rgba(255, 255, 255, 0.22)' : 'rgba(125, 141, 255, 0.32)';
+      lctx.fillRect(lx(item.x), ly(item.y), Math.max(item.w * k, 2), Math.max(item.h * k, 2));
+    }
+    if (marks.length) {
+      lctx.fillStyle = accent;
+      for (i = 0; i < marks.length; i++) {
+        mark = marks[i];
+        lctx.beginPath();
+        lctx.arc(lx(mark.x), ly(mark.y), 2.6, 0, Math.PI * 2);
+        lctx.fill();
+      }
+    }
+    board.mapLayer = { canvas: canvas, k: k, ox: ox, oy: oy, sig: sig };
+    return board.mapLayer;
+  }
+
   function mapPaint() {
     var ctx = board.mapCtx;
     var canvas = board.mapCanvas;
@@ -320,16 +395,11 @@ window.NoteApp = window.NoteApp || {};
     ctx.clearRect(0, 0, MAP_W, MAP_H);
     var mx = function (x) { return fit.ox + x * fit.k; };
     var my = function (y) { return fit.oy + y * fit.k; };
-    board.items.forEach(function (item) {
-      ctx.fillStyle = item.kind === 'draw' ? 'rgba(255, 255, 255, 0.22)' : 'rgba(125, 141, 255, 0.32)';
-      ctx.fillRect(mx(item.x), my(item.y), Math.max(item.w * fit.k, 2), Math.max(item.h * fit.k, 2));
-    });
-    ctx.fillStyle = mapColor('--accent', 'rgb(125, 141, 255)');
-    board.marks.forEach(function (mark) {
-      ctx.beginPath();
-      ctx.arc(mx(mark.x), my(mark.y), 2.6, 0, Math.PI * 2);
-      ctx.fill();
-    });
+    var layer = mapLayer();
+    if (layer) {
+      var lift = fit.k / layer.k;
+      ctx.drawImage(layer.canvas, fit.ox - layer.ox * lift, fit.oy - layer.oy * lift, MAP_W * lift, MAP_H * lift);
+    }
     var view = board.view;
     var rect = board.stage.getBoundingClientRect();
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
