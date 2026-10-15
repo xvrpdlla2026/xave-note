@@ -2681,6 +2681,7 @@ window.NoteApp = window.NoteApp || {};
       if (!findMark(pin.getAttribute('data-mark'))) pin.parentNode.removeChild(pin);
     });
     scaleMarks();
+    renderMarkList();
   }
 
   function markGrab(event) {
