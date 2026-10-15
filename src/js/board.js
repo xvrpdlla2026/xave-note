@@ -2677,7 +2677,7 @@ window.NoteApp = window.NoteApp || {};
     var d = Math.min(w, h) * 0.26;
     return [
       [0, d], [d, 0], [w, 0], [w, h - d], [w - d, h], [0, h], [0, d],
-      [w - d, d], [w, 0],
+      [w - d, d], [w, 0], [w - d, d], [w - d, h],
     ];
   }
 
