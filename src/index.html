@@ -174,10 +174,17 @@
       <section class="dialog__section">
         <h3>Export &amp; migration</h3>
         <p class="dialog__note">
-          The export is the database itself, byte for byte. Open it with <code>sqlite3</code>,
-          DB Browser for SQLite, or any other SQLite tool.
+          Export everything writes one zip holding the database and every stored attachment, and
+          imports it back on any machine. The .db file on its own is the database byte for byte:
+          open it with <code>sqlite3</code> or DB Browser for SQLite, but it carries no attachments.
         </p>
-        <button id="export-db" class="btn btn--primary" type="button">Export .db file</button>
+        <div class="bundle-actions">
+          <button id="export-bundle" class="btn btn--primary" type="button">Export everything</button>
+          <button id="export-db" class="btn" type="button">Export .db file</button>
+          <button id="import-bundle" class="btn" type="button">Import a bundle</button>
+        </div>
+        <p id="bundle-status" class="dialog__note" role="status"></p>
+        <input id="import-file" type="file" accept=".zip,application/zip" hidden>
       </section>
 
       <section class="dialog__section">

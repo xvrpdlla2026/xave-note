@@ -39,7 +39,7 @@ const VENDOR_SCRIPTS = [
 ];
 
 /** Script order matters: each file attaches to window.NoteApp in dependency order. */
-const SCRIPTS = ['js/util.js', 'js/trigram.js', 'js/storage.js', 'js/crypto.js', 'js/db.js', 'js/components.js', 'js/preview.js', 'js/ui.js', 'js/board.js', 'js/app.js'];
+const SCRIPTS = ['js/util.js', 'js/trigram.js', 'js/storage.js', 'js/crypto.js', 'js/db.js', 'js/bundle.js', 'js/components.js', 'js/preview.js', 'js/ui.js', 'js/board.js', 'js/app.js'];
 
 const read = (p) => fs.readFileSync(p, 'utf8');
 
@@ -101,7 +101,7 @@ function build() {
     '<!--',
     '  Local-first note taking app — single-file build.',
     '  GENERATED FILE: edit the sources in src/ and run `node tools/build.js`.',
-    '  Bundle contents: style.css + js/{util,trigram,storage,crypto,db,components,preview,ui,app}.js',
+    '  Bundle contents: style.css + js/{util,trigram,storage,crypto,db,bundle,components,preview,ui,app}.js',
     '  plus the vendored sql.js engine, JSZip and docx-preview.',
     '-->',
     html

@@ -3040,6 +3040,76 @@ window.NoteApp = window.NoteApp || {};
     });
   }
 
+  function setBundleStatus(text) {
+    if (dom.bundleStatus) dom.bundleStatus.textContent = text || '';
+  }
+
+  function downloadBlob(blob, name) {
+    var url = URL.createObjectURL(blob);
+    var link = el('a', { href: url, download: name });
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+  }
+
+  function exportBundle() {
+    if (!App.bundle) return;
+    setBundleStatus('Reading the database...');
+    App.bundle.build(setBundleStatus).then(function (out) {
+      downloadBlob(new Blob([out.bytes], { type: 'application/zip' }), out.name);
+      var size = util.formatBytes(out.bytes.length);
+      setBundleStatus('Exported ' + size + ' with ' + out.blobs + ' attachment' + (out.blobs === 1 ? '' : 's') + '.');
+      util.toast('Exported everything (' + size + ').', 'success');
+    }, function (err) {
+      setBundleStatus('');
+      util.toast('Export failed: ' + err.message, 'error');
+    });
+  }
+
+  function pickBundle() {
+    var input = document.getElementById('import-file');
+    if (!input) return;
+    input.value = '';
+    input.click();
+  }
+
+  function importBundle(file) {
+    if (!file || !App.bundle) return;
+    setBundleStatus('Reading ' + file.name + '...');
+    App.bundle.read(file, setBundleStatus).then(function (out) {
+      var counts = out.manifest && out.manifest.counts ? out.manifest.counts : null;
+      var held = counts
+        ? counts.notes + ' note' + (counts.notes === 1 ? '' : 's') + ', ' + counts.folders + ' folder' + (counts.folders === 1 ? '' : 's') + ' and ' + out.blobs + ' stored file' + (out.blobs === 1 ? '' : 's')
+        : out.blobs + ' stored file' + (out.blobs === 1 ? '' : 's');
+      setBundleStatus('');
+      App.ui.dialog({
+        title: 'Import this bundle?',
+        icon: 'warning',
+        danger: true,
+        message: 'Everything in this browser is replaced by the contents of ' + file.name + ': ' + held + '.',
+        consequences: [
+          'The workspaces, notes, board cards and attachments in this browser are overwritten, and the page reloads.',
+          'This cannot be undone from inside the app.',
+          'Close this and use Export everything first if any of it matters.',
+        ],
+        gate: { label: 'Type', phrase: 'replace everything' },
+        confirmLabel: 'Replace everything',
+        cancelLabel: 'Keep my data',
+        onSubmit: function () {
+          return App.storage.save(out.dbBytes).then(function () {
+            window.location.reload();
+          });
+        },
+      }).catch(function (err) {
+        util.toast('Import failed: ' + err.message, 'error');
+      });
+    }, function (err) {
+      setBundleStatus('');
+      util.toast('Import failed: ' + err.message, 'error');
+    });
+  }
+
   function downloadDatabase(bytes) {
     try {
       var blob = new Blob([bytes], { type: 'application/vnd.sqlite3' });
@@ -5167,6 +5237,16 @@ window.NoteApp = window.NoteApp || {};
       });
     }
     document.getElementById('export-db').addEventListener('click', exportDatabase);
+  var exportBundleButton = document.getElementById('export-bundle');
+  if (exportBundleButton) exportBundleButton.addEventListener('click', exportBundle);
+  var importBundleButton = document.getElementById('import-bundle');
+  if (importBundleButton) importBundleButton.addEventListener('click', pickBundle);
+  var importFileInput = document.getElementById('import-file');
+  if (importFileInput) {
+    importFileInput.addEventListener('change', function () {
+      importBundle(importFileInput.files && importFileInput.files[0]);
+    });
+  }
     document.getElementById('reset-all').addEventListener('click', resetEverything);
     document.getElementById('workspace-rename').addEventListener('click', renameWorkspace);
     document.getElementById('workspace-delete').addEventListener('click', deleteWorkspace);
@@ -5286,6 +5366,8 @@ window.NoteApp = window.NoteApp || {};
     dom.trashFab = document.getElementById('workspace-trash');
     dom.settingsDialog = document.getElementById('settings-dialog');
     dom.storageInfo = document.getElementById('storage-info');
+    dom.bundleStatus = document.getElementById('bundle-status');
+    dom.importFile = document.getElementById('import-file');
     dom.vaultInfo = document.getElementById('vault-info');
     dom.vaultActions = document.getElementById('vault-actions');
     dom.themeToggle = document.getElementById('theme-toggle');
@@ -5717,6 +5799,8 @@ window.NoteApp = window.NoteApp || {};
     uploadFiles: uploadFiles,
     revealPaneItem: revealPaneItem,
     exportDatabase: exportDatabase,
+    exportBundle: exportBundle,
+    importBundle: importBundle,
   };
 
   var bootPromise = null;

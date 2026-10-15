@@ -2479,6 +2479,8 @@ dialog:not([open]) { display: none; }
 .field-stack { display: flex; flex-direction: column; gap: 12px; }
 
 .vault-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.bundle-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.dialog__note:empty { display: none; }
 
 .lock-notice {
   display: flex;
