@@ -882,14 +882,72 @@ window.NoteApp = window.NoteApp || {};
   function paintKind(item) {
     if (!item.node) return;
     var label = item.node.querySelector('.bd-item__kind');
-    if (label) label.textContent = kindLabel(item);
+    if (label) label.textContent = labelText(item);
+  }
+
+  function labelText(item) {
+    var title = item.data && item.data.title;
+    return title ? title : kindLabel(item);
+  }
+
+  function barLabel(item) {
+    var span = node('span', 'bd-item__kind', labelText(item));
+    span.title = 'Double-click to rename';
+    span.addEventListener('dblclick', function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      renameCard(item, span);
+    });
+    return span;
+  }
+
+  function renameCard(item, span) {
+    if (lockOf(item)) return;
+    if (span.parentNode.querySelector('.bd-item__title')) return;
+    if (!item.data) item.data = {};
+    var input = node('input', 'bd-item__title');
+    input.type = 'text';
+    input.value = item.data.title || '';
+    input.placeholder = kindLabel(item);
+    input.setAttribute('aria-label', 'Rename card');
+    var closed = false;
+    var finish = function (commit) {
+      if (closed) return;
+      closed = true;
+      var text = input.value.trim();
+      if (commit && text !== (item.data.title || '')) {
+        pushUndo('rename');
+        if (text) item.data.title = text; else delete item.data.title;
+        saveItem(item);
+      }
+      if (input.parentNode) input.parentNode.removeChild(input);
+      span.textContent = labelText(item);
+      span.style.display = '';
+    };
+    input.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
+    input.addEventListener('dblclick', function (event) { event.stopPropagation(); });
+    input.addEventListener('keydown', function (event) {
+      event.stopPropagation();
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        finish(true);
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        finish(false);
+      }
+    });
+    input.addEventListener('blur', function () { finish(true); });
+    span.style.display = 'none';
+    span.parentNode.insertBefore(input, span.nextSibling);
+    input.focus();
+    input.select();
   }
 
   function paintItem(item) {
     var box = node('div', 'bd-item bd-item--' + item.kind);
     box.setAttribute('data-board-id', item.id);
     var bar = node('div', 'bd-item__bar');
-    bar.appendChild(node('span', 'bd-item__kind', kindLabel(item)));
+    bar.appendChild(barLabel(item));
     var remove = node('button', 'bd-item__x', '\u00d7');
     remove.type = 'button';
     remove.setAttribute('data-board-del', item.id);
