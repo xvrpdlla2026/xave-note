@@ -2484,22 +2484,34 @@ window.NoteApp = window.NoteApp || {};
     parallelogram: { label: 'Parallelogram', icon: 'parallelogram', def: [230, 150], points: function (w, h) { return [[w * 0.25, 0], [w, 0], [w * 0.75, h], [0, h], [w * 0.25, 0]]; } },
     hexagon: { label: 'Hexagon', icon: 'hexagon', def: [220, 150], points: function (w, h) { return [[w * 0.25, 0], [w * 0.75, 0], [w, h / 2], [w * 0.75, h], [w * 0.25, h], [0, h / 2], [w * 0.25, 0]]; } },
     star: { label: 'Star', icon: 'star', def: [180, 180], points: shapeStar },
+    check: { label: 'Check', icon: 'check', def: [170, 130], points: function (w, h) { return [[w * 0.06, h * 0.55], [w * 0.34, h * 0.88], [w * 0.94, h * 0.1]]; } },
+    close: { label: 'Close', icon: 'close', def: [160, 160], points: shapeClose },
     sparkle: { label: 'Sparkle', icon: 'sparkle', def: [170, 170], points: shapeSparkle },
     cross: { label: 'Cross', icon: 'cross', def: [170, 170], points: shapeCross },
     bolt: { label: 'Bolt', icon: 'bolt', def: [140, 200], points: function (w, h) { return [[w * 0.6, 0], [w * 0.15, h * 0.6], [w * 0.45, h * 0.6], [w * 0.3, h], [w * 0.85, h * 0.4], [w * 0.55, h * 0.4], [w * 0.72, 0], [w * 0.6, 0]]; } },
     heart: { label: 'Heart', icon: 'heart', def: [180, 160], points: shapeHeart },
     moon: { label: 'Moon', icon: 'moon', def: [160, 180], points: shapeMoon },
+    pin: { label: 'Pin', icon: 'pin', def: [140, 190], points: shapePin },
     cloud: { label: 'Cloud', icon: 'cloud', def: [250, 160], points: shapeCloud },
     shield: { label: 'Shield', icon: 'shield', def: [180, 200], points: shapeShield },
     flag: { label: 'Flag', icon: 'flag', def: [200, 140], points: function (w, h) { return [[0, 0], [w, 0], [w * 0.76, h / 2], [w, h], [0, h], [0, 0]]; } },
     gear: { label: 'Gear', icon: 'gear', def: [180, 180], points: shapeGear },
     wave: { label: 'Wave', icon: 'wave', def: [240, 120], points: shapeWave },
+    document: { label: 'Document', icon: 'document', def: [190, 220], points: shapeDocument },
+    note: { label: 'Note', icon: 'note', def: [200, 180], points: shapeNote },
+    cone: { label: 'Cone', icon: 'cone', def: [170, 200], points: shapeCone },
+    cube: { label: 'Cube', icon: 'cube', def: [200, 200], points: shapeCube },
+    semicircle: { label: 'Semicircle', icon: 'semicircle', def: [220, 130], points: shapeSemicircle },
+    quarter: { label: 'Quarter', icon: 'quarter', def: [170, 170], points: shapeQuarter },
+    chevron: { label: 'Chevron', icon: 'chevron', def: [200, 140], points: function (w, h) { return [[0, 0], [w * 0.45, 0], [w, h / 2], [w * 0.45, h], [0, h], [w * 0.55, h / 2], [0, 0]]; } },
+    elbow: { label: 'Elbow arrow', icon: 'elbow', def: [230, 170], points: shapeElbow },
+    cycle: { label: 'Cycle', icon: 'cycle', def: [180, 180], points: shapeCycle },
     callout: { label: 'Callout', icon: 'callout', def: [240, 160], points: shapeCallout },
     cylinder: { label: 'Cylinder', icon: 'cylinder', def: [200, 170], points: shapeCylinder },
     line: { label: 'Line', icon: 'line', free: true, def: [240, 0], points: function (dx, dy) { return [[0, 0], [dx, dy]]; } },
     arrow: { label: 'Arrow', icon: 'arrow', free: true, def: [240, 0], points: shapeArrow },
   };
-  var SHAPE_ORDER = ['rect', 'ellipse', 'triangle', 'diamond', 'pentagon', 'hexagon', 'octagon', 'trapezoid', 'parallelogram', 'star', 'sparkle', 'cross', 'bolt', 'heart', 'moon', 'cloud', 'shield', 'flag', 'gear', 'wave', 'callout', 'cylinder', 'line', 'arrow'];
+  var SHAPE_ORDER = ['rect', 'ellipse', 'triangle', 'diamond', 'pentagon', 'hexagon', 'octagon', 'trapezoid', 'parallelogram', 'star', 'sparkle', 'cross', 'check', 'close', 'bolt', 'heart', 'moon', 'cloud', 'pin', 'shield', 'flag', 'gear', 'wave', 'document', 'note', 'cone', 'cube', 'semicircle', 'quarter', 'chevron', 'elbow', 'cycle', 'callout', 'cylinder', 'line', 'arrow'];
 
   function shapeEllipse(w, h) {
     var out = [];
@@ -2604,6 +2616,110 @@ window.NoteApp = window.NoteApp || {};
       var t = i / 40;
       out.push([w * t, h / 2 + (h / 2) * 0.8 * Math.sin(t * Math.PI * 4)]);
     }
+    return out;
+  }
+
+  function shapeClose(w, h) {
+    var out = [];
+    var cross = shapeCross(w, h);
+    var step = Math.PI / 4;
+    for (var i = 0; i < cross.length; i++) {
+      var dx = cross[i][0] - w / 2;
+      var dy = cross[i][1] - h / 2;
+      out.push([
+        w / 2 + (dx * Math.cos(step) - dy * Math.sin(step)) * 0.72,
+        h / 2 + (dx * Math.sin(step) + dy * Math.cos(step)) * 0.72,
+      ]);
+    }
+    return out;
+  }
+
+  function shapePin(w, h) {
+    var r = Math.min(w * 0.46, h * 0.42);
+    var cy = r;
+    var out = [];
+    var i;
+    for (i = 0; i <= 28; i++) {
+      var a = Math.PI * 0.62 + (i / 28) * Math.PI * 1.76;
+      out.push([w / 2 + r * Math.cos(a), cy + r * Math.sin(a)]);
+    }
+    out.push([w / 2, h]);
+    out.push([w / 2 + r * Math.cos(Math.PI * 0.62), cy + r * Math.sin(Math.PI * 0.62)]);
+    return out;
+  }
+
+  function shapeDocument(w, h) {
+    var out = [[0, 0], [w, 0], [w, h]];
+    for (var i = 0; i <= 24; i++) {
+      var t = i / 24;
+      out.push([w * (1 - t), h * (0.86 + 0.14 * Math.cos(Math.PI * 2 * t))]);
+    }
+    out.push([0, 0]);
+    return out;
+  }
+
+  function shapeNote(w, h) {
+    return [[0, 0], [w * 0.78, 0], [w * 0.78, h * 0.22], [w, h * 0.22], [w, h], [0, h], [0, 0]];
+  }
+
+  function shapeCone(w, h) {
+    var ry = h * 0.11;
+    var out = [[w / 2, 0], [0, h - ry]];
+    for (var i = 0; i <= 24; i++) {
+      var a = Math.PI - (i / 24) * Math.PI;
+      out.push([w / 2 + (w / 2) * Math.cos(a), h - ry + ry * Math.sin(a)]);
+    }
+    out.push([w / 2, 0]);
+    return out;
+  }
+
+  function shapeCube(w, h) {
+    var d = Math.min(w, h) * 0.26;
+    return [
+      [0, d], [d, 0], [w, 0], [w, h - d], [w - d, h], [0, h], [0, d],
+      [w - d, d], [w, 0],
+    ];
+  }
+
+  function shapeSemicircle(w, h) {
+    var out = [[0, h], [w, h]];
+    for (var i = 0; i <= 24; i++) {
+      var a = (i / 24) * Math.PI;
+      out.push([w / 2 + (w / 2) * Math.cos(a), h - h * Math.sin(a)]);
+    }
+    return out;
+  }
+
+  function shapeQuarter(w, h) {
+    var out = [[0, 0]];
+    for (var i = 0; i <= 24; i++) {
+      var a = (i / 24) * (Math.PI / 2);
+      out.push([w * Math.sin(a), h - h * Math.cos(a)]);
+    }
+    out.push([0, h], [0, 0]);
+    return out;
+  }
+
+  function shapeElbow(w, h) {
+    var row = h * 0.8;
+    var head = Math.min(w, h) * 0.34;
+    return [[0, 0], [0, row], [w, row], [w - head, row - head * 0.6], [w, row], [w - head, row + head * 0.6]];
+  }
+
+  function shapeCycle(w, h) {
+    var out = [];
+    var i;
+    for (i = 0; i <= 36; i++) {
+      var a = -Math.PI / 2 + (i / 36) * Math.PI * (5 / 3);
+      out.push([w / 2 + (w / 2) * Math.cos(a), h / 2 + (h / 2) * Math.sin(a)]);
+    }
+    var head = Math.min(w, h) * 0.24;
+    var tip = out[out.length - 1];
+    var prev = out[out.length - 2];
+    var ang = Math.atan2(tip[1] - prev[1], tip[0] - prev[0]);
+    out.push([tip[0] + head * Math.cos(ang + Math.PI * 0.72), tip[1] + head * Math.sin(ang + Math.PI * 0.72)]);
+    out.push(tip);
+    out.push([tip[0] + head * Math.cos(ang - Math.PI * 0.72), tip[1] + head * Math.sin(ang - Math.PI * 0.72)]);
     return out;
   }
 

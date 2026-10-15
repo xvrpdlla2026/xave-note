@@ -3963,4 +3963,4 @@ dialog:not([open]) { display: none; }
 .board__stage.is-inking .board__inkbar { display: block; }
 .board__inktools { display: flex; align-items: center; gap: 4px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-raised); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); }
 .board__inkpop { bottom: 62px; }
-.board__inkshapes { grid-template-columns: repeat(4, 30px); }
+.board__inkshapes { grid-template-columns: repeat(4, 30px); max-height: 58vh; overflow-y: auto; align-content: start; }
