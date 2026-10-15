@@ -11,6 +11,9 @@ window.NoteApp = window.NoteApp || {};
   var SIZES = { note: [268, 176], todo: [256, 196], link: [268, 96], image: [288, 216], comment: [268, 132], ref: [244, 168], column: [420, 320], table: [320, 208], group: [232, 62], file: [300, 236], draw: [380, 280] };
 
   var board = {
+    marks: [],
+    marking: false,
+    railMarks: false,
     open: false,
     items: [],
     view: { x: 0, y: 0, z: 1 },
@@ -111,6 +114,7 @@ window.NoteApp = window.NoteApp || {};
     board.grid.style.backgroundPosition = view.x + 'px ' + view.y + 'px';
     board.zoomLabel.textContent = Math.round(view.z * 100) + '%';
     inkRepaintCards();
+    scaleMarks();
     queueViewSave();
   }
 
@@ -1350,6 +1354,15 @@ window.NoteApp = window.NoteApp || {};
     var target = event.target;
     var card = target.closest ? target.closest('.bd-item') : null;
     var handle = target.closest ? target.closest('.bd-item__bar') : null;
+    if (board.marking && !(target.closest && target.closest('.bd-mark'))) {
+      var at = canvasPoint(event.clientX, event.clientY);
+      var placed = addMark(at.x, at.y);
+      setMarking(false);
+      markEdit(placed);
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (card && (!card.classList.contains('bd-item--column') || handle)) return;
     if (target.closest && target.closest('.board__rail, .board__picker, .board__mode')) return;
     if (board.mode === 'select' && !board.space) {
@@ -1518,6 +1531,8 @@ window.NoteApp = window.NoteApp || {};
     if (event.key === 'Escape') {
       if (board.picker) { closePicker(); return; }
       if (editing) { event.target.blur(); return; }
+      if (board.marking) { setMarking(false); return; }
+      if (board.railMarks) { openMarks(false); return; }
       if (board.selectedIds.length) { event.preventDefault(); setSelection([], null); return; }
       event.preventDefault();
       close();
@@ -1578,6 +1593,319 @@ window.NoteApp = window.NoteApp || {};
     if (board.stage) board.stage.classList.remove('is-space');
   }
 
+  var MARK_ICONS = ['pin', 'star', 'flag', 'heart', 'bolt', 'check', 'warning', 'info', 'sun', 'moon', 'cloud', 'shield', 'gear', 'eye', 'search', 'document', 'link', 'folder', 'chart', 'note'];
+
+  function findMark(id) {
+    var list = board.marks || [];
+    for (var i = 0; i < list.length; i++) {
+      if (String(list[i].id) === String(id)) return list[i];
+    }
+    return null;
+  }
+
+  function markData(list) {
+    return (list || []).map(function (mark) {
+      return { id: mark.id, x: mark.x, y: mark.y, name: mark.name, icon: mark.icon || 'pin' };
+    });
+  }
+
+  function saveMarks(now) {
+    if (board.markTimer) clearTimeout(board.markTimer);
+    var flush = function () {
+      board.markTimer = null;
+      try { App.db.boardSaveMarks(BOARD_ID, JSON.stringify(markData(board.marks))); } catch (e) { }
+    };
+    if (now) { flush(); return; }
+    board.markTimer = setTimeout(flush, 260);
+  }
+
+  function addMark(x, y, name, icon) {
+    if (!board.marks) board.marks = [];
+    pushUndo('landmark');
+    var mark = {
+      id: util.uuid(),
+      x: Math.round(x),
+      y: Math.round(y),
+      name: name || 'Landmark ' + (board.marks.length + 1),
+      icon: icon || 'pin',
+    };
+    board.marks.push(mark);
+    paintMarks();
+    saveMarks(true);
+    renderMarkList();
+    return mark;
+  }
+
+  function removeMark(mark) {
+    var at = (board.marks || []).indexOf(mark);
+    if (at < 0) return;
+    pushUndo('landmark');
+    board.marks.splice(at, 1);
+    paintMarks();
+    saveMarks(true);
+    renderMarkList();
+    util.toast('Landmark removed');
+  }
+
+  function scaleMarks() {
+    var unit = board.view.z || 1;
+    var flat = Math.abs(unit - 1) < 0.001;
+    (board.marks || []).forEach(function (mark) {
+      if (!mark.node || !mark.node.isConnected) return;
+      mark.node.style.transform = flat ? '' : 'scale(' + (1 / unit) + ')';
+    });
+  }
+
+  function paintMarks() {
+    if (!board.canvas) return;
+    var live = {};
+    board.marks.forEach(function (mark) {
+      if (mark.node && mark.node.isConnected) live[mark.id] = true;
+    });
+    Array.prototype.slice.call(board.canvas.querySelectorAll('.bd-mark')).forEach(function (pin) {
+      if (!live[pin.getAttribute('data-mark')]) pin.parentNode.removeChild(pin);
+    });
+    (board.marks || []).forEach(function (mark) {
+      if (!mark.node || !mark.node.isConnected) {
+        var pin = node('div', 'bd-mark');
+        pin.setAttribute('data-mark', mark.id);
+        var head = node('button', 'bd-mark__head');
+        head.type = 'button';
+        head.setAttribute('aria-label', 'Landmark');
+        head.addEventListener('pointerdown', markGrab);
+        head.addEventListener('dblclick', function (event) { event.preventDefault(); markEdit(mark); });
+        var label = node('span', 'bd-mark__name', mark.name);
+        label.addEventListener('dblclick', function (event) { event.preventDefault(); event.stopPropagation(); markEdit(mark); });
+        pin.appendChild(head);
+        pin.appendChild(label);
+        board.canvas.appendChild(pin);
+        mark.node = pin;
+        mark.head = head;
+        mark.label = label;
+      }
+      mark.node.setAttribute('data-icon', mark.icon || 'pin');
+      mark.node.style.left = mark.x + 'px';
+      mark.node.style.top = mark.y + 'px';
+      if (mark.head.getAttribute('data-icon') !== (mark.icon || 'pin')) {
+        mark.head.textContent = '';
+        mark.head.appendChild(App.ui.icon(mark.icon || 'pin', 17));
+        mark.head.setAttribute('data-icon', mark.icon || 'pin');
+      }
+      if (mark.label.textContent !== mark.name) mark.label.textContent = mark.name;
+      mark.label.title = mark.name;
+    });
+    Array.prototype.slice.call(board.canvas.querySelectorAll('.bd-mark')).forEach(function (pin) {
+      if (!findMark(pin.getAttribute('data-mark'))) pin.parentNode.removeChild(pin);
+    });
+    scaleMarks();
+  }
+
+  function markGrab(event) {
+    if (event.button !== 0) return;
+    var pin = event.currentTarget.parentNode;
+    var mark = findMark(pin.getAttribute('data-mark'));
+    if (!mark) return;
+    event.preventDefault();
+    event.stopPropagation();
+    var unit = board.view.z || 1;
+    var start = { x: event.clientX, y: event.clientY, mx: mark.x, my: mark.y };
+    var moved = false;
+    var move = function (e) {
+      if (!moved && Math.abs(e.clientX - start.x) + Math.abs(e.clientY - start.y) < 4) return;
+      if (!moved) pushUndo('landmark');
+      moved = true;
+      mark.x = Math.round(start.mx + (e.clientX - start.x) / unit);
+      mark.y = Math.round(start.my + (e.clientY - start.y) / unit);
+      pin.style.left = mark.x + 'px';
+      pin.style.top = mark.y + 'px';
+      pin.classList.add('is-dragging');
+    };
+    var up = function () {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      pin.classList.remove('is-dragging');
+      if (moved) saveMarks(true);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+
+  function markEdit(mark) {
+    if (!mark.node || !mark.node.isConnected) return;
+    if (mark.node.querySelector('.bd-mark__edit')) return;
+    var input = node('input', 'bd-mark__edit');
+    input.type = 'text';
+    input.value = mark.name;
+    input.setAttribute('aria-label', 'Landmark name');
+    input.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
+    mark.label.style.display = 'none';
+    mark.node.appendChild(input);
+    input.focus();
+    input.select();
+    var done = function (keep) {
+      if (!input.parentNode) return;
+      var value = input.value.trim();
+      if (keep && value && value !== mark.name) { mark.name = value; saveMarks(true); }
+      input.parentNode.removeChild(input);
+      mark.label.style.display = '';
+      paintMarks();
+      renderMarkList();
+    };
+    input.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') { event.preventDefault(); done(true); }
+      else if (event.key === 'Escape') { event.preventDefault(); done(false); }
+    });
+    input.addEventListener('blur', function () { done(true); });
+  }
+
+  function setMarking(on) {
+    board.marking = !!on;
+    if (board.stage) board.stage.classList.toggle('is-marking', board.marking);
+    if (board.marksAdd) board.marksAdd.classList.toggle('is-on', board.marking);
+    if (board.marking) util.toast('Click the board to drop a landmark');
+  }
+
+  function openMarks(on) {
+    board.railMarks = on !== false;
+    if (board.rail) board.rail.classList.toggle('is-marks', board.railMarks);
+    if (!board.railMarks) setMarking(false);
+    renderMarkList();
+  }
+
+  function goToMark(mark) {
+    var rect = board.stage.getBoundingClientRect();
+    board.view.x = Math.round(rect.width / 2 - mark.x * board.view.z);
+    board.view.y = Math.round(rect.height / 2 - mark.y * board.view.z);
+    applyView();
+    if (mark.node && mark.node.isConnected) {
+      mark.node.classList.add('is-hot');
+      setTimeout(function () { if (mark.node) mark.node.classList.remove('is-hot'); }, 900);
+    }
+  }
+
+  function renameRow(row, mark) {
+    if (row.querySelector('.board__mark-edit')) return;
+    var name = row.querySelector('.board__mark-name');
+    var input = node('input', 'board__mark-edit');
+    input.type = 'text';
+    input.value = mark.name;
+    input.setAttribute('aria-label', 'Landmark name');
+    name.style.display = 'none';
+    row.insertBefore(input, name);
+    input.focus();
+    input.select();
+    var done = function (keep) {
+      if (!input.parentNode) return;
+      var value = input.value.trim();
+      if (keep && value && value !== mark.name) { mark.name = value; saveMarks(true); }
+      input.parentNode.removeChild(input);
+      name.style.display = '';
+      paintMarks();
+      renderMarkList();
+    };
+    input.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') { event.preventDefault(); done(true); }
+      else if (event.key === 'Escape') { event.preventDefault(); done(false); }
+    });
+    input.addEventListener('blur', function () { done(true); });
+  }
+
+  function markIcons(row, mark) {
+    var open = row.querySelector('.board__mark-icons');
+    if (open) { row.removeChild(open); return; }
+    var grid = node('div', 'board__mark-icons');
+    MARK_ICONS.forEach(function (name) {
+      var pick = node('button', 'board__mark-pick');
+      pick.type = 'button';
+      pick.setAttribute('data-pick', name);
+      pick.title = name;
+      pick.setAttribute('aria-label', name);
+      if ((mark.icon || 'pin') === name) pick.classList.add('is-on');
+      pick.appendChild(App.ui.icon(name, 14));
+      pick.addEventListener('click', function (event) {
+        event.stopPropagation();
+        mark.icon = name;
+        saveMarks(true);
+        paintMarks();
+        renderMarkList();
+      });
+      grid.appendChild(pick);
+    });
+    row.appendChild(grid);
+  }
+
+  function renderMarkList() {
+    var list = board.marksList;
+    if (!list) return;
+    list.textContent = '';
+    var marks = board.marks || [];
+    if (!marks.length) {
+      list.appendChild(node('p', 'board__marks-empty', 'No landmarks yet.'));
+      return;
+    }
+    marks.forEach(function (mark) {
+      var row = node('div', 'board__mark-row');
+      row.setAttribute('data-mark', mark.id);
+      var pick = node('button', 'board__mark-icon');
+      pick.type = 'button';
+      pick.title = 'Change icon';
+      pick.setAttribute('aria-label', 'Change icon');
+      pick.appendChild(App.ui.icon(mark.icon || 'pin', 15));
+      pick.addEventListener('click', function (event) { event.stopPropagation(); markIcons(row, mark); });
+      var name = node('button', 'board__mark-name', mark.name);
+      name.type = 'button';
+      name.title = 'Go to ' + mark.name;
+      name.addEventListener('click', function () { goToMark(mark); });
+      name.addEventListener('dblclick', function (event) { event.preventDefault(); renameRow(row, mark); });
+      var tools = node('div', 'board__mark-tools');
+      var edit = node('button', 'board__mark-act');
+      edit.type = 'button';
+      edit.title = 'Rename';
+      edit.setAttribute('aria-label', 'Rename');
+      edit.appendChild(App.ui.icon('pencil', 14));
+      edit.addEventListener('click', function (event) { event.stopPropagation(); renameRow(row, mark); });
+      var drop = node('button', 'board__mark-act');
+      drop.type = 'button';
+      drop.title = 'Remove';
+      drop.setAttribute('aria-label', 'Remove');
+      drop.appendChild(App.ui.icon('trash', 14));
+      drop.addEventListener('click', function (event) { event.stopPropagation(); removeMark(mark); });
+      tools.appendChild(edit);
+      tools.appendChild(drop);
+      row.appendChild(pick);
+      row.appendChild(name);
+      row.appendChild(tools);
+      list.appendChild(row);
+    });
+  }
+
+  function buildMarks() {
+    var panel = node('div', 'board__marks');
+    var head = node('div', 'board__marks-head');
+    var back = node('button', 'board__marks-back');
+    back.type = 'button';
+    back.title = 'Back to tools';
+    back.setAttribute('aria-label', 'Back to tools');
+    back.appendChild(App.ui.icon('arrowLeft', 15));
+    back.appendChild(node('span', null, 'Back'));
+    back.addEventListener('click', function () { openMarks(false); });
+    var add = node('button', 'board__marks-add');
+    add.type = 'button';
+    add.appendChild(App.ui.icon('pin', 14));
+    add.appendChild(node('span', null, 'Add landmark'));
+    add.addEventListener('click', function () { setMarking(!board.marking); });
+    head.appendChild(back);
+    head.appendChild(add);
+    panel.appendChild(head);
+    panel.appendChild(node('p', 'board__marks-hint', 'Drop a pin on the board, then name it. Drag a pin to move it, double click to rename.'));
+    var list = node('div', 'board__marks-list');
+    panel.appendChild(list);
+    board.marksPanel = panel;
+    board.marksList = list;
+    board.marksAdd = add;
+    return panel;
+  }
+
   function railButton(icon, label, action) {
     var button = node('button', 'board__tool');
     button.type = 'button';
@@ -1589,6 +1917,10 @@ window.NoteApp = window.NoteApp || {};
 
   function buildRail() {
     var rail = node('div', 'board__rail');
+    board.rail = rail;
+    var top = node('div', 'board__rail-group');
+    top.appendChild(railButton('pin', 'Landmarks', function () { openMarks(!board.railMarks); }));
+    rail.appendChild(top);
     var group = node('div', 'board__rail-group');
     group.appendChild(railButton('note', 'Note', function () { addItem('note'); }));
     group.appendChild(railButton('check', 'To-do', function () { addItem('todo'); }));
@@ -1607,6 +1939,7 @@ window.NoteApp = window.NoteApp || {};
     var foot = node('div', 'board__rail-group board__rail--foot');
     foot.appendChild(railButton('arrowLeft', 'Back', close));
     rail.appendChild(foot);
+    rail.appendChild(buildMarks());
     return rail;
   }
 
@@ -2246,6 +2579,7 @@ window.NoteApp = window.NoteApp || {};
       })),
       view: { x: board.view.x, y: board.view.y, z: board.view.z },
       bg: board.bg,
+      marks: markData(board.marks),
     };
   }
 
@@ -2266,6 +2600,7 @@ window.NoteApp = window.NoteApp || {};
     settleChildren();
     paintLinks();
     paintSelection();
+    paintMarks();
   }
 
   function applySnap(snap) {
@@ -2285,6 +2620,8 @@ window.NoteApp = window.NoteApp || {};
     });
     setSelection([], null);
     if (snap.bg && snap.bg !== board.bg) setBg(snap.bg, true);
+    board.marks = markData(snap.marks);
+    saveMarks(true);
     board.view.x = snap.view.x;
     board.view.y = snap.view.y;
     board.view.z = snap.view.z;
@@ -4542,7 +4879,11 @@ window.NoteApp = window.NoteApp || {};
     var view = null;
     try { view = App.db.boardGet(BOARD_ID); } catch (e) { view = null; }
     board.view = view ? { x: view.vx || 0, y: view.vy || 0, z: view.vz || 1 } : { x: 0, y: 0, z: 1 };
+    board.marks = [];
+    try { board.marks = markData(JSON.parse((view && view.marks) || '[]')); } catch (e) { board.marks = []; }
     applyView();
+    paintMarks();
+    renderMarkList();
   }
 
   function setMode(next, quiet) {
@@ -4565,6 +4906,10 @@ window.NoteApp = window.NoteApp || {};
   function open() {
     if (board.open) return;
     board.open = true;
+    board.marking = false;
+    board.railMarks = false;
+    if (board.stage) board.stage.classList.remove('is-marking');
+    if (board.rail) board.rail.classList.remove('is-marks');
     if (!board.root) document.body.appendChild(buildRoot());
     board.root.classList.add('is-open');
     document.body.classList.add('is-board');

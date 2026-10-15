@@ -3973,3 +3973,39 @@ dialog:not([open]) { display: none; }
 .board__inktools { display: flex; align-items: center; gap: 4px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-raised); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); }
 .board__inkpop { bottom: 62px; }
 .board__inkshapes { grid-template-columns: repeat(4, 30px); max-height: 58vh; overflow-y: auto; align-content: start; }
+
+.board__rail { transition: flex-basis 0.18s ease, width 0.18s ease; }
+.board__rail.is-marks { flex: 0 0 248px; width: 248px; }
+.board__rail.is-marks .board__rail-group { display: none; }
+.board__marks { display: none; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
+.board__rail.is-marks .board__marks { display: flex; }
+.board__marks-head { display: flex; align-items: center; gap: 6px; flex: none; }
+.board__marks-back { display: inline-flex; align-items: center; gap: 4px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; background: none; color: var(--text-muted); font: inherit; font-size: 11.5px; cursor: pointer; }
+.board__marks-back:hover { background: var(--bg-hover); color: var(--text); }
+.board__marks-add { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; padding: 5px 9px; border: 1px solid var(--accent); border-radius: 8px; background: var(--accent-soft); color: var(--accent); font: inherit; font-size: 11.5px; cursor: pointer; }
+.board__marks-add.is-on { background: var(--accent); color: #fff; }
+.board__marks-hint { margin: 0; font-size: 10.5px; line-height: 1.45; color: var(--text-faint); flex: none; }
+.board__marks-list { display: flex; flex-direction: column; gap: 3px; overflow-y: auto; min-height: 0; padding-right: 2px; }
+.board__marks-empty { margin: 0; font-size: 11.5px; color: var(--text-faint); }
+.board__mark-row { display: flex; align-items: center; gap: 3px; padding: 3px 4px; border-radius: 8px; flex-wrap: wrap; }
+.board__mark-row:hover { background: var(--bg-hover); }
+.board__mark-icon { width: 26px; height: 26px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: 7px; background: none; color: var(--accent); cursor: pointer; }
+.board__mark-icon:hover { border-color: var(--border); background: var(--bg); }
+.board__mark-name { flex: 1; min-width: 0; padding: 4px 5px; border: none; border-radius: 6px; background: none; color: var(--text); font: inherit; font-size: 12px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.board__mark-name:hover { color: var(--accent); }
+.board__mark-tools { display: flex; gap: 2px; flex: none; }
+.board__mark-act { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: 6px; background: none; color: var(--text-faint); cursor: pointer; }
+.board__mark-act:hover { background: var(--bg); color: var(--text); }
+.board__mark-edit { flex: 1; min-width: 0; margin: 0 2px; padding: 3px 5px; border: 1px solid var(--accent); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; font-size: 12px; }
+.board__mark-icons { flex: 0 0 100%; display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px; padding: 5px; margin: 3px 0 4px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg); }
+.board__mark-pick { width: 100%; height: 26px; display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: 6px; background: none; color: var(--text-muted); cursor: pointer; }
+.board__mark-pick:hover { background: var(--bg-hover); color: var(--text); }
+.board__mark-pick.is-on { color: var(--accent); background: var(--accent-soft); }
+.board__canvas .bd-mark { position: absolute; transform-origin: 0 0; z-index: 900; }
+.bd-mark__head { position: absolute; left: 0; top: 0; width: 28px; height: 28px; padding: 0; transform: translate(-50%, -50%); display: inline-flex; align-items: center; justify-content: center; border: 1.5px solid var(--accent); border-radius: 50%; background: var(--bg-raised); color: var(--accent); cursor: grab; box-shadow: 0 6px 14px rgba(0, 0, 0, 0.34); }
+.bd-mark__head:active { cursor: grabbing; }
+.bd-mark.is-dragging .bd-mark__head { border-color: var(--text); color: var(--text); }
+.bd-mark.is-hot .bd-mark__head { box-shadow: 0 0 0 6px var(--accent-ring), 0 6px 14px rgba(0, 0, 0, 0.34); }
+.bd-mark__name { position: absolute; left: 0; top: 18px; transform: translateX(-50%); max-width: 152px; padding: 2px 7px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-raised); color: var(--text); font-size: 11px; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bd-mark__edit { position: absolute; left: 0; top: 18px; width: 132px; transform: translateX(-50%); padding: 2px 7px; border: 1px solid var(--accent); border-radius: 999px; background: var(--bg); color: var(--text); font: inherit; font-size: 11px; }
+.board__stage.is-marking { cursor: crosshair; }
