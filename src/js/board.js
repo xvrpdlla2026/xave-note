@@ -3886,14 +3886,15 @@ window.NoteApp = window.NoteApp || {};
 
   function showBoardsMenuFrom(button) {
     var rect = button.getBoundingClientRect();
-    showBoardsMenu({ x: Math.round(rect.right + 6), y: Math.round(rect.top) });
+    showBoardsMenu({ x: Math.round(rect.right + 6), y: Math.round(rect.top) }, false);
   }
 
-  function showBoardsMenu(at) {
-    var items = [
-      { label: 'Back', icon: 'arrowLeft', onclick: function () { showBoardMenu(at); } },
-      { sep: true },
-    ];
+  function showBoardsMenu(at, fromBoard) {
+    var items = [];
+    if (fromBoard) {
+      items.push({ label: 'Back', icon: 'arrowLeft', onclick: function () { showBoardMenu(at); } });
+      items.push({ sep: true });
+    }
     boardList().forEach(function (row) {
       items.push({
         label: row.name,
@@ -3928,7 +3929,7 @@ window.NoteApp = window.NoteApp || {};
         { label: 'Add from your notes', icon: 'layers', onclick: openPicker },
         { sep: true },
         { label: 'Change Board Background', icon: 'eye', onclick: function () { showBackgroundMenu(at); } },
-        { label: 'Boards\u2026', icon: 'layers', onclick: function () { showBoardsMenu(at); } },
+        { label: 'Boards\u2026', icon: 'layers', onclick: function () { showBoardsMenu(at, true); } },
         { sep: true },
         { label: 'Fit to view', shortcut: 'Ctrl+0', icon: 'restore', onclick: fitView },
       ],
