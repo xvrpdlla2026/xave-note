@@ -2977,10 +2977,20 @@ window.NoteApp = window.NoteApp || {};
     };
   }
 
+  var HISTORY_ROWS = 40000;
+
+  function trimHistory(list) {
+    var rows = board.items.length || 1;
+    var keep = Math.floor(HISTORY_ROWS / rows);
+    if (keep > 30) keep = 30;
+    if (keep < 4) keep = 4;
+    while (list.length > keep) list.shift();
+  }
+
   function pushUndo(label) {
     if (!board.open || board.batch) return;
     board.undo.push({ label: label, snap: snapshotBoard() });
-    if (board.undo.length > 30) board.undo.shift();
+    trimHistory(board.undo);
     board.redo.length = 0;
   }
 
@@ -3030,7 +3040,7 @@ window.NoteApp = window.NoteApp || {};
       return;
     }
     board.redo.push({ label: entry.label, snap: snapshotBoard() });
-    if (board.redo.length > 30) board.redo.shift();
+    trimHistory(board.redo);
     applySnap(entry.snap);
   }
 
