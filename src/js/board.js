@@ -2187,13 +2187,15 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function itemLabel(item) {
+    if (item.data && item.data.title) return item.data.title;
     if (item.kind === 'ref') return (item.data && item.data.title) || 'Reference';
     if (item.kind === 'image') return (item.data && item.data.name) || 'Image';
     if (item.kind === 'link') return (item.data && (item.data.title || item.data.url)) || 'Link';
     if (item.kind === 'todo') return (item.data && item.data.title) || 'To-do';
     var text = util.htmlToText((item.data && item.data.text) || '').slice(0, 44);
     if (text) return text;
-    return item.kind.charAt(0).toUpperCase() + item.kind.slice(1);
+    var kind = kindLabel(item);
+    return kind.charAt(0).toUpperCase() + kind.slice(1);
   }
 
   function pasteFromClipboard() {
@@ -2254,7 +2256,7 @@ window.NoteApp = window.NoteApp || {};
         { label: 'New To-do', icon: 'check', onclick: newItem('todo') },
         { label: 'New Comment', icon: 'info', onclick: newItem('comment') },
         { label: 'New Group', icon: 'panel', onclick: newItem('column') },
-        { label: 'New drawing', icon: 'pencil', onclick: function () { openDrawPad(null); } },
+        { label: 'New drawing', icon: 'pencil', onclick: function () { startInk(null); } },
         { label: 'New Table', icon: 'grid', onclick: newItem('table') },
         { label: 'New Image or File', icon: 'upload', onclick: newItem('image') },
         { label: 'Add from your notes', icon: 'layers', onclick: openPicker },
@@ -2284,6 +2286,19 @@ window.NoteApp = window.NoteApp || {};
     App.ui.openMenu({ x: at.x, y: at.y, items: items });
   }
 
+  function startInk(host) {
+    if (host && lockOf(host)) return;
+    setInkMode(true);
+    inkState.host = host || null;
+    if (host && host.data && host.data.ink) {
+      var ox = host.data.ox || 0;
+      var oy = host.data.oy || 0;
+      inkState.strokes = (host.data.strokes || []).map(function (stroke) { return inkShift(stroke, ox, oy); });
+      inkState.redo = [];
+      inkRepaint();
+    }
+  }
+
   function showItemMenu(item, at) {
     var items = [];
     var data = item.data || {};
@@ -2301,7 +2316,7 @@ window.NoteApp = window.NoteApp || {};
       items.push({ sep: true });
     }
     if (item.kind === 'draw') {
-      items.push({ label: 'Edit drawing', icon: 'pencil', onclick: function () { openDrawPad(item); } });
+      items.push({ label: 'Edit drawing', icon: 'pencil', onclick: function () { startInk(item); } });
       items.push({ sep: true });
     }
     items.push({ label: 'Duplicate', shortcut: 'Ctrl+D', icon: 'copy', onclick: function () { duplicateItem(item); } });
@@ -2773,12 +2788,12 @@ window.NoteApp = window.NoteApp || {};
     if (!strokes.length) { setInkMode(false); return; }
     var host = inkState.host;
     if (host && host.node && host.data && host.data.ink) {
-      var origin = { x: host.x + INK_PAD, y: host.y + INK_PAD };
-      var added = strokes.map(function (stroke) { return inkLocal(stroke, origin); });
-      var all = strokeBox(host.data.strokes.concat(added));
+      var origin = { x: host.data.ox, y: host.data.oy };
+      var drawn = strokes.map(function (stroke) { return inkLocal(stroke, origin); });
+      var all = strokeBox(drawn);
       host.data.ox = origin.x + all.x;
       host.data.oy = origin.y + all.y;
-      host.data.strokes = host.data.strokes.concat(added).map(function (stroke) { return inkShift(stroke, -all.x, -all.y); });
+      host.data.strokes = drawn.map(function (stroke) { return inkShift(stroke, -all.x, -all.y); });
       inkPlace(host, all);
       saveItem(host);
       repaintBody(host);
@@ -2932,9 +2947,7 @@ window.NoteApp = window.NoteApp || {};
     };
     wrap.addEventListener('dblclick', function (event) {
       event.stopPropagation();
-      if (lockOf(item)) return;
-      setInkMode(true);
-      inkState.host = item;
+      startInk(item);
     });
     wrap.addEventListener('pointerdown', function (event) {
       if (inkState.on) return;
