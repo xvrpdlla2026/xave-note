@@ -3892,6 +3892,9 @@ dialog:not([open]) { display: none; }
 .bd-item--draw:hover .bd-item__bar, .bd-item--draw.is-selected .bd-item__bar, .bd-item--draw.is-locked .bd-item__bar { opacity: 1; }
 .bd-item--draw .bd-item__resize { opacity: 0; transition: opacity .12s ease; }
 .bd-item--draw:hover .bd-item__resize, .bd-item--draw.is-selected .bd-item__resize { opacity: 1; }
+.bd-item--draw:hover, .bd-item--draw.is-selected { background: var(--bg-sunken); }
+.bd-item--draw .bd-draw { cursor: move; }
+.bd-item--draw.is-locked .bd-draw { cursor: default; }
 .drawpad { position: fixed; inset: 0; z-index: 300; display: flex; align-items: center; justify-content: center; }
 .drawpad__canvas { position: absolute; inset: 0; width: 100%; height: 100%; background: #ffffff; cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'><circle cx='5' cy='5' r='3' fill='%23111827' stroke='%23ffffff' stroke-width='1.5'/></svg>") 5 5, default; touch-action: none; }
 .drawpad__tools { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); display: flex; align-items: center; gap: 4px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-raised); box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28); }
@@ -3958,7 +3961,8 @@ dialog:not([open]) { display: none; }
 .bd-item.is-swap { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-ring); }
 
 .board__ink { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.board__stage.is-inking .board__ink { pointer-events: auto; cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'><circle cx='5' cy='5' r='3' fill='%23111827' stroke='%23ffffff' stroke-width='1.5'/></svg>") 5 5, default; }
+.board__stage.is-inking .board__ink { pointer-events: auto; cursor: crosshair; }
+.board__stage.is-inking .board__ink.is-move { cursor: move; }
 .board__inkbar { position: absolute; left: 50%; bottom: 18px; z-index: 8; display: none; transform: translateX(-50%); }
 .board__stage.is-inking .board__inkbar { display: block; }
 .board__inktools { display: flex; align-items: center; gap: 4px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-raised); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); }

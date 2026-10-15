@@ -3157,7 +3157,7 @@ window.NoteApp = window.NoteApp || {};
       board.inkTools.eraser.classList.toggle('is-active', inkState.tool === 'eraser');
     board.inkTools.shape.classList.toggle('is-active', inkState.tool === 'shape');
     if (board.inkTools.move) board.inkTools.move.classList.toggle('is-active', inkState.tool === 'move');
-    if (board.inkCanvas) board.inkCanvas.style.cursor = inkState.tool === 'move' ? 'move' : 'crosshair';
+    if (board.inkCanvas) board.inkCanvas.classList.toggle('is-move', inkState.tool === 'move');
     Array.prototype.forEach.call(bar.querySelectorAll('[data-ink-shape]'), function (pick) {
       pick.classList.toggle('is-active', pick.getAttribute('data-ink-shape') === inkState.shape);
     });
