@@ -4009,3 +4009,6 @@ dialog:not([open]) { display: none; }
 .bd-mark__name { position: absolute; left: 0; top: 18px; transform: translateX(-50%); max-width: 152px; padding: 2px 7px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-raised); color: var(--text); font-size: 11px; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bd-mark__edit { position: absolute; left: 0; top: 18px; width: 132px; transform: translateX(-50%); padding: 2px 7px; border: 1px solid var(--accent); border-radius: 999px; background: var(--bg); color: var(--text); font: inherit; font-size: 11px; }
 .board__stage.is-marking { cursor: crosshair; }
+
+.board__top { transition: left 0.18s ease; }
+[data-board="root"].is-marks .board__top { left: 268px; }

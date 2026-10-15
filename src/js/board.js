@@ -1768,6 +1768,7 @@ window.NoteApp = window.NoteApp || {};
   function openMarks(on) {
     board.railMarks = on !== false;
     if (board.rail) board.rail.classList.toggle('is-marks', board.railMarks);
+    if (board.root) board.root.classList.toggle('is-marks', board.railMarks);
     if (!board.railMarks) setMarking(false);
     renderMarkList();
   }
@@ -4910,6 +4911,7 @@ window.NoteApp = window.NoteApp || {};
     board.railMarks = false;
     if (board.stage) board.stage.classList.remove('is-marking');
     if (board.rail) board.rail.classList.remove('is-marks');
+    if (board.root) board.root.classList.remove('is-marks');
     if (!board.root) document.body.appendChild(buildRoot());
     board.root.classList.add('is-open');
     document.body.classList.add('is-board');
