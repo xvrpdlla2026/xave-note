@@ -829,7 +829,7 @@ window.NoteApp = window.NoteApp || {};
       var load = function () {
         return Promise.resolve(App.db.getFileBlob(data.fileId)).then(function (res) { return res ? res.blob : null; });
       };
-      var holder = App.ui.filePreviewContent(filePreview(data), load, {});
+      var holder = App.ui.filePreviewContent(filePreview(data), load, { pdfChrome: false });
       if (holder) {
         stage = node('div', 'bd-ref__preview');
         stage.appendChild(holder);
