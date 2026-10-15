@@ -571,6 +571,102 @@ window.NoteApp = window.NoteApp || {};
     saveItem(item);
   }
 
+  function linkExt(url) {
+    try { return ((new URL(url)).pathname.match(/\.([a-z0-9]+)$/i) || ['', ''])[1].toLowerCase(); } catch (e) { return ''; }
+  }
+
+  function youtubeId(url) {
+    var parsed;
+    try { parsed = new URL(url); } catch (e) { return ''; }
+    var host = parsed.hostname.replace(/^(www|m|music)\./, '');
+    if (host === 'youtu.be') return (parsed.pathname.match(/^\/([\w-]{6,20})/) || ['', ''])[1];
+    if (host !== 'youtube.com' && host !== 'youtube-nocookie.com') return '';
+    if (parsed.pathname === '/watch') return parsed.searchParams.get('v') || '';
+    return (parsed.pathname.match(/^\/(?:embed|shorts|v|live)\/([\w-]{6,20})/) || ['', ''])[1];
+  }
+
+  function vimeoId(url) {
+    var parsed;
+    try { parsed = new URL(url); } catch (e) { return ''; }
+    if (parsed.hostname.replace(/^www\./, '') !== 'vimeo.com') return '';
+    return (parsed.pathname.match(/\/(\d{6,})/) || ['', ''])[1];
+  }
+
+  function linkMedia(url) {
+    var yt = youtubeId(url);
+    if (yt) return { media: 'youtube', embed: 'https://www.youtube.com/embed/' + yt, thumb: 'https://i.ytimg.com/vi/' + yt + '/mqdefault.jpg' };
+    var vimeo = vimeoId(url);
+    if (vimeo) return { media: 'vimeo', embed: 'https://player.vimeo.com/video/' + vimeo, thumb: '' };
+    var ext = linkExt(url);
+    if (/^(png|jpe?g|gif|webp|avif|svg|bmp|ico)$/.test(ext)) return { media: 'image', src: url };
+    if (/^(mp4|webm|mov|m4v|ogv)$/.test(ext)) return { media: 'video', src: url };
+    if (/^(mp3|wav|ogg|oga|m4a|flac)$/.test(ext)) return { media: 'audio', src: url };
+    if (ext === 'pdf') return { media: 'pdf', src: url };
+    return null;
+  }
+
+  function linkLocal(url) {
+    var host = hostOf(url);
+    return {
+      url: url,
+      title: '',
+      description: '',
+      image: '',
+      favicon: host ? 'https://www.google.com/s2/favicons?sz=64&domain=' + encodeURIComponent(host) : '',
+      host: host,
+      media: linkMedia(url),
+    };
+  }
+
+  function linkShot(item, box, src, cls, fallback) {
+    if (!src) return null;
+    var shot = node('img', cls);
+    shot.src = src;
+    shot.alt = '';
+    shot.setAttribute('referrerpolicy', 'no-referrer');
+    shot.setAttribute('loading', 'lazy');
+    shot.addEventListener('error', function () {
+      if (fallback && shot.getAttribute('src') !== fallback) { shot.src = fallback; return; }
+      if (shot.parentNode) shot.parentNode.removeChild(shot);
+      fitLinkCard(item);
+    });
+    box.appendChild(shot);
+    return shot;
+  }
+
+  function linkFrame(media, data, autoplay) {
+    var frame = node('iframe', 'bd-linkcard__frame');
+    frame.setAttribute('src', media.embed + (autoplay ? '?autoplay=1&rel=0' : ''));
+    frame.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture');
+    frame.setAttribute('allowfullscreen', '');
+    frame.setAttribute('referrerpolicy', 'no-referrer');
+    frame.setAttribute('title', String(data.title || '').trim() || 'Video');
+    return frame;
+  }
+
+  function linkVideo(item, data, media) {
+    var wrap = node('div', 'bd-linkcard__video');
+    var play = node('button', 'bd-linkcard__play');
+    play.type = 'button';
+    play.setAttribute('aria-label', 'Play video');
+    var start = function () {
+      wrap.textContent = '';
+      wrap.classList.add('is-playing');
+      wrap.appendChild(linkFrame(media, data, true));
+      fitLinkCard(item);
+    };
+    play.addEventListener('click', function (event) { event.stopPropagation(); start(); });
+    var down = null;
+    wrap.addEventListener('pointerdown', function (event) { down = { x: event.clientX, y: event.clientY }; });
+    wrap.addEventListener('click', function (event) {
+      if (event.target === play || play.contains(event.target)) return;
+      if (down && Math.abs(event.clientX - down.x) + Math.abs(event.clientY - down.y) > 4) return;
+      start();
+    });
+    linkShot(item, wrap, data.image || media.thumb, 'bd-linkcard__poster', data.image ? media.thumb : '');
+    wrap.appendChild(play);
+    return wrap;
+  }
   function renderLinkCard(item) {
     if (!item.node) return;
     var box = item.node.querySelector('.bd-linkcard__preview');
@@ -585,14 +681,27 @@ window.NoteApp = window.NoteApp || {};
       fitLinkCard(item);
       return;
     }
-    if (data.image) {
-      var shot = node('img', 'bd-linkcard__shot');
-      shot.src = data.image;
-      shot.alt = '';
-      shot.setAttribute('referrerpolicy', 'no-referrer');
-      shot.setAttribute('loading', 'lazy');
-      shot.addEventListener('error', function () { if (shot.parentNode) shot.parentNode.removeChild(shot); fitLinkCard(item); });
-      box.appendChild(shot);
+    var media = data.media || linkMedia(url);
+    if (media && media.media === 'image') {
+      linkShot(item, box, data.image || media.src, 'bd-linkcard__shot', '');
+    } else if (media && (media.media === 'video' || media.media === 'audio')) {
+      var player = node(media.media === 'audio' ? 'audio' : 'video', 'bd-linkcard__player');
+      player.setAttribute('controls', '');
+      player.setAttribute('preload', 'metadata');
+      player.setAttribute('src', media.src);
+      box.appendChild(player);
+    } else if (media && media.media === 'pdf') {
+      var page = node('iframe', 'bd-linkcard__frame');
+      page.setAttribute('src', media.src);
+      page.setAttribute('loading', 'lazy');
+      page.setAttribute('title', data.host || hostOf(url));
+      box.appendChild(page);
+    } else if (media && media.media === 'youtube') {
+      box.appendChild(linkVideo(item, data, media));
+    } else if (media && media.media === 'vimeo' && !data.image) {
+      box.appendChild(linkFrame(media, data, false));
+    } else if (data.image) {
+      linkShot(item, box, data.image, 'bd-linkcard__shot', media && media.thumb ? media.thumb : '');
     }
     var row = node('div', 'bd-linkcard__row');
     var glyph = node('span', 'bd-linkcard__glyph');
@@ -609,7 +718,9 @@ window.NoteApp = window.NoteApp || {};
     }
     row.appendChild(node('span', 'bd-linkcard__host', data.host || hostOf(url)));
     box.appendChild(row);
-    box.appendChild(node('span', 'bd-linkcard__name', String(data.title || '').trim() || data.host || hostOf(url)));
+    var name = String(data.title || '').trim();
+    if (name) box.appendChild(node('span', 'bd-linkcard__name', name));
+    else if (!media) box.appendChild(node('span', 'bd-linkcard__name', data.host || hostOf(url)));
     if (data.description) box.appendChild(node('p', 'bd-linkcard__desc', data.description));
     if (data.failed) box.appendChild(node('span', 'bd-linkcard__status', 'No preview available for this page'));
     fitLinkCard(item);
@@ -621,18 +732,29 @@ window.NoteApp = window.NoteApp || {};
     var known = item.data.link;
     if (known && known.url === url && !known.failed) { renderLinkCard(item); return; }
     if (item.data.linkBusy === url) return;
-    item.data.linkBusy = url;
+    var local = linkLocal(url);
+    item.data.link = local;
+    saveItem(item);
     renderLinkCard(item);
+    if (local.media && local.media.media !== 'youtube' && local.media.media !== 'vimeo') return;
+    item.data.linkBusy = url;
     unfurl(url).then(function (meta) {
       if (item.data.linkBusy !== url) return;
       item.data.linkBusy = '';
-      item.data.link = { url: url, title: meta.title, description: meta.description, image: meta.image, favicon: meta.favicon, host: meta.host || hostOf(url) };
+      var link = item.data.link && item.data.link.url === url ? item.data.link : local;
+      link.title = meta.title;
+      link.description = meta.description;
+      link.image = meta.image;
+      link.favicon = meta.favicon || link.favicon;
+      link.host = meta.host || link.host;
+      link.failed = false;
       saveItem(item);
       renderLinkCard(item);
     }).catch(function () {
       if (item.data.linkBusy !== url) return;
       item.data.linkBusy = '';
-      item.data.link = { url: url, title: '', description: '', image: '', favicon: '', host: hostOf(url), failed: true };
+      if (!item.data.link || item.data.link.url !== url) return;
+      if (!item.data.link.media) item.data.link.failed = true;
       saveItem(item);
       renderLinkCard(item);
     });
