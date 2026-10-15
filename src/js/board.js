@@ -3757,11 +3757,6 @@ window.NoteApp = window.NoteApp || {};
       event.stopPropagation();
       startInk(item);
     });
-    wrap.addEventListener('pointerdown', function (event) {
-      if (inkState.on) return;
-      event.stopPropagation();
-      select(item);
-    });
     if (typeof ResizeObserver === 'function') new ResizeObserver(paint).observe(wrap);
     requestAnimationFrame(paint);
     return wrap;
