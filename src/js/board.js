@@ -2871,13 +2871,20 @@ window.NoteApp = window.NoteApp || {};
     };
   }
 
+  function inkPlaced(stroke) {
+    var angle = stroke.a || 0;
+    if (!angle) return stroke.p;
+    var box = strokeBox([stroke]);
+    return inkRotate(stroke.p, box.x + box.w / 2, box.y + box.h / 2, angle);
+  }
+
   function inkScreenStroke(stroke) {
     var view = board.view;
     return {
       c: stroke.c,
       e: stroke.e,
       w: stroke.w * view.z,
-      p: stroke.p.map(function (point) { return [point[0] * view.z + view.x, point[1] * view.z + view.y]; }),
+      p: inkPlaced(stroke).map(function (point) { return [point[0] * view.z + view.x, point[1] * view.z + view.y]; }),
     };
   }
 
@@ -2941,11 +2948,34 @@ window.NoteApp = window.NoteApp || {};
     });
   }
 
+  function inkFrameBox() {
+    var at = inkSelection();
+    if (at < 0) return null;
+    var stroke = inkState.strokes[at];
+    var box = strokeBox([stroke]);
+    var angle = stroke.a || 0;
+    var pad = 4 / (board.view.z || 1);
+    var left = box.x - pad;
+    var top = box.y - pad;
+    var right = box.x + box.w + pad;
+    var bottom = box.y + box.h + pad;
+    var cx = (left + right) / 2;
+    var cy = (top + bottom) / 2;
+    var place = function (point) { return inkScreenPoint(inkRotate([point], cx, cy, angle)[0]); };
+    return {
+      corners: [place([left, top]), place([right, top]), place([right, bottom]), place([left, bottom])],
+      top: place([cx, top]),
+      grip: (function () {
+        var head = place([cx, top]);
+        return [head[0] + Math.sin(angle) * INK_GRIP, head[1] - Math.cos(angle) * INK_GRIP];
+      })(),
+      color: inkChrome(),
+    };
+  }
+
   function inkGrip() {
-    var box = inkSelBox();
-    if (!box) return null;
-    var top = inkScreenPoint([box.x + box.w / 2, box.y]);
-    return [top[0], top[1] - INK_GRIP];
+    var frame = inkFrameBox();
+    return frame ? frame.grip : null;
   }
 
   function inkHandle(point) {
@@ -2997,30 +3027,32 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function inkFrame(ctx) {
-    var box = inkSelBox();
-    if (!box) return;
-    var a = inkScreenPoint([box.x, box.y]);
-    var b = inkScreenPoint([box.x + box.w, box.y + box.h]);
-    var cx = (a[0] + b[0]) / 2;
-    var grip = inkGrip();
-    var color = inkChrome();
+    var frame = inkFrameBox();
+    if (!frame) return;
+    var color = frame.color;
     ctx.save();
     ctx.globalCompositeOperation = 'source-over';
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
     ctx.lineWidth = 1.5;
     ctx.setLineDash([5, 4]);
-    ctx.strokeRect(a[0] - 4, a[1] - 4, b[0] - a[0] + 8, b[1] - a[1] + 8);
+    ctx.beginPath();
+    frame.corners.forEach(function (point, n) {
+      if (n) ctx.lineTo(point[0], point[1]);
+      else ctx.moveTo(point[0], point[1]);
+    });
+    ctx.closePath();
+    ctx.stroke();
     ctx.setLineDash([]);
     ctx.beginPath();
-    ctx.moveTo(cx, a[1] - 4);
-    ctx.lineTo(cx, grip[1]);
+    ctx.moveTo(frame.top[0], frame.top[1]);
+    ctx.lineTo(frame.grip[0], frame.grip[1]);
     ctx.stroke();
     ctx.beginPath();
-    ctx.arc(grip[0], grip[1], 7, 0, Math.PI * 2);
+    ctx.arc(frame.grip[0], frame.grip[1], 7, 0, Math.PI * 2);
     ctx.stroke();
     ctx.beginPath();
-    ctx.arc(grip[0], grip[1], 2.4, 0, Math.PI * 2);
+    ctx.arc(frame.grip[0], frame.grip[1], 2.4, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
@@ -3032,7 +3064,7 @@ window.NoteApp = window.NoteApp || {};
     var spot = inkWorld(point);
     var cx = box.x + box.w / 2;
     var cy = box.y + box.h / 2;
-    var drag = { i: at, cx: cx, cy: cy, points: inkState.strokes[at].p.map(function (p) { return [p[0], p[1]]; }) };
+    var drag = { i: at, cx: cx, cy: cy, angle: inkState.strokes[at].a || 0, points: inkState.strokes[at].p.map(function (p) { return [p[0], p[1]]; }) };
     if (inkHandle(point) === 'rotate') {
       drag.mode = 'rotate';
       drag.from = Math.atan2(spot[1] - cy, spot[0] - cx);
@@ -3400,7 +3432,7 @@ window.NoteApp = window.NoteApp || {};
         target.p = drag.points.map(function (p) { return [p[0] + dx, p[1] + dy]; });
       } else {
         var turn = Math.atan2(spot[1] - drag.cy, spot[0] - drag.cx) - drag.from;
-        target.p = inkRotate(drag.points, drag.cx, drag.cy, turn);
+        target.a = drag.angle + turn;
       }
       inkRepaint();
       return;
@@ -3445,7 +3477,7 @@ window.NoteApp = window.NoteApp || {};
       c: stroke.c,
       e: stroke.e,
       w: stroke.w,
-      p: stroke.p.map(function (point) { return [point[0] - origin.x, point[1] - origin.y]; }),
+      p: inkPlaced(stroke).map(function (point) { return [point[0] - origin.x, point[1] - origin.y]; }),
     };
   }
 
@@ -3490,7 +3522,7 @@ window.NoteApp = window.NoteApp || {};
       setInkMode(false);
       return;
     }
-    var box = strokeBox(strokes);
+    var box = strokeBox(strokes.map(function (stroke) { return { c: stroke.c, e: stroke.e, w: stroke.w, p: inkPlaced(stroke) }; }));
     var base = { x: box.x, y: box.y };
     var local = strokes.map(function (stroke) { return inkLocal(stroke, base); });
     addItem('draw', {
