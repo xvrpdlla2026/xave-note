@@ -2055,6 +2055,7 @@ window.NoteApp = window.NoteApp || {};
       { label: 'Rename\u2026', icon: 'pencil', shortcut: 'F2', onclick: cfg.on('rename-note') },
       { label: 'Move to another folder\u2026', icon: 'layers', onclick: cfg.on('move-note') },
       { label: 'Copy the note text', icon: 'copy', onclick: cfg.on('copy-note') },
+      { label: 'History\u2026', icon: 'restore', onclick: cfg.on('note-history') },
     ];
     reorderMenuItems(cfg.reorder).forEach(function (group) {
       group.forEach(function (item) { items.push(item); });

@@ -2480,6 +2480,10 @@ dialog:not([open]) { display: none; }
 
 .vault-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .bundle-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.version-list { display: flex; flex-direction: column; gap: 10px; }
+.version-row { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+.version-row__meta { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; opacity: 0.7; }
+.version-row__preview { margin: 6px 0 8px; white-space: pre-wrap; }
 .dialog__note:empty { display: none; }
 
 .lock-notice {

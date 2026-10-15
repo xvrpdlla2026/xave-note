@@ -1847,6 +1847,49 @@ window.NoteApp = window.NoteApp || {};
     render();
   }
 
+  function restoreNoteVersion(id, versionId) {
+    App.db.restoreVersion(id, versionId).then(function () {
+      saveOpenNote.cancel();
+      util.toast('Version restored.', 'success');
+      if (state.activeNoteId === id) openNote(id);
+      else render();
+    }, function (err) {
+      util.toast('Restore failed: ' + err.message, 'error');
+    });
+  }
+
+  function noteHistory(id) {
+    var note = App.db.getNote(id);
+    if (!note) return;
+    var versions = App.db.listVersions(id);
+    var body = el('div', { class: 'version-list' });
+    if (!versions.length) {
+      body.appendChild(el('p', { class: 'dialog__note', text: 'No earlier versions yet. A version is kept the first time a note is edited after five minutes, and the last 20 are kept.' }));
+    }
+    versions.forEach(function (row) {
+      var sealed = App.crypto.isEnvelope(row.content);
+      var preview = sealed
+        ? 'This note is encrypted, so the body is shown after restoring it.'
+        : util.htmlToText(row.content || '').replace(/\s+/g, ' ').trim().slice(0, 180);
+      body.appendChild(el('div', { class: 'version-row' }, [
+        el('div', { class: 'version-row__meta' }, [
+          el('span', { text: util.formatWhen(row.created_at) }),
+          el('span', { text: sealed ? 'encrypted' : util.formatBytes((row.content || '').length) }),
+        ]),
+        el('p', { class: 'version-row__preview', text: preview || '(empty)' }),
+        el('button', { class: 'btn btn--ghost', type: 'button', onclick: function () { restoreNoteVersion(id, row.id); } }, ['Restore this version']),
+      ]));
+    });
+    App.ui.dialog({
+      title: 'Note history',
+      icon: 'restore',
+      wide: true,
+      message: 'Versions of \u201c' + (note.title || 'Untitled note') + '\u201d, newest first. Restoring one keeps the current body as a version, so nothing is lost.',
+      body: body,
+      confirmLabel: 'Close',
+    });
+  }
+
   function deleteNote(id) {
     var note = App.db.getNote(id);
     if (!note) return;
@@ -3847,6 +3890,7 @@ window.NoteApp = window.NoteApp || {};
     'bulk-delete': function () { if (state.bulkSelected.length) deleteBulkItems(bulkItems()); },
     'bulk-clear': function () { clearBulkSelection(); render(); },
     'rename-note': function () { if (state.activeNoteId) renameNote(state.activeNoteId); },
+    'note-history': function () { if (state.activeNoteId) noteHistory(state.activeNoteId); },
     'delete-note': function () { if (state.activeNoteId) deleteNote(state.activeNoteId); },
     'toggle-private': function (id) { toggleNotePrivate(id || state.activeNoteId); },
     'rename-folder': function () { if (state.selection.type === 'folder') renameFolder(state.selection.id); },
@@ -4484,6 +4528,7 @@ window.NoteApp = window.NoteApp || {};
           'move-note': function () { moveNote(id); },
           'delete-note': function () { deleteNote(id); },
           'copy-note': function () { copyNoteText(id); },
+          'note-history': function () { noteHistory(id); },
           'toggle-private': function () { toggleNotePrivate(id); },
           'move-item-up': function () { reorderAction('note', id, -1); },
           'move-item-down': function () { reorderAction('note', id, 1); },

@@ -131,6 +131,15 @@ window.NoteApp = window.NoteApp || {};
         '  PRIMARY KEY (source_note_id, target_norm)' +
         ')',
       'CREATE INDEX IF NOT EXISTS idx_links_target ON note_links (workspace_id, target_norm)',
+      'CREATE TABLE IF NOT EXISTS note_versions (' +
+        '  id TEXT PRIMARY KEY,' +
+        '  note_id TEXT NOT NULL,' +
+        '  workspace_id TEXT,' +
+        '  title TEXT NOT NULL DEFAULT "",' +
+        '  content TEXT NOT NULL DEFAULT "",' +
+        '  created_at TEXT NOT NULL' +
+        ')',
+      'CREATE INDEX IF NOT EXISTS idx_versions_note ON note_versions (note_id, created_at)',
       'CREATE INDEX IF NOT EXISTS idx_links_source ON note_links (source_note_id)',
     ],
   ['CREATE TABLE IF NOT EXISTS templates (id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id INTEGER REFERENCES workspaces(id) ON DELETE CASCADE, name TEXT NOT NULL DEFAULT \'\', content TEXT NOT NULL DEFAULT \'\', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);', 'CREATE INDEX IF NOT EXISTS idx_templates_ws ON templates(workspace_id);'],
@@ -548,6 +557,24 @@ window.NoteApp = window.NoteApp || {};
         });
       }).then(function () { return true; });
     });
+  }
+
+  var VERSION_KEEP = 20;
+  var VERSION_GAP_MS = 5 * 60 * 1000;
+
+  // A version is the body as it was before this write, kept at most one per gap so a
+  // burst of typing costs one row, and pruned so a note never holds more than VERSION_KEEP.
+  function snapshotInto(run, noteId, previous, workspaceId, force) {
+    if (!previous || typeof previous.content !== 'string' || !previous.content) return;
+    var last = force ? null : queryOne('SELECT created_at FROM note_versions WHERE note_id = ? ORDER BY created_at DESC LIMIT 1', [noteId]);
+    if (last && last.created_at) {
+      var age = Date.parse(util.nowIso()) - Date.parse(last.created_at);
+      if (age >= 0 && age < VERSION_GAP_MS) return;
+    }
+    run('INSERT INTO note_versions (id, note_id, workspace_id, title, content, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [util.uuid(), noteId, workspaceId || null, previous.title || '', previous.content, util.nowIso()]);
+    run('DELETE FROM note_versions WHERE note_id = ? AND id NOT IN (SELECT id FROM note_versions WHERE note_id = ? ORDER BY created_at DESC, id DESC LIMIT ' + VERSION_KEEP + ')',
+      [noteId, noteId]);
   }
 
   function refreshLinksInto(run, noteId, plaintext) {
@@ -1189,12 +1216,15 @@ var vaultBusy = false;
         ? Promise.resolve(null)
         : App.crypto.encrypt(content);
       var prevTitle = '';
+      var prevRow = null;
       try {
-        var prev = queryOne('SELECT title FROM notes WHERE id = ?', [id]);
-        prevTitle = prev ? prev.title || '' : '';
+        prevRow = queryOne('SELECT title, content, workspace_id FROM notes WHERE id = ?', [id]);
+        prevTitle = prevRow ? prevRow.title || '' : '';
       } catch (e) {  }
       return sealed.then(function (stored) {
+        var changed = !prevRow || typeof content !== 'string' || prevRow.content !== stored;
         return write(function (run) {
+          if (typeof content === 'string' && changed) snapshotInto(run, id, prevRow, prevRow && prevRow.workspace_id);
           run('UPDATE notes SET title = ?, content = COALESCE(?, content), updated_at = ? WHERE id = ?',
             [title, stored, stamp, id]);
           refreshLinksInto(run, id, content);
@@ -1207,6 +1237,30 @@ var vaultBusy = false;
           });
         }
         return { updated_at: stamp };
+      });
+    },
+
+    listVersions: function (noteId) {
+      return query(
+        'SELECT id, title, content, created_at FROM note_versions WHERE note_id = ? ORDER BY created_at DESC, id DESC',
+        [noteId]);
+    },
+
+    // The stored value goes back in untouched, so restoring an encrypted note does not
+    // re-seal an already sealed body.
+    restoreVersion: function (noteId, versionId) {
+      var row = queryOne('SELECT title, content FROM note_versions WHERE id = ? AND note_id = ?', [versionId, noteId]);
+      if (!row) return Promise.reject(new Error('That version is gone.'));
+      var current = queryOne('SELECT title, content, workspace_id FROM notes WHERE id = ?', [noteId]);
+      if (!current) return Promise.reject(new Error('That note is gone.'));
+      var stamp = util.nowIso();
+      return write(function (run) {
+        snapshotInto(run, noteId, current, current.workspace_id, true);
+        run('UPDATE notes SET title = ?, content = ?, updated_at = ? WHERE id = ?', [row.title || '', row.content, stamp, noteId]);
+        if (!App.crypto.isEnvelope(row.content)) refreshLinksInto(run, noteId, row.content);
+      }).then(function () {
+        delete noteText[noteId];
+        return { title: row.title || '', updated_at: stamp };
       });
     },
 
@@ -2052,7 +2106,13 @@ var vaultBusy = false;
       var placeholders = ids.map(function () { return '?'; }).join(',');
       var fileIds = query('SELECT id FROM files WHERE folder_id IN (' + placeholders + ')', ids)
         .map(function (row) { return row.id; });
+      var noteIds = query('SELECT id FROM notes WHERE folder_id IN (' + placeholders + ')', ids)
+        .map(function (row) { return row.id; });
       return write(function (run) {
+        if (noteIds.length) {
+          var notePlaceholders = noteIds.map(function () { return '?'; }).join(',');
+          run('DELETE FROM note_versions WHERE note_id IN (' + notePlaceholders + ')', noteIds);
+        }
         run('DELETE FROM notes WHERE folder_id IN (' + placeholders + ')', ids);
         run('DELETE FROM files WHERE folder_id IN (' + placeholders + ')', ids);
         run('DELETE FROM folders WHERE id IN (' + placeholders + ')', ids);
@@ -2063,7 +2123,10 @@ var vaultBusy = false;
 
     permanentDeleteNote: function (id) {
       delete noteText[id];
-      return write('DELETE FROM notes WHERE id = ?', [id]);
+      return write(function (run) {
+        run('DELETE FROM note_versions WHERE note_id = ?', [id]);
+        run('DELETE FROM notes WHERE id = ?', [id]);
+      });
     },
 
     permanentDeleteFile: function (id) {
