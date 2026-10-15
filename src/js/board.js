@@ -2327,6 +2327,13 @@ window.NoteApp = window.NoteApp || {};
   function buildRail() {
     var rail = node('div', 'board__rail');
     board.rail = rail;
+    var boards = node('div', 'board__rail-group');
+    var boardsButton = railButton('layers', 'Boards', function () { showBoardsMenuFrom(boardsButton); });
+    boardsButton.title = 'Board: ' + boardName(BOARD_ID);
+    boardsButton.setAttribute('aria-label', boardsButton.title);
+    boards.appendChild(boardsButton);
+    board.boardButton = boardsButton;
+    rail.appendChild(boards);
     var top = node('div', 'board__rail-group');
     top.appendChild(railButton('pin', 'Landmarks', function () { openMarks(!board.railMarks); }));
     rail.appendChild(top);
@@ -3192,8 +3199,9 @@ window.NoteApp = window.NoteApp || {};
   function boardName(id) {
     try {
       var row = App.db.boardGet(id);
-      return (row && row.name) || id;
-    } catch (e) { return id; }
+      if (row && row.name) return row.name;
+    } catch (e) {  }
+    return id === DEFAULT_BOARD_ID ? 'Xave' : id;
   }
 
   function boardList() {
@@ -3274,6 +3282,17 @@ window.NoteApp = window.NoteApp || {};
         util.toast('Delete failed: ' + err.message, 'error');
       });
     });
+  }
+
+  function syncBoardButton() {
+    if (!board.boardButton) return;
+    board.boardButton.title = 'Board: ' + boardName(BOARD_ID);
+    board.boardButton.setAttribute('aria-label', board.boardButton.title);
+  }
+
+  function showBoardsMenuFrom(button) {
+    var rect = button.getBoundingClientRect();
+    showBoardsMenu({ x: Math.round(rect.right + 6), y: Math.round(rect.top) });
   }
 
   function showBoardsMenu(at) {
@@ -5540,6 +5559,7 @@ window.NoteApp = window.NoteApp || {};
     board.root.classList.toggle('is-maphidden', !!board.mapHidden);
     document.body.classList.add('is-board');
     try { App.db.boardEnsure(BOARD_ID, 'Xave'); } catch (e) { }
+    syncBoardButton();
     load();
     setMode(board.mode, true);
     applyBgFromDb();
