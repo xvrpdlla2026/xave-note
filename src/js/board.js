@@ -1098,12 +1098,24 @@ window.NoteApp = window.NoteApp || {};
     });
   }
 
+  function selectedGroup(item) {
+    if (board.selectedIds.length > 1 && board.selectedIds.indexOf(item.id) >= 0) {
+      return board.selectedIds.map(findItem).filter(Boolean);
+    }
+    return [item];
+  }
+
   function toggleLock(item) {
-    if (!item.data) item.data = {};
-    item.data.locked = !item.data.locked;
-    saveItem(item);
-    paintLock(item);
-    util.toast(item.data.locked ? 'Card locked' : 'Card unlocked');
+    var rows = selectedGroup(item);
+    var next = rows.some(function (row) { return !lockOf(row); });
+    rows.forEach(function (row) {
+      if (!row.data) row.data = {};
+      row.data.locked = next;
+      saveItem(row);
+      paintLock(row);
+    });
+    if (rows.length > 1) util.toast(rows.length + (next ? ' cards locked' : ' cards unlocked'));
+    else util.toast(next ? 'Card locked' : 'Card unlocked');
   }
 
   function deleteRow(row) {
@@ -1136,7 +1148,7 @@ window.NoteApp = window.NoteApp || {};
         if (!lockOf(child) && doomed.indexOf(child) < 0) doomed.push(child);
       });
     });
-    if (!free.length) { util.toast('Unlock this card first'); return; }
+    if (!free.length) { util.toast(rows.length > 1 ? 'Unlock these cards first' : 'Unlock this card first'); return; }
     pushUndo('remove');
     doomed.forEach(deleteRow);
     board.items = board.items.filter(function (other) { return doomed.indexOf(other) < 0; });
@@ -2315,7 +2327,35 @@ window.NoteApp = window.NoteApp || {};
     }
   }
 
+  function showGroupMenu(rows, at) {
+    var free = rows.filter(function (row) { return !lockOf(row); });
+    var all = !free.length;
+    var count = rows.length;
+    App.ui.openMenu({
+      x: at.x,
+      y: at.y,
+      title: count + ' cards',
+      items: [
+        { label: all ? 'Unlock ' + count + ' cards' : 'Lock ' + count + ' cards', icon: all ? 'unlock' : 'lock', onclick: function () { toggleLock(rows[0]); } },
+        {
+          label: all ? 'Remove cards' : 'Remove ' + free.length + (free.length === 1 ? ' card' : ' cards'),
+          shortcut: 'Delete',
+          icon: 'trash',
+          danger: true,
+          disabled: all,
+          onclick: removeSelected,
+        },
+        { sep: true },
+        { label: 'Deselect', icon: 'close', onclick: function () { setSelection([], null); } },
+      ],
+    });
+  }
+
   function showItemMenu(item, at) {
+    if (board.selectedIds.length > 1 && board.selectedIds.indexOf(item.id) >= 0) {
+      showGroupMenu(board.selectedIds.map(findItem).filter(Boolean), at);
+      return;
+    }
     var items = [];
     var data = item.data || {};
     items.push({ label: data.title ? 'Rename' : 'Name this card', icon: 'type', onclick: function () { renameCard(item); } });
