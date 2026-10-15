@@ -2965,9 +2965,14 @@ window.NoteApp = window.NoteApp || {};
     return {
       corners: [place([left, top]), place([right, top]), place([right, bottom]), place([left, bottom])],
       top: place([cx, top]),
+      bottom: place([cx, bottom]),
       grip: (function () {
         var head = place([cx, top]);
         return [head[0] + Math.sin(angle) * INK_GRIP, head[1] - Math.cos(angle) * INK_GRIP];
+      })(),
+      clear: (function () {
+        var foot = place([cx, bottom]);
+        return [foot[0] - Math.sin(angle) * INK_GRIP, foot[1] + Math.cos(angle) * INK_GRIP];
       })(),
       color: inkChrome(),
     };
@@ -2979,11 +2984,15 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function inkHandle(point) {
-    var grip = inkGrip();
-    if (!grip) return null;
-    var dx = point[0] - grip[0];
-    var dy = point[1] - grip[1];
-    return Math.sqrt(dx * dx + dy * dy) <= 15 ? 'rotate' : null;
+    var frame = inkFrameBox();
+    if (!frame) return null;
+    var near = function (spot) {
+      var dx = point[0] - spot[0];
+      var dy = point[1] - spot[1];
+      return Math.sqrt(dx * dx + dy * dy) <= 15;
+    };
+    if (near(frame.clear)) return 'close';
+    return near(frame.grip) ? 'rotate' : null;
   }
 
   function inkNear(point, a, b) {
@@ -3054,6 +3063,19 @@ window.NoteApp = window.NoteApp || {};
     ctx.beginPath();
     ctx.arc(frame.grip[0], frame.grip[1], 2.4, 0, Math.PI * 2);
     ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(frame.bottom[0], frame.bottom[1]);
+    ctx.lineTo(frame.clear[0], frame.clear[1]);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(frame.clear[0], frame.clear[1], 7, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(frame.clear[0] - 3, frame.clear[1] - 3);
+    ctx.lineTo(frame.clear[0] + 3, frame.clear[1] + 3);
+    ctx.moveTo(frame.clear[0] + 3, frame.clear[1] - 3);
+    ctx.lineTo(frame.clear[0] - 3, frame.clear[1] + 3);
+    ctx.stroke();
     ctx.restore();
   }
 
@@ -3342,10 +3364,7 @@ window.NoteApp = window.NoteApp || {};
     if ((key === 'Delete' || key === 'Backspace') && inkSelection() >= 0) {
       event.preventDefault();
       event.stopPropagation();
-      inkState.strokes.splice(inkSelection(), 1);
-      inkState.sel = null;
-      inkRepaint();
-      inkBar();
+      inkRemoveSel();
       return;
     }
     if (key !== 'Escape') return;
@@ -3375,6 +3394,15 @@ window.NoteApp = window.NoteApp || {};
     inkBar();
   }
 
+  function inkRemoveSel() {
+    var at = inkSelection();
+    if (at < 0) return;
+    inkState.strokes.splice(at, 1);
+    inkState.sel = null;
+    inkRepaint();
+    inkBar();
+  }
+
   function onInkDown(event) {
     if (!inkState.on || event.button !== 0) return;
     if (board.inkPop) board.inkPop.classList.add('is-hidden');
@@ -3384,6 +3412,10 @@ window.NoteApp = window.NoteApp || {};
     var point = inkPoint(event);
     window.addEventListener('pointermove', onInkMove);
     window.addEventListener('pointerup', onInkUp);
+    if (inkState.tool !== 'eraser' && inkHandle(point) === 'close') {
+      inkRemoveSel();
+      return;
+    }
     if (inkState.tool !== 'eraser' && inkHandle(point) === 'rotate') {
       inkState.drag = inkGrab(point);
       inkRepaint();
