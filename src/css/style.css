@@ -4012,7 +4012,6 @@ dialog:not([open]) { display: none; }
 .bd-mark.is-ghost .bd-mark__head { border-style: dashed; background: var(--bg); box-shadow: none; }
 .bd-mark__text { position: absolute; left: 0; top: 18px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 3px; max-width: 210px; }
 .bd-mark__name { max-width: 210px; padding: 2px 7px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-raised); color: var(--text); font-size: 11px; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.bd-mark__desc { max-width: 210px; padding: 1px 7px; border-radius: 999px; background: var(--bg-raised); color: var(--text-muted); font-size: 10px; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bd-mark__edit { position: absolute; left: 0; top: 18px; width: 150px; transform: translateX(-50%); padding: 2px 7px; border: 1px solid var(--accent); border-radius: 999px; background: var(--bg); color: var(--text); font: inherit; font-size: 11px; }
 .board__stage.is-marking, .board__stage.is-marking * { cursor: copy; }
 .board__map { position: absolute; top: 12px; right: 14px; z-index: 12; width: 216px; padding: 8px; display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-raised); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28); }

@@ -1797,10 +1797,7 @@ window.NoteApp = window.NoteApp || {};
         var text = node('div', 'bd-mark__text');
         var label = node('span', 'bd-mark__name', mark.name);
         label.addEventListener('dblclick', function (event) { event.preventDefault(); event.stopPropagation(); markEdit(mark); });
-        var desc = node('span', 'bd-mark__desc');
-        desc.addEventListener('dblclick', function (event) { event.preventDefault(); event.stopPropagation(); markEdit(mark); });
         text.appendChild(label);
-        text.appendChild(desc);
         pin.appendChild(head);
         pin.appendChild(text);
         board.canvas.appendChild(pin);
@@ -1808,7 +1805,6 @@ window.NoteApp = window.NoteApp || {};
         mark.head = head;
         mark.text = text;
         mark.label = label;
-        mark.descEl = desc;
       }
       mark.node.setAttribute('data-icon', mark.icon || 'pin');
       mark.node.style.left = mark.x + 'px';
@@ -1820,9 +1816,6 @@ window.NoteApp = window.NoteApp || {};
       }
       if (mark.label.textContent !== mark.name) mark.label.textContent = mark.name;
       mark.label.title = mark.name;
-      var line = mark.desc || '';
-      if (mark.descEl.textContent !== line) mark.descEl.textContent = line;
-      mark.descEl.style.display = line ? '' : 'none';
     });
     Array.prototype.slice.call(board.canvas.querySelectorAll('.bd-mark')).forEach(function (pin) {
       if (!findMark(pin.getAttribute('data-mark'))) pin.parentNode.removeChild(pin);
