@@ -649,10 +649,11 @@ window.NoteApp = window.NoteApp || {};
     box.setAttribute('contenteditable', 'true');
     box.setAttribute('data-board-field', key);
     if (placeholder) box.setAttribute('data-placeholder', placeholder);
-    box.textContent = (item.data && item.data[key]) || '';
+    var value = (item.data && item.data[key]) || '';
+    box.innerHTML = util.isRichHtml(value) ? util.sanitizeRichHtml(value) : util.escapeHtml(value);
     box.addEventListener('input', function () {
       if (lockOf(item)) return;
-      item.data[key] = box.textContent;
+      item.data[key] = box.innerHTML;
       queueItemSave(item);
     });
     box.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
@@ -696,6 +697,341 @@ window.NoteApp = window.NoteApp || {};
     item.data.fs = next;
     applyFont(item);
     saveItem(item);
+  }
+
+  var RICH_STYLE = { bold: ['font-weight', '700'], italic: ['font-style', 'italic'], underline: ['text-decoration', 'underline'] };
+  var RICH_INLINE = /^(B|I|U|S|EM|STRONG|SPAN|FONT|MARK|SMALL|BIG|SUB|SUP|STRIKE|TT)$/i;
+  var RICH_COLORS = [
+    ['', 'Default'],
+    ['var(--accent)', 'Accent'],
+    ['var(--success)', 'Green'],
+    ['var(--warning)', 'Amber'],
+    ['var(--danger)', 'Red'],
+    ['var(--text-muted)', 'Muted'],
+  ];
+  var richBar = null;
+
+  function richBoxOf(start) {
+    var el = start && start.nodeType === 3 ? start.parentNode : start;
+    while (el && el !== document) {
+      if (el.classList && el.classList.contains('bd-text')) return el;
+      el = el.parentNode;
+    }
+    return null;
+  }
+
+  function richItemOf(box) {
+    var host = box && box.closest ? box.closest('.bd-item') : null;
+    return host ? findItem(host.getAttribute('data-board-id')) : null;
+  }
+
+  function richSelection() {
+    var sel = window.getSelection();
+    if (!sel || !sel.rangeCount || sel.isCollapsed) return null;
+    var range = sel.getRangeAt(0);
+    var box = richBoxOf(range.commonAncestorContainer);
+    if (!box) return null;
+    var item = richItemOf(box);
+    if (!item || item.kind !== 'note' || lockOf(item)) return null;
+    return { sel: sel, range: range, box: box, item: item };
+  }
+
+  function richUnwrap(el) {
+    var parent = el.parentNode;
+    if (!parent) return;
+    while (el.firstChild) parent.insertBefore(el.firstChild, el);
+    parent.removeChild(el);
+  }
+
+  function richClean(root) {
+    if (!root || !root.querySelectorAll) return;
+    Array.prototype.slice.call(root.querySelectorAll('*')).forEach(function (el) {
+      if (/^(IMG|BR)$/i.test(el.tagName)) return;
+      el.removeAttribute('style');
+      if (RICH_INLINE.test(el.tagName)) richUnwrap(el);
+    });
+  }
+
+  function richSync(ctx) {
+    if (!ctx || !ctx.item) return;
+    ctx.item.data.text = ctx.box.innerHTML;
+    ctx.item.updated_at = util.nowIso();
+    queueItemSave(ctx.item);
+    richState(ctx);
+  }
+
+  function richWrap(range, span) {
+    var frag = range.extractContents();
+    span.appendChild(frag);
+    range.insertNode(span);
+    var sel = window.getSelection();
+    if (!sel) return;
+    sel.removeAllRanges();
+    var next = document.createRange();
+    next.selectNodeContents(span);
+    sel.addRange(next);
+  }
+
+  function richHost(range, box, prop) {
+    var el = range.commonAncestorContainer;
+    if (el && el.nodeType === 3) el = el.parentNode;
+    while (el && el !== box) {
+      if (el.style && el.style.getPropertyValue(prop) && el.contains(range.startContainer) && el.contains(range.endContainer)) return el;
+      el = el.parentNode;
+    }
+    return null;
+  }
+
+  function richToggle(kind) {
+    var ctx = richSelection();
+    if (!ctx) return;
+    var pair = RICH_STYLE[kind];
+    pushUndo('format');
+    var host = richHost(ctx.range, ctx.box, pair[0]);
+    if (host && host.style.getPropertyValue(pair[0]) === pair[1]) {
+      host.style.removeProperty(pair[0]);
+      if (!host.getAttribute('style')) richUnwrap(host);
+      richSync(ctx);
+      return;
+    }
+    var span = document.createElement('span');
+    span.style.setProperty(pair[0], pair[1]);
+    richWrap(ctx.range, span);
+    richSync(ctx);
+  }
+
+  function richStep(delta) {
+    var ctx = richSelection();
+    if (!ctx) return;
+    var base = Math.max(6, fontNow(ctx.item));
+    var host = richHost(ctx.range, ctx.box, 'font-size');
+    var from = host || (ctx.range.startContainer.nodeType === 3 ? ctx.range.startContainer.parentNode : ctx.range.startContainer);
+    var now = parseFloat(getComputedStyle(from).fontSize) || base;
+    var next = Math.max(8, Math.min(120, now * (delta > 0 ? 1.15 : 1 / 1.15)));
+    pushUndo('format');
+    var em = (next / base).toFixed(3) + 'em';
+    if (host) {
+      host.style.setProperty('font-size', em);
+      richSync(ctx);
+      return;
+    }
+    var span = document.createElement('span');
+    span.style.setProperty('font-size', em);
+    richWrap(ctx.range, span);
+    richSync(ctx);
+  }
+
+  function richColor(value) {
+    var ctx = richSelection();
+    if (!ctx) return;
+    pushUndo('format');
+    var host = richHost(ctx.range, ctx.box, 'color');
+    if (host) {
+      if (value) host.style.setProperty('color', value);
+      else host.style.removeProperty('color');
+      if (!host.getAttribute('style')) richUnwrap(host);
+      richSync(ctx);
+      return;
+    }
+    if (!value) return;
+    var span = document.createElement('span');
+    span.style.setProperty('color', value);
+    richWrap(ctx.range, span);
+    richSync(ctx);
+  }
+
+  function richClearSelection(ctx) {
+    pushUndo('format');
+    var chain = [];
+    var node = ctx.range.commonAncestorContainer;
+    if (node && node.nodeType === 3) node = node.parentNode;
+    while (node && node !== ctx.box) {
+      chain.push(node);
+      node = node.parentNode;
+    }
+    var span = document.createElement('span');
+    span.style.setProperty('font-weight', '400');
+    span.style.setProperty('font-style', 'normal');
+    span.style.setProperty('text-decoration', 'none');
+    span.style.setProperty('font-size', '1em');
+    span.style.setProperty('color', 'inherit');
+    var frag = ctx.range.extractContents();
+    richClean(frag);
+    span.appendChild(frag);
+    ctx.range.insertNode(span);
+    chain.forEach(function (el) {
+      if (!el.parentNode) return;
+      var kids = Array.prototype.filter.call(el.childNodes, function (kid) {
+        return kid.nodeType !== 3 || kid.data;
+      });
+      if (kids.length !== 1 || kids[0] !== span) return;
+      el.removeAttribute('style');
+      if (RICH_INLINE.test(el.tagName)) richUnwrap(el);
+    });
+    var host = span.parentNode;
+    var styled = false;
+    while (host && host !== ctx.box) {
+      if (host.nodeType === 1 && host.getAttribute && host.getAttribute('style')) { styled = true; break; }
+      host = host.parentNode;
+    }
+    Array.prototype.slice.call(ctx.box.querySelectorAll('span, b, i, u, em, strong, font, mark, s')).forEach(function (el) {
+      if (!el.textContent && !el.querySelector('img')) richUnwrap(el);
+    });
+    if (!styled) {
+      var first = span.firstChild;
+      var last = span.lastChild;
+      richUnwrap(span);
+      var sel = window.getSelection();
+      if (sel && first && last) {
+        var next = document.createRange();
+        next.setStartBefore(first);
+        next.setEndAfter(last);
+        sel.removeAllRanges();
+        sel.addRange(next);
+      }
+    }
+    richSync(ctx);
+  }
+
+  function clearFormatting(item) {
+    var ctx = richSelection();
+    if (ctx && (!item || ctx.item === item)) {
+      richClearSelection(ctx);
+      return;
+    }
+    if (!item || lockOf(item)) return;
+    var box = fontBox(item);
+    if (!box) return;
+    App.ui.dialog({
+      title: 'Clear formatting?',
+      icon: 'restore',
+      danger: true,
+      message: 'Every size, colour, bold, italic and underline inside "' + ((item.data && item.data.title) || 'this note') + '" is removed. The words stay.',
+      consequences: [
+        'This covers the whole card, because nothing is selected.',
+        'Undo brings the formatting back.',
+      ],
+      confirmLabel: 'Clear formatting',
+    }).then(function (ok) {
+      if (!ok) return;
+      pushUndo('format');
+      richClean(box);
+      item.data.text = box.innerHTML;
+      item.updated_at = util.nowIso();
+      saveItem(item);
+      util.toast('Formatting cleared.', 'info');
+    });
+  }
+
+  function richButton(cls, label, title) {
+    var button = node('button', 'bd-rich__btn' + (cls ? ' ' + cls : ''), label);
+    button.type = 'button';
+    button.title = title;
+    button.setAttribute('aria-label', title);
+    button.addEventListener('pointerdown', function (event) { event.preventDefault(); event.stopPropagation(); });
+    return button;
+  }
+
+  function buildRichBar() {
+    var bar = node('div', 'bd-rich');
+    bar.setAttribute('role', 'toolbar');
+    bar.setAttribute('aria-label', 'Format the selected text');
+    var group = function () { var g = node('div', 'bd-rich__group'); bar.appendChild(g); return g; };
+    var style = group();
+    ['bold', 'italic', 'underline'].forEach(function (kind) {
+      var label = kind === 'bold' ? 'B' : (kind === 'italic' ? 'I' : 'U');
+      var button = richButton('bd-rich__btn--' + kind, label, kind.charAt(0).toUpperCase() + kind.slice(1));
+      button.setAttribute('data-rich', kind);
+      button.addEventListener('click', function () { richToggle(kind); });
+      style.appendChild(button);
+    });
+    var size = group();
+    [['A-', -1, 'Smaller text'], ['A+', 1, 'Larger text']].forEach(function (pair) {
+      var button = richButton(null, pair[0], pair[2]);
+      button.addEventListener('click', function () { richStep(pair[1]); });
+      size.appendChild(button);
+    });
+    var colour = group();
+    RICH_COLORS.forEach(function (pair) {
+      var swatch = node('button', 'bd-rich__swatch' + (pair[0] ? '' : ' bd-rich__swatch--default'));
+      swatch.type = 'button';
+      swatch.title = pair[1] + ' text';
+      swatch.setAttribute('aria-label', pair[1] + ' text');
+      swatch.setAttribute('data-colour', pair[0]);
+      if (pair[0]) swatch.style.background = pair[0];
+      swatch.addEventListener('pointerdown', function (event) { event.preventDefault(); event.stopPropagation(); });
+      swatch.addEventListener('click', function () { richColor(pair[0]); });
+      colour.appendChild(swatch);
+    });
+    var done = group();
+    var clear = richButton('bd-rich__btn--clear', '\u2715', 'Clear formatting');
+    clear.addEventListener('click', function () { clearFormatting(null); });
+    done.appendChild(clear);
+    document.body.appendChild(bar);
+    return bar;
+  }
+
+  function richState(ctx) {
+    if (!richBar) return;
+    Array.prototype.forEach.call(richBar.querySelectorAll('[data-rich]'), function (button) {
+      var pair = RICH_STYLE[button.getAttribute('data-rich')];
+      button.classList.toggle('is-on', !!(ctx && richHost(ctx.range, ctx.box, pair[0])));
+    });
+    var host = ctx ? richHost(ctx.range, ctx.box, 'color') : null;
+    var value = host ? (host.style.getPropertyValue('color') || '') : '';
+    if (value === 'inherit') value = '';
+    Array.prototype.forEach.call(richBar.querySelectorAll('[data-colour]'), function (swatch) {
+      swatch.classList.toggle('is-on', ctx ? swatch.getAttribute('data-colour') === value : false);
+    });
+  }
+
+  function richPlace(rect) {
+    richBar.style.visibility = 'hidden';
+    richBar.classList.add('is-on');
+    var width = richBar.offsetWidth;
+    var height = richBar.offsetHeight;
+    var left = rect.left + rect.width / 2 - width / 2;
+    var top = rect.top - height - 10;
+    if (top < 8) top = rect.bottom + 10;
+    left = Math.max(8, Math.min(window.innerWidth - width - 8, left));
+    top = Math.max(8, Math.min(window.innerHeight - height - 8, top));
+    richBar.style.left = Math.round(left) + 'px';
+    richBar.style.top = Math.round(top) + 'px';
+    richBar.style.visibility = '';
+  }
+
+  function richHide() {
+    if (richBar) richBar.classList.remove('is-on');
+  }
+
+  function richRefresh() {
+    var ctx = richSelection();
+    if (!ctx) { richHide(); return; }
+    var rect = ctx.range.getBoundingClientRect();
+    if (!rect || (!rect.width && !rect.height)) { richHide(); return; }
+    if (!richBar) richBar = buildRichBar();
+    richPlace(rect);
+    richState(ctx);
+  }
+
+  function onSelectionChange() {
+    if (!board.open) { richHide(); return; }
+    richRefresh();
+  }
+
+  function clearFormatButton(item) {
+    var button = node('button', 'bd-item__clear', '');
+    button.type = 'button';
+    button.title = 'Clear formatting';
+    button.setAttribute('aria-label', 'Clear formatting');
+    var glyph = App.ui.icon('restore', 12);
+    if (glyph) button.appendChild(glyph);
+    else button.textContent = '\u2715';
+    button.addEventListener('click', function (event) {
+      event.stopPropagation();
+      clearFormatting(item);
+    });
+    return button;
   }
 
   function fontButton(item, label, dir) {
@@ -1420,6 +1756,7 @@ window.NoteApp = window.NoteApp || {};
     if (item.kind === 'note') {
       tools.appendChild(fontButton(item, 'A-', -1));
       tools.appendChild(fontButton(item, 'A+', 1));
+      tools.appendChild(clearFormatButton(item));
     }
     var lock = node('button', 'bd-item__lock', '');
     lock.type = 'button';
@@ -5566,6 +5903,11 @@ window.NoteApp = window.NoteApp || {};
     applyBgFromDb();
     if (!board.bound) {
       board.bound = true;
+      document.addEventListener('selectionchange', onSelectionChange);
+      if (board.canvas) {
+        board.canvas.addEventListener('pointerdown', richHide);
+        board.canvas.addEventListener('wheel', richHide, { passive: true });
+      }
       board.root.addEventListener('contextmenu', onBoardContext);
       document.addEventListener('paste', onPaste);
       document.addEventListener('pointerdown', commitEdits, true);
@@ -5587,6 +5929,7 @@ window.NoteApp = window.NoteApp || {};
     document.body.classList.remove('is-board');
     document.removeEventListener('keydown', onKeyDown, true);
     document.removeEventListener('keyup', onKeyUp, true);
+    richHide();
     document.removeEventListener('pointerdown', commitEdits, true);
     setMarking(false);
     window.removeEventListener('resize', applyView);
