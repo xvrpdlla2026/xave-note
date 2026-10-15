@@ -468,6 +468,8 @@ window.NoteApp = window.NoteApp || {};
   }
 
 
+  var pendingWrites = 0;
+
   function write(sqlOrFn, params) {
     var task = function () {
       var changes = 0;
@@ -489,12 +491,21 @@ window.NoteApp = window.NoteApp || {};
         throw err;
       }
 
+      // A write that is already queued behind this one exports the same database a
+      // moment later, so exporting here would only throw the bytes away. A burst of
+      // statements then costs one export instead of one per statement, and the last
+      // write in the queue always exports, so nothing is left unsaved.
+      if (pendingWrites > 1) return { changes: changes, deferred: true };
+
       return App.storage.save(db.export()).then(function () {
-        return { changes: changes };
+        return { changes: changes, deferred: false };
       });
     };
 
+    pendingWrites += 1;
     var result = (writeQueue || Promise.resolve()).then(task, task);
+    var settle = function () { pendingWrites -= 1; };
+    result.then(settle, settle);
     writeQueue = result.catch(function () {  });
     return result;
   }
@@ -2103,9 +2114,7 @@ var vaultBusy = false;
     },
     boardItems: function (id) {
       return query('SELECT * FROM board_items WHERE board_id = ? ORDER BY z ASC, created_at ASC', [id]).map(function (row) {
-        var data = {};
-        try { data = JSON.parse(row.data || '{}'); } catch (e) { data = {}; }
-        return {
+        var item = {
           id: row.id,
           board_id: row.board_id,
           kind: row.kind,
@@ -2116,10 +2125,13 @@ var vaultBusy = false;
           w: Number(row.w) || 240,
           h: Number(row.h) || 160,
           z: Number(row.z) || 0,
-          data: data,
           created_at: row.created_at,
           updated_at: row.updated_at,
         };
+        var data = {};
+        try { data = JSON.parse(row.data || '{}'); } catch (e) { data = {}; }
+        item.data = data;
+        return item;
       });
     },
     boardAddItem: function (item) {
