@@ -3827,9 +3827,6 @@ dialog:not([open]) { display: none; }
 .bd-file__doc .pane-preview__doc { overflow: auto; padding: 8px; font-size: 11px; }
 .bd-file__doc pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
 .bd-file__doc table { max-width: 100%; }
-.bd-shape { display: flex; align-items: center; justify-content: center; height: 100%; overflow: hidden; color: var(--text); }
-.bd-shape svg { width: 100%; height: 100%; }
-.bd-shape svg * { fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .bd-image__img { max-width: 100%; max-height: 100%; border-radius: 6px; object-fit: contain; }
 .bd-image__empty { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .bd-filetile { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 100%; text-align: center; }
@@ -3964,3 +3961,4 @@ dialog:not([open]) { display: none; }
 .board__stage.is-inking .board__inkbar { display: block; }
 .board__inktools { display: flex; align-items: center; gap: 4px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-raised); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); }
 .board__inkpop { bottom: 62px; }
+.board__inkshapes { grid-template-columns: repeat(4, 30px); }

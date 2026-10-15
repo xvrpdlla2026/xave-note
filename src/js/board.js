@@ -8,7 +8,8 @@ window.NoteApp = window.NoteApp || {};
   var MIN_Z = 0.3;
   var MAX_Z = 2.5;
   var STEP = 1.15;
-  var SIZES = { note: [268, 176], todo: [256, 196], link: [268, 96], image: [288, 216], comment: [268, 132], ref: [244, 168], column: [420, 320], table: [320, 208], group: [232, 62], file: [300, 236], draw: [380, 280], shape: [240, 160] };
+  var SIZES = { note: [268, 176], todo: [256, 196], link: [268, 96], image: [288, 216], comment: [268, 132], ref: [244, 168], column: [420, 320], table: [320, 208], group: [232, 62], file: [300, 236], draw: [380, 280] };
+
 
   var SHAPES = {
     rectangle: { label: 'Rectangle', w: 240, h: 160, markup: '<rect x="2" y="2" width="96" height="96"/>' },
@@ -858,36 +859,6 @@ window.NoteApp = window.NoteApp || {};
     return wrap;
   }
 
-  function shapeBody(item) {
-    var key = (item.data && item.data.shape) || 'rectangle';
-    var wrap = node('div', 'bd-shape');
-    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', '0 0 100 100');
-    svg.setAttribute('preserveAspectRatio', 'none');
-    svg.setAttribute('focusable', 'false');
-    svg.setAttribute('aria-hidden', 'true');
-    svg.innerHTML = (SHAPES[key] || SHAPES.rectangle).markup;
-    wrap.appendChild(svg);
-    return wrap;
-  }
-
-  function addShape(key) {
-    var spec = SHAPES[key] || SHAPES.rectangle;
-    addItem('shape', { data: { shape: key }, w: spec.w, h: spec.h });
-  }
-
-  function openShapes(anchor) {
-    var rect = anchor ? anchor.getBoundingClientRect() : null;
-    App.ui.openMenu({
-      title: 'Shapes',
-      x: rect ? Math.round(rect.right + 8) : 24,
-      y: rect ? Math.round(rect.top) : 24,
-      items: SHAPE_ORDER.map(function (key) {
-        return { label: SHAPES[key].label, onclick: function () { addShape(key); } };
-      }),
-    });
-  }
-
   function bodyFor(item) {
     if (item.kind === 'todo') return todoBody(item);
     if (item.kind === 'link') return linkBody(item);
@@ -897,7 +868,6 @@ window.NoteApp = window.NoteApp || {};
     if (item.kind === 'column') return containerBody(item);
     if (item.kind === 'draw') return drawBody(item);
     if (item.kind === 'table') return tableBody(item);
-    if (item.kind === 'shape') return shapeBody(item);
     if (item.kind === 'comment') return commentBody(item);
     return textArea(item, 'text', 'Start typing...');
   }
@@ -916,7 +886,6 @@ window.NoteApp = window.NoteApp || {};
     if (item.kind === 'ref') return item.ref_kind || 'item';
     if (item.kind === 'column') return 'group';
     if (item.kind === 'draw') return 'draw';
-    if (item.kind === 'shape') return (item.data && item.data.shape) || 'shape';
     if (item.kind === 'group') return item.data && item.data.scope === 'workspace' ? 'workspace' : 'folder';
     if (item.kind === 'image') {
       var name = item.data && item.data.filename;
@@ -1504,8 +1473,6 @@ window.NoteApp = window.NoteApp || {};
     group.appendChild(railButton('grid', 'Table', function () { addItem('table'); }));
     group.appendChild(railButton('pencil', 'Draw', function () { setInkMode(!inkState.on); }));
     board.inkButton = group.lastElementChild;
-    var shapeButton = railButton('shapes', 'Shape', function () { openShapes(shapeButton); });
-    group.appendChild(shapeButton);
     rail.appendChild(group);
     var source = node('div', 'board__rail-group');
     source.appendChild(railButton('layers', 'From notes', openPicker));
@@ -2519,6 +2486,102 @@ window.NoteApp = window.NoteApp || {};
     ctx.globalCompositeOperation = 'source-over';
   }
 
+  var SHAPES = {
+    rect: { label: 'Rectangle', icon: 'rect', def: [240, 160], points: function (w, h) { return [[0, 0], [w, 0], [w, h], [0, h], [0, 0]]; } },
+    rounded: { label: 'Rounded', icon: 'rounded', def: [240, 160], points: shapeRounded },
+    ellipse: { label: 'Ellipse', icon: 'ellipse', def: [240, 170], points: shapeEllipse },
+    triangle: { label: 'Triangle', icon: 'triangle', def: [210, 170], points: function (w, h) { return [[w / 2, 0], [w, h], [0, h], [w / 2, 0]]; } },
+    diamond: { label: 'Diamond', icon: 'diamond', def: [180, 180], points: function (w, h) { return [[w / 2, 0], [w, h / 2], [w / 2, h], [0, h / 2], [w / 2, 0]]; } },
+    star: { label: 'Star', icon: 'star', def: [180, 180], points: shapeStar },
+    line: { label: 'Line', icon: 'line', free: true, def: [240, 0], points: function (dx, dy) { return [[0, 0], [dx, dy]]; } },
+    arrow: { label: 'Arrow', icon: 'arrow', free: true, def: [240, 0], points: shapeArrow },
+  };
+  var SHAPE_ORDER = ['rect', 'rounded', 'ellipse', 'triangle', 'diamond', 'star', 'line', 'arrow'];
+
+  function shapeEllipse(w, h) {
+    var out = [];
+    for (var i = 0; i <= 48; i++) {
+      var a = (i / 48) * Math.PI * 2;
+      out.push([(w / 2) * (1 + Math.cos(a)), (h / 2) * (1 + Math.sin(a))]);
+    }
+    return out;
+  }
+
+  function shapeRounded(w, h) {
+    var r = Math.min(w, h) * 0.18;
+    var out = [];
+    var arc = function (cx, cy, from, to) {
+      for (var i = 0; i <= 6; i++) {
+        var a = from + ((to - from) * i) / 6;
+        out.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+      }
+    };
+    arc(w - r, r, -Math.PI / 2, 0);
+    arc(w - r, h - r, 0, Math.PI / 2);
+    arc(r, h - r, Math.PI / 2, Math.PI);
+    arc(r, r, Math.PI, Math.PI * 1.5);
+    return out;
+  }
+
+  function shapeStar(w, h) {
+    var out = [];
+    for (var i = 0; i <= 10; i++) {
+      var a = -Math.PI / 2 + (i * Math.PI) / 5;
+      var r = i % 2 ? 0.42 : 1;
+      out.push([(w / 2) * (1 + r * Math.cos(a)), (h / 2) * (1 + r * Math.sin(a))]);
+    }
+    return out;
+  }
+
+  function shapeArrow(dx, dy) {
+    var len = Math.sqrt(dx * dx + dy * dy) || 1;
+    var head = Math.min(Math.max(12, len * 0.3), 40);
+    var a = Math.atan2(dy, dx);
+    var back = a + Math.PI * 0.82;
+    var side = a - Math.PI * 0.82;
+    return [[0, 0], [dx, dy], [dx + Math.cos(back) * head, dy + Math.sin(back) * head], [dx, dy], [dx + Math.cos(side) * head, dy + Math.sin(side) * head]];
+  }
+
+  function inkShapeStroke(key, x0, y0, x1, y1) {
+    var spec = SHAPES[key] || SHAPES.rect;
+    var points;
+    var ox = x0;
+    var oy = y0;
+    if (spec.free) {
+      points = spec.points(x1 - x0, y1 - y0);
+      if (Math.abs(x1 - x0) < 3 && Math.abs(y1 - y0) < 3) points = spec.points(spec.def[0], spec.def[1]);
+    } else {
+      var w = Math.abs(x1 - x0);
+      var h = Math.abs(y1 - y0);
+      if (w < 5 && h < 5) {
+        w = spec.def[0];
+        h = spec.def[1];
+        ox = x0 - w / 2;
+        oy = y0 - h / 2;
+      } else {
+        ox = Math.min(x0, x1);
+        oy = Math.min(y0, y1);
+      }
+      points = spec.points(w, h);
+    }
+    return {
+      c: inkState.color,
+      e: 0,
+      w: inkState.width,
+      p: points.map(function (point) { return [point[0] + ox, point[1] + oy]; }),
+    };
+  }
+
+  function inkScreenStroke(stroke) {
+    var view = board.view;
+    return {
+      c: stroke.c,
+      e: stroke.e,
+      w: stroke.w * view.z,
+      p: stroke.p.map(function (point) { return [point[0] * view.z + view.x, point[1] * view.z + view.y]; }),
+    };
+  }
+
   function strokeBox(strokes) {
     var minX = Infinity;
     var minY = Infinity;
@@ -2537,7 +2600,7 @@ window.NoteApp = window.NoteApp || {};
     return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
   }
 
-  var inkState = { on: false, tool: 'pen', color: DRAW_COLORS[0], picked: false, width: DRAW_WIDTHS[0], host: null, strokes: [], redo: [], cur: null, last: null };
+  var inkState = { on: false, tool: 'pen', color: DRAW_COLORS[0], picked: false, width: DRAW_WIDTHS[0], host: null, strokes: [], redo: [], cur: null, last: null, shape: 'rect', draw: null };
 
   function inkDefaultColor() {
     return document.documentElement.getAttribute('data-theme') === 'dark' ? '#ffffff' : DRAW_COLORS[0];
@@ -2575,15 +2638,11 @@ window.NoteApp = window.NoteApp || {};
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    var view = board.view;
-    inkState.strokes.forEach(function (stroke) {
-      paintStroke(ctx, {
-        c: stroke.c,
-        e: stroke.e,
-        w: stroke.w * view.z,
-        p: stroke.p.map(function (point) { return [point[0] * view.z + view.x, point[1] * view.z + view.y]; }),
-      });
-    });
+    inkState.strokes.forEach(function (stroke) { paintStroke(ctx, inkScreenStroke(stroke)); });
+    if (inkState.draw) {
+      var pending = inkState.draw;
+      paintStroke(ctx, inkScreenStroke(inkShapeStroke(pending.key, pending.x0, pending.y0, pending.x1, pending.y1)));
+    }
   }
 
   function inkResize() {
@@ -2619,6 +2678,15 @@ window.NoteApp = window.NoteApp || {};
     if (board.inkTools) {
       board.inkTools.pen.classList.toggle('is-active', inkState.tool === 'pen');
       board.inkTools.eraser.classList.toggle('is-active', inkState.tool === 'eraser');
+    board.inkTools.shape.classList.toggle('is-active', inkState.tool === 'shape');
+    Array.prototype.forEach.call(bar.querySelectorAll('[data-ink-shape]'), function (pick) {
+      pick.classList.toggle('is-active', pick.getAttribute('data-ink-shape') === inkState.shape);
+    });
+    if (board.inkShapeButton && board.inkShapeShown !== inkState.shape) {
+      board.inkShapeShown = inkState.shape;
+      board.inkShapeButton.textContent = '';
+      board.inkShapeButton.appendChild(App.ui.icon((SHAPES[inkState.shape] || SHAPES.rect).icon, 16));
+    }
       board.inkTools.undo.disabled = !inkState.strokes.length;
       board.inkTools.redo.disabled = !inkState.redo.length;
     }
@@ -2639,6 +2707,15 @@ window.NoteApp = window.NoteApp || {};
     eraser.appendChild(App.ui.icon('eraser', 16));
     eraser.addEventListener('click', function () { inkState.tool = 'eraser'; inkBar(); });
     tools.appendChild(eraser);
+    var shapes = node('button', 'drawpad__tool board__inkshape-btn');
+    shapes.type = 'button';
+    shapes.title = 'Shapes';
+    shapes.setAttribute('aria-label', 'Shapes');
+    shapes.addEventListener('click', function () {
+      shapePop.classList.toggle('is-hidden');
+      if (pop) pop.classList.add('is-hidden');
+    });
+    tools.appendChild(shapes);
     var swatch = node('button', 'drawpad__swatch');
     swatch.type = 'button';
     swatch.setAttribute('aria-label', 'Colour');
@@ -2693,12 +2770,35 @@ window.NoteApp = window.NoteApp || {};
     custom.addEventListener('click', function () { picker.click(); });
     pop.appendChild(custom);
     bar.appendChild(pop);
-    swatch.addEventListener('click', function () { pop.classList.toggle('is-hidden'); });
+    swatch.addEventListener('click', function () {
+      pop.classList.toggle('is-hidden');
+      if (shapePop) shapePop.classList.add('is-hidden');
+    });
+    var shapePop = node('div', 'drawpad__pop board__inkpop board__inkshapes is-hidden');
+    SHAPE_ORDER.forEach(function (key) {
+      var spec = SHAPES[key];
+      var pick = node('button', 'drawpad__tool');
+      pick.type = 'button';
+      pick.title = spec.label;
+      pick.setAttribute('aria-label', spec.label);
+      pick.setAttribute('data-ink-shape', key);
+      pick.appendChild(App.ui.icon(spec.icon, 16));
+      pick.addEventListener('click', function () {
+        inkState.tool = 'shape';
+        inkState.shape = key;
+        shapePop.classList.add('is-hidden');
+        inkBar();
+      });
+      shapePop.appendChild(pick);
+    });
+    bar.appendChild(shapePop);
+    board.inkShapes = shapePop;
+    board.inkShapeButton = shapes;
     board.inkBar = bar;
     board.inkPop = pop;
     board.inkSwatch = swatch;
     board.inkWidthBar = widthBar;
-    board.inkTools = { pen: pen, eraser: eraser, undo: undo, redo: redo };
+    board.inkTools = { pen: pen, eraser: eraser, shape: shapes, undo: undo, redo: redo };
     inkBar();
     return bar;
   }
@@ -2708,6 +2808,7 @@ window.NoteApp = window.NoteApp || {};
     if (next === inkState.on) return;
     inkState.on = next;
     inkState.cur = null;
+    inkState.draw = null;
     inkState.strokes = [];
     inkState.redo = [];
     if (board.stage) board.stage.classList.toggle('is-inking', next);
@@ -2780,10 +2881,20 @@ window.NoteApp = window.NoteApp || {};
   function onInkDown(event) {
     if (!inkState.on || event.button !== 0) return;
     if (board.inkPop) board.inkPop.classList.add('is-hidden');
+    if (board.inkShapes) board.inkShapes.classList.add('is-hidden');
     event.preventDefault();
     event.stopPropagation();
-    var erase = inkState.tool === 'eraser';
     var point = inkPoint(event);
+    window.addEventListener('pointermove', onInkMove);
+    window.addEventListener('pointerup', onInkUp);
+    if (inkState.tool === 'shape') {
+      var start = inkWorld(point);
+      inkState.draw = { key: inkState.shape, x0: start[0], y0: start[1], x1: start[0], y1: start[1] };
+      inkState.cur = null;
+      inkRepaint();
+      return;
+    }
+    var erase = inkState.tool === 'eraser';
     var stroke = {
       c: erase ? '#ffffff' : inkState.color,
       e: erase ? 1 : 0,
@@ -2796,11 +2907,16 @@ window.NoteApp = window.NoteApp || {};
     inkState.last = point;
     inkRepaint();
     inkBar();
-    window.addEventListener('pointermove', onInkMove);
-    window.addEventListener('pointerup', onInkUp);
   }
 
   function onInkMove(event) {
+    if (inkState.draw) {
+      var spot = inkWorld(inkPoint(event));
+      inkState.draw.x1 = spot[0];
+      inkState.draw.y1 = spot[1];
+      inkRepaint();
+      return;
+    }
     if (!inkState.cur) return;
     var point = inkPoint(event);
     inkState.cur.p.push(inkWorld(point));
@@ -2811,7 +2927,14 @@ window.NoteApp = window.NoteApp || {};
   function onInkUp() {
     window.removeEventListener('pointermove', onInkMove);
     window.removeEventListener('pointerup', onInkUp);
+    if (inkState.draw) {
+      var pending = inkState.draw;
+      inkState.draw = null;
+      inkState.strokes.push(inkShapeStroke(pending.key, pending.x0, pending.y0, pending.x1, pending.y1));
+      inkState.redo.length = 0;
+    }
     inkState.cur = null;
+    inkRepaint();
     inkBar();
   }
 
