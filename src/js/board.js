@@ -8,7 +8,21 @@ window.NoteApp = window.NoteApp || {};
   var MIN_Z = 0.3;
   var MAX_Z = 2.5;
   var STEP = 1.15;
-  var SIZES = { note: [268, 176], todo: [256, 196], link: [268, 96], image: [288, 216], comment: [268, 132], ref: [244, 168], column: [420, 320], table: [320, 208], group: [232, 62], file: [300, 236], draw: [380, 280] };
+  var SIZES = { note: [268, 176], todo: [256, 196], link: [268, 96], image: [288, 216], comment: [268, 132], ref: [244, 168], column: [420, 320], table: [320, 208], group: [232, 62], file: [300, 236], draw: [380, 280], shape: [240, 160] };
+
+  var SHAPES = {
+    rectangle: { label: 'Rectangle', w: 240, h: 160, markup: '<rect x="2" y="2" width="96" height="96"/>' },
+    rounded: { label: 'Rounded', w: 240, h: 160, markup: '<rect x="2" y="2" width="96" height="96" rx="12"/>' },
+    ellipse: { label: 'Ellipse', w: 220, h: 160, markup: '<ellipse cx="50" cy="50" rx="48" ry="48"/>' },
+    triangle: { label: 'Triangle', w: 200, h: 170, markup: '<polygon points="50,3 97,97 3,97"/>' },
+    diamond: { label: 'Diamond', w: 180, h: 180, markup: '<polygon points="50,3 97,50 50,97 3,50"/>' },
+    star: { label: 'Star', w: 170, h: 170, markup: '<polygon points="50,2 61.5,34.2 95.7,35.2 68.5,56 78.2,88.8 50,69.5 21.8,88.8 31.5,56 4.3,35.2 38.5,34.2"/>' },
+    line: { label: 'Line', w: 260, h: 80, markup: '<line x1="2" y1="50" x2="98" y2="50"/>' },
+    arrow: { label: 'Arrow', w: 260, h: 90, markup: '<path d="M2 50H92M76 36L97 50L76 64"/>' },
+  };
+  var SHAPE_ORDER = ['rectangle', 'rounded', 'ellipse', 'triangle', 'diamond', 'star', 'line', 'arrow'];
+
+
 
   var board = {
     open: false,
@@ -844,6 +858,36 @@ window.NoteApp = window.NoteApp || {};
     return wrap;
   }
 
+  function shapeBody(item) {
+    var key = (item.data && item.data.shape) || 'rectangle';
+    var wrap = node('div', 'bd-shape');
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 100 100');
+    svg.setAttribute('preserveAspectRatio', 'none');
+    svg.setAttribute('focusable', 'false');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.innerHTML = (SHAPES[key] || SHAPES.rectangle).markup;
+    wrap.appendChild(svg);
+    return wrap;
+  }
+
+  function addShape(key) {
+    var spec = SHAPES[key] || SHAPES.rectangle;
+    addItem('shape', { data: { shape: key }, w: spec.w, h: spec.h });
+  }
+
+  function openShapes(anchor) {
+    var rect = anchor ? anchor.getBoundingClientRect() : null;
+    App.ui.openMenu({
+      title: 'Shapes',
+      x: rect ? Math.round(rect.right + 8) : 24,
+      y: rect ? Math.round(rect.top) : 24,
+      items: SHAPE_ORDER.map(function (key) {
+        return { label: SHAPES[key].label, onclick: function () { addShape(key); } };
+      }),
+    });
+  }
+
   function bodyFor(item) {
     if (item.kind === 'todo') return todoBody(item);
     if (item.kind === 'link') return linkBody(item);
@@ -853,6 +897,7 @@ window.NoteApp = window.NoteApp || {};
     if (item.kind === 'column') return containerBody(item);
     if (item.kind === 'draw') return drawBody(item);
     if (item.kind === 'table') return tableBody(item);
+    if (item.kind === 'shape') return shapeBody(item);
     if (item.kind === 'comment') return commentBody(item);
     return textArea(item, 'text', 'Start typing...');
   }
@@ -871,6 +916,7 @@ window.NoteApp = window.NoteApp || {};
     if (item.kind === 'ref') return item.ref_kind || 'item';
     if (item.kind === 'column') return 'group';
     if (item.kind === 'draw') return 'draw';
+    if (item.kind === 'shape') return (item.data && item.data.shape) || 'shape';
     if (item.kind === 'group') return item.data && item.data.scope === 'workspace' ? 'workspace' : 'folder';
     if (item.kind === 'image') {
       var name = item.data && item.data.filename;
@@ -1458,6 +1504,8 @@ window.NoteApp = window.NoteApp || {};
     group.appendChild(railButton('grid', 'Table', function () { addItem('table'); }));
     group.appendChild(railButton('pencil', 'Draw', function () { setInkMode(!inkState.on); }));
     board.inkButton = group.lastElementChild;
+    var shapeButton = railButton('shapes', 'Shape', function () { openShapes(shapeButton); });
+    group.appendChild(shapeButton);
     rail.appendChild(group);
     var source = node('div', 'board__rail-group');
     source.appendChild(railButton('layers', 'From notes', openPicker));
