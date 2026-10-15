@@ -2141,9 +2141,12 @@ window.NoteApp = window.NoteApp || {};
     var body = node('div', 'bd-item__body');
     body.appendChild(bodyFor(item));
     box.appendChild(body);
-    var grip = node('div', 'bd-item__resize');
-    grip.setAttribute('data-board-resize', item.id);
-    box.appendChild(grip);
+    RESIZE_DIRS.forEach(function (dir) {
+      var grip = node('div', 'bd-item__resize bd-item__resize--' + dir);
+      grip.setAttribute('data-board-resize', item.id);
+      grip.setAttribute('data-dir', dir);
+      box.appendChild(grip);
+    });
     box.addEventListener('pointerdown', onItemDown);
     item.node = box;
     applyFont(item);
@@ -2197,6 +2200,9 @@ window.NoteApp = window.NoteApp || {};
     return out;
   }
 
+  var RESIZE_DIRS = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+  var RESIZE_CURSOR = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize', ne: 'nesw-resize', sw: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize' };
+
   function lockOf(item) {
     return !!(item.data && item.data.locked);
   }
@@ -2206,7 +2212,7 @@ window.NoteApp = window.NoteApp || {};
     var locked = lockOf(item);
     var button = item.node.querySelector('.bd-item__lock');
     var remove = item.node.querySelector('.bd-item__x');
-    var grip = item.node.querySelector('.bd-item__resize');
+    var grips = item.node.querySelectorAll('.bd-item__resize');
     item.node.classList.toggle('is-locked', locked);
     if (button) {
       button.textContent = '';
@@ -2215,7 +2221,7 @@ window.NoteApp = window.NoteApp || {};
       button.title = locked ? 'Unlock this card' : 'Lock this card';
     }
     if (remove) remove.style.display = locked ? 'none' : '';
-    if (grip) grip.style.display = locked ? 'none' : '';
+    grips.forEach(function (grip) { grip.style.display = locked ? 'none' : ''; });
     applyReadOnly(item);
   }
 
@@ -2452,6 +2458,7 @@ window.NoteApp = window.NoteApp || {};
     if (lockOf(item) && !multi) return;
     event.stopPropagation();
     var grip = target.closest('.bd-item__resize');
+    var dir = grip ? (grip.getAttribute('data-dir') || 'se') : '';
     var rows = null;
     if (!grip) {
       rows = (multi ? board.selectedIds.map(findItem) : [item]).filter(function (row) {
@@ -2485,7 +2492,8 @@ window.NoteApp = window.NoteApp || {};
     var start = { x: event.clientX, y: event.clientY, w: item.w, h: item.h, ix: item.x, iy: item.y };
     if (grip) pushUndo('resize');
     if (grip) {
-      board.resize = { item: item, start: start };
+      board.resize = { item: item, start: start, dir: dir };
+      if (board.stage) board.stage.style.cursor = RESIZE_CURSOR[dir] || 'nwse-resize';
     } else {
       board.drag = {
         item: item,
@@ -2603,6 +2611,9 @@ window.NoteApp = window.NoteApp || {};
     }
     if (board.resize) {
       var size = board.resize;
+      var dir = size.dir || 'se';
+      var west = dir.indexOf('w') >= 0;
+      var north = dir.indexOf('n') >= 0;
       if (isChild(size.item)) {
         var parent = containerOf(size.item);
         var geom = parent ? containerGeom(parent) : { cols: 1, colW: 200 };
@@ -2610,8 +2621,8 @@ window.NoteApp = window.NoteApp || {};
         var stepY = CONTAINER_ROW + CONTAINER_GAP;
         var baseSpan = Math.max(1, Math.min(geom.cols, Math.round((size.start.w + CONTAINER_GAP) / stepX)));
         var baseRows = Math.max(1, Math.round((size.start.h + CONTAINER_GAP) / stepY));
-        var dCol = Math.round((event.clientX - size.start.x) / scale / stepX);
-        var dRow = Math.round((event.clientY - size.start.y) / scale / stepY);
+        var dCol = Math.round((event.clientX - size.start.x) / scale / stepX) * (west ? -1 : 1);
+        var dRow = Math.round((event.clientY - size.start.y) / scale / stepY) * (north ? -1 : 1);
         var span = Math.max(1, Math.min(geom.cols, baseSpan + dCol));
         var count = Math.max(1, baseRows + dRow);
         size.item.data.span = span;
@@ -2620,8 +2631,16 @@ window.NoteApp = window.NoteApp || {};
         size.item.h = Math.round(count * CONTAINER_ROW + CONTAINER_GAP * (count - 1));
         if (parent) layoutContainer(parent, null);
       } else {
-        size.item.w = Math.max(170, Math.round(size.start.w + (event.clientX - size.start.x) / scale));
-        size.item.h = Math.max(110, Math.round(size.start.h + (event.clientY - size.start.y) / scale));
+        var dx = (event.clientX - size.start.x) / scale;
+        var dy = (event.clientY - size.start.y) / scale;
+        var growX = dir.indexOf('e') >= 0 ? dx : west ? -dx : 0;
+        var growY = dir.indexOf('s') >= 0 ? dy : north ? -dy : 0;
+        var w = Math.max(170, Math.round(size.start.w + growX));
+        var h = Math.max(110, Math.round(size.start.h + growY));
+        size.item.w = w;
+        size.item.h = h;
+        size.item.x = Math.round(size.start.ix + (west ? size.start.w - w : 0));
+        size.item.y = Math.round(size.start.iy + (north ? size.start.h - h : 0));
         placeItem(size.item);
         if (size.item.kind === 'column') layoutContainer(size.item, null);
       }
@@ -2633,6 +2652,7 @@ window.NoteApp = window.NoteApp || {};
     window.removeEventListener('pointermove', onPointerMove);
     window.removeEventListener('pointerup', onPointerUp);
     board.stage.classList.remove('is-panning');
+    if (board.resize) board.stage.style.cursor = '';
     if (board.drag) {
       var dragged = board.drag.rows;
       var over = containerUnder(event.clientX, event.clientY, dragged);
