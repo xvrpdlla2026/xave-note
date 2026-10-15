@@ -4655,6 +4655,7 @@ window.NoteApp = window.NoteApp || {};
       if (event.button !== 0) return;
       event.preventDefault();
       try { mapCanvas.setPointerCapture(event.pointerId); } catch (e) { }
+      mapCanvas.classList.add('is-dragging');
       mapDrag(event);
     });
     mapCanvas.addEventListener('pointermove', function (event) {
@@ -4665,11 +4666,16 @@ window.NoteApp = window.NoteApp || {};
       }
       mapDrag(event);
     });
-    mapCanvas.addEventListener('pointerup', function (event) {
+    var mapRelease = function (event) {
+      mapCanvas.classList.remove('is-dragging');
       try {
         if (mapCanvas.hasPointerCapture(event.pointerId)) mapCanvas.releasePointerCapture(event.pointerId);
       } catch (e) { }
-    });
+    };
+    mapCanvas.addEventListener('pointerup', mapRelease);
+    mapCanvas.addEventListener('pointercancel', mapRelease);
+    window.addEventListener('pointerup', function () { mapCanvas.classList.remove('is-dragging'); });
+    window.addEventListener('pointercancel', function () { mapCanvas.classList.remove('is-dragging'); });
     map.appendChild(mapTitle);
     map.appendChild(zoom);
     map.appendChild(mapCanvas);
