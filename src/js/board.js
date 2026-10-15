@@ -3035,10 +3035,16 @@ window.NoteApp = window.NoteApp || {};
     return -1;
   }
 
+  function inkDanger() {
+    var value = getComputedStyle(document.documentElement).getPropertyValue('--danger');
+    return String(value || '').trim() || '#bf2a3d';
+  }
+
   function inkFrame(ctx) {
     var frame = inkFrameBox();
     if (!frame) return;
     var color = frame.color;
+    var danger = inkDanger();
     ctx.save();
     ctx.globalCompositeOperation = 'source-over';
     ctx.strokeStyle = color;
@@ -3063,6 +3069,7 @@ window.NoteApp = window.NoteApp || {};
     ctx.beginPath();
     ctx.arc(frame.grip[0], frame.grip[1], 2.4, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = danger;
     ctx.beginPath();
     ctx.moveTo(frame.bottom[0], frame.bottom[1]);
     ctx.lineTo(frame.clear[0], frame.clear[1]);
@@ -3076,6 +3083,7 @@ window.NoteApp = window.NoteApp || {};
     ctx.moveTo(frame.clear[0] + 3, frame.clear[1] - 3);
     ctx.lineTo(frame.clear[0] - 3, frame.clear[1] + 3);
     ctx.stroke();
+    ctx.strokeStyle = color;
     ctx.restore();
   }
 
