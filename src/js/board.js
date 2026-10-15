@@ -115,6 +115,7 @@ window.NoteApp = window.NoteApp || {};
     board.zoomLabel.textContent = Math.round(view.z * 100) + '%';
     inkRepaintCards();
     scaleMarks();
+    mapDraw();
     queueViewSave();
   }
 
@@ -163,6 +164,122 @@ window.NoteApp = window.NoteApp || {};
     applyView();
   }
 
+  var MAP_W = 200;
+  var MAP_H = 132;
+
+  function mapFit() {
+    var rect = board.stage.getBoundingClientRect();
+    var view = board.view;
+    var box = {
+      x: -view.x / view.z,
+      y: -view.y / view.z,
+      w: Math.max(rect.width / view.z, 1),
+      h: Math.max(rect.height / view.z, 1),
+    };
+    var grow = function (x, y, w, h) {
+      var x2 = Math.max(box.x + box.w, x + w);
+      var y2 = Math.max(box.y + box.h, y + h);
+      box.x = Math.min(box.x, x);
+      box.y = Math.min(box.y, y);
+      box.w = x2 - box.x;
+      box.h = y2 - box.y;
+    };
+    board.items.forEach(function (item) {
+      grow(item.x, item.y, Math.max(item.w, 1), Math.max(item.h, 1));
+    });
+    board.marks.forEach(function (mark) {
+      grow(mark.x - 24, mark.y - 24, 48, 48);
+    });
+    var pad = Math.max(box.w, box.h) * 0.08 + 24;
+    box.x -= pad;
+    box.y -= pad;
+    box.w += pad * 2;
+    box.h += pad * 2;
+    var k = Math.min(MAP_W / box.w, MAP_H / box.h);
+    return {
+      x: box.x,
+      y: box.y,
+      w: box.w,
+      h: box.h,
+      k: k,
+      ox: (MAP_W - box.w * k) / 2 - box.x * k,
+      oy: (MAP_H - box.h * k) / 2 - box.y * k,
+    };
+  }
+
+  function mapDraw() {
+    if (!board.mapCtx || !board.open) return;
+    if (board.mapFrame) return;
+    board.mapFrame = window.requestAnimationFrame(function () {
+      board.mapFrame = null;
+      mapPaint();
+    });
+  }
+
+  function mapColor(name, fallback) {
+    try {
+      return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+    } catch (e) {
+      return fallback;
+    }
+  }
+
+  function mapPaint() {
+    var ctx = board.mapCtx;
+    var canvas = board.mapCanvas;
+    if (!ctx || !canvas || !board.stage) return;
+    var fit = mapFit();
+    board.mapFit = fit;
+    var dpr = window.devicePixelRatio || 1;
+    var wide = Math.round(MAP_W * dpr);
+    var tall = Math.round(MAP_H * dpr);
+    if (canvas.width !== wide || canvas.height !== tall) {
+      canvas.width = wide;
+      canvas.height = tall;
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, MAP_W, MAP_H);
+    var mx = function (x) { return fit.ox + x * fit.k; };
+    var my = function (y) { return fit.oy + y * fit.k; };
+    board.items.forEach(function (item) {
+      ctx.fillStyle = item.kind === 'draw' ? 'rgba(255, 255, 255, 0.26)' : 'rgba(125, 141, 255, 0.38)';
+      ctx.fillRect(mx(item.x), my(item.y), Math.max(item.w * fit.k, 2), Math.max(item.h * fit.k, 2));
+    });
+    ctx.fillStyle = mapColor('--accent', 'rgb(125, 141, 255)');
+    board.marks.forEach(function (mark) {
+      ctx.beginPath();
+      ctx.arc(mx(mark.x), my(mark.y), 2.6, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    var view = board.view;
+    var rect = board.stage.getBoundingClientRect();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.78)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(mx(-view.x / view.z), my(-view.y / view.z), Math.max((rect.width / view.z) * fit.k, 3), Math.max((rect.height / view.z) * fit.k, 3));
+  }
+
+  function mapCenter(worldX, worldY) {
+    var rect = board.stage.getBoundingClientRect();
+    board.view.x = rect.width / 2 - worldX * board.view.z;
+    board.view.y = rect.height / 2 - worldY * board.view.z;
+    applyView();
+  }
+
+  function mapToWorld(event) {
+    var fit = board.mapFit || mapFit();
+    var rect = board.mapCanvas.getBoundingClientRect();
+    var scale = MAP_W / Math.max(rect.width, 1);
+    return {
+      x: (event.clientX - rect.left) * scale / fit.k + (0 - fit.ox) / fit.k,
+      y: (event.clientY - rect.top) * scale / fit.k + (0 - fit.oy) / fit.k,
+    };
+  }
+
+  function mapDrag(event) {
+    var at = mapToWorld(event);
+    mapCenter(at.x, at.y);
+  }
+
   function select(item) {
     setSelection(item ? [item.id] : [], item ? item.id : null);
   }
@@ -191,6 +308,7 @@ window.NoteApp = window.NoteApp || {};
     item.node.style.width = item.w + 'px';
     item.node.style.height = item.h + 'px';
     item.node.style.zIndex = String(item.z || 1);
+    mapDraw();
   }
 
   function field(item, key, tag, cls, placeholder) {
@@ -1940,6 +2058,7 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function renderMarkList() {
+    mapDraw();
     var list = board.marksList;
     if (!list) return;
     list.textContent = '';
@@ -2714,6 +2833,7 @@ window.NoteApp = window.NoteApp || {};
     paintLinks();
     paintSelection();
     paintMarks();
+    mapDraw();
   }
 
   function applySnap(snap) {
@@ -4529,7 +4649,41 @@ window.NoteApp = window.NoteApp || {};
     zoom.appendChild(out);
     zoom.appendChild(label);
     zoom.appendChild(inside);
-    root.appendChild(zoom);
+    var map = node('div', 'board__map');
+    var mapTitle = node('span', 'board__map-title', 'Minimap');
+    var mapCanvas = node('canvas', 'board__map-canvas');
+    mapCanvas.setAttribute('aria-label', 'Board minimap, click or drag to move the view');
+    mapCanvas.title = 'Click or drag to move the view';
+    map.addEventListener('wheel', function (event) {
+      if (event.ctrlKey || event.metaKey) event.preventDefault();
+      event.stopPropagation();
+    }, { passive: false });
+    mapCanvas.addEventListener('pointerdown', function (event) {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      try { mapCanvas.setPointerCapture(event.pointerId); } catch (e) { }
+      mapDrag(event);
+    });
+    mapCanvas.addEventListener('pointermove', function (event) {
+      try {
+        if (!mapCanvas.hasPointerCapture(event.pointerId)) return;
+      } catch (e) {
+        return;
+      }
+      mapDrag(event);
+    });
+    mapCanvas.addEventListener('pointerup', function (event) {
+      try {
+        if (mapCanvas.hasPointerCapture(event.pointerId)) mapCanvas.releasePointerCapture(event.pointerId);
+      } catch (e) { }
+    });
+    map.appendChild(mapTitle);
+    map.appendChild(zoom);
+    map.appendChild(mapCanvas);
+    root.appendChild(map);
+    board.map = map;
+    board.mapCanvas = mapCanvas;
+    board.mapCtx = mapCanvas.getContext('2d');
     root.appendChild(top);
     board.root = root;
     board.stage = stage;
