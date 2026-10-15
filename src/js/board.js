@@ -29,6 +29,7 @@ window.NoteApp = window.NoteApp || {};
     drag: null,
     resize: null,
     viewTimer: null,
+    glide: null,
     picker: null,
     pickerCount: null,
     pickChecked: {},
@@ -199,6 +200,7 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function zoomAt(factor, point) {
+    cancelViewGlide();
     var view = board.view;
     var next = clamp(view.z * factor, MIN_Z, MAX_Z);
     if (next === view.z) return;
@@ -212,6 +214,7 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function resetView() {
+    cancelViewGlide();
     var view = board.view;
     if (view.z === 1) return;
     var rect = board.stage.getBoundingClientRect();
@@ -223,6 +226,7 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function fitView() {
+    cancelViewGlide();
     if (!board.items.length) {
       board.view.x = 0;
       board.view.y = 0;
@@ -446,6 +450,47 @@ window.NoteApp = window.NoteApp || {};
     board.view.x = rect.width / 2 - worldX * board.view.z;
     board.view.y = rect.height / 2 - worldY * board.view.z;
     applyView();
+  }
+
+  function cancelViewGlide() {
+    if (!board.glide) return;
+    cancelAnimationFrame(board.glide);
+    board.glide = null;
+  }
+
+  function glideViewTo(x, y, ms) {
+    cancelViewGlide();
+    var view = board.view;
+    var fromX = view.x;
+    var fromY = view.y;
+    var dx = x - fromX;
+    var dy = y - fromY;
+    var still = !dx && !dy;
+    var calm = false;
+    try { calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { }
+    if (still || calm || !ms) {
+      view.x = Math.round(x);
+      view.y = Math.round(y);
+      applyView();
+      return;
+    }
+    var started = performance.now();
+    var step = function (now) {
+      var t = Math.min(1, (now - started) / ms);
+      var ease = 1 - Math.pow(1 - t, 3);
+      view.x = fromX + dx * ease;
+      view.y = fromY + dy * ease;
+      applyView();
+      if (t < 1) {
+        board.glide = requestAnimationFrame(step);
+        return;
+      }
+      board.glide = null;
+      view.x = Math.round(x);
+      view.y = Math.round(y);
+      applyView();
+    };
+    board.glide = requestAnimationFrame(step);
   }
 
   function mapToWorld(event) {
@@ -2264,6 +2309,7 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function onStageDown(event) {
+    cancelViewGlide();
     if (event.button !== 0) return;
     commitEdits(event);
     var target = event.target;
@@ -2761,9 +2807,9 @@ window.NoteApp = window.NoteApp || {};
 
   function goToMark(mark) {
     var rect = board.stage.getBoundingClientRect();
-    board.view.x = Math.round(rect.width / 2 - mark.x * board.view.z);
-    board.view.y = Math.round(rect.height / 2 - mark.y * board.view.z);
-    applyView();
+    var x = rect.width / 2 - mark.x * board.view.z;
+    var y = rect.height / 2 - mark.y * board.view.z;
+    glideViewTo(x, y, clamp(Math.hypot(x - board.view.x, y - board.view.y) / 1.2, 260, 1000));
     if (mark.node && mark.node.isConnected) {
       mark.node.classList.add('is-hot');
       setTimeout(function () { if (mark.node) mark.node.classList.remove('is-hot'); }, 900);
@@ -6196,6 +6242,7 @@ window.NoteApp = window.NoteApp || {};
 
   function close() {
     if (!board.open) return;
+    cancelViewGlide();
     board.items.forEach(flushItem);
     closePicker();
     board.open = false;
