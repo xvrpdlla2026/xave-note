@@ -1351,6 +1351,7 @@ window.NoteApp = window.NoteApp || {};
 
   function onStageDown(event) {
     if (event.button !== 0) return;
+    commitEdits(event);
     var target = event.target;
     var card = target.closest ? target.closest('.bd-item') : null;
     var handle = target.closest ? target.closest('.bd-item__bar') : null;
@@ -1605,7 +1606,7 @@ window.NoteApp = window.NoteApp || {};
 
   function markData(list) {
     return (list || []).map(function (mark) {
-      return { id: mark.id, x: mark.x, y: mark.y, name: mark.name, icon: mark.icon || 'pin' };
+      return { id: mark.id, x: mark.x, y: mark.y, name: mark.name, desc: mark.desc || '', icon: mark.icon || 'pin' };
     });
   }
 
@@ -1619,7 +1620,7 @@ window.NoteApp = window.NoteApp || {};
     board.markTimer = setTimeout(flush, 260);
   }
 
-  function addMark(x, y, name, icon) {
+  function addMark(x, y, name, icon, desc) {
     if (!board.marks) board.marks = [];
     pushUndo('landmark');
     var mark = {
@@ -1627,6 +1628,7 @@ window.NoteApp = window.NoteApp || {};
       x: Math.round(x),
       y: Math.round(y),
       name: name || 'Landmark ' + (board.marks.length + 1),
+      desc: desc || '',
       icon: icon || 'pin',
     };
     board.marks.push(mark);
@@ -1674,14 +1676,21 @@ window.NoteApp = window.NoteApp || {};
         head.setAttribute('aria-label', 'Landmark');
         head.addEventListener('pointerdown', markGrab);
         head.addEventListener('dblclick', function (event) { event.preventDefault(); markEdit(mark); });
+        var text = node('div', 'bd-mark__text');
         var label = node('span', 'bd-mark__name', mark.name);
         label.addEventListener('dblclick', function (event) { event.preventDefault(); event.stopPropagation(); markEdit(mark); });
+        var desc = node('span', 'bd-mark__desc');
+        desc.addEventListener('dblclick', function (event) { event.preventDefault(); event.stopPropagation(); markEdit(mark); });
+        text.appendChild(label);
+        text.appendChild(desc);
         pin.appendChild(head);
-        pin.appendChild(label);
+        pin.appendChild(text);
         board.canvas.appendChild(pin);
         mark.node = pin;
         mark.head = head;
+        mark.text = text;
         mark.label = label;
+        mark.descEl = desc;
       }
       mark.node.setAttribute('data-icon', mark.icon || 'pin');
       mark.node.style.left = mark.x + 'px';
@@ -1693,6 +1702,9 @@ window.NoteApp = window.NoteApp || {};
       }
       if (mark.label.textContent !== mark.name) mark.label.textContent = mark.name;
       mark.label.title = mark.name;
+      var line = mark.desc || '';
+      if (mark.descEl.textContent !== line) mark.descEl.textContent = line;
+      mark.descEl.style.display = line ? '' : 'none';
     });
     Array.prototype.slice.call(board.canvas.querySelectorAll('.bd-mark')).forEach(function (pin) {
       if (!findMark(pin.getAttribute('data-mark'))) pin.parentNode.removeChild(pin);
@@ -1733,24 +1745,29 @@ window.NoteApp = window.NoteApp || {};
   function markEdit(mark) {
     if (!mark.node || !mark.node.isConnected) return;
     if (mark.node.querySelector('.bd-mark__edit')) return;
+    commitEdits(null);
     var input = node('input', 'bd-mark__edit');
     input.type = 'text';
     input.value = mark.name;
     input.setAttribute('aria-label', 'Landmark name');
     input.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
-    mark.label.style.display = 'none';
+    mark.text.style.display = 'none';
     mark.node.appendChild(input);
     input.focus();
     input.select();
     var done = function (keep) {
       if (!input.parentNode) return;
       var value = input.value.trim();
-      if (keep && value && value !== mark.name) { mark.name = value; saveMarks(true); }
+      var changed = !!(keep && value && value !== mark.name);
+      if (changed) mark.name = value;
+      dropEditor(entry);
       input.parentNode.removeChild(input);
-      mark.label.style.display = '';
+      mark.text.style.display = '';
       paintMarks();
-      renderMarkList();
+      if (changed) { saveMarks(true); renderMarkList(); }
     };
+    var entry = { commit: function () { done(true); }, field: input };
+    pushEditor(entry);
     input.addEventListener('keydown', function (event) {
       if (event.key === 'Enter') { event.preventDefault(); done(true); }
       else if (event.key === 'Escape') { event.preventDefault(); done(false); }
@@ -1758,10 +1775,72 @@ window.NoteApp = window.NoteApp || {};
     input.addEventListener('blur', function () { done(true); });
   }
 
+  function moveGhost(event) {
+    if (!board.markGhost) return;
+    var at = canvasPoint(event.clientX, event.clientY);
+    var unit = board.view.z || 1;
+    board.markGhost.style.left = at.x + 'px';
+    board.markGhost.style.top = at.y + 'px';
+    board.markGhost.style.transform = Math.abs(unit - 1) < 0.001 ? '' : 'scale(' + (1 / unit) + ')';
+    board.markGhost.style.opacity = '0.6';
+  }
+
+  function leaveGhost() {
+    if (board.markGhost) board.markGhost.style.opacity = '0';
+  }
+
+  function markGhost(show) {
+    if (!board.canvas) return;
+    if (board.stage) {
+      board.stage.removeEventListener('pointermove', moveGhost);
+      board.stage.removeEventListener('pointerleave', leaveGhost);
+    }
+    if (!show) {
+      if (board.markGhost && board.markGhost.parentNode) board.markGhost.parentNode.removeChild(board.markGhost);
+      board.markGhost = null;
+      return;
+    }
+    if (!board.markGhost) {
+      var pin = node('div', 'bd-mark is-ghost');
+      var head = node('div', 'bd-mark__head');
+      head.appendChild(App.ui.icon('pin', 17));
+      pin.appendChild(head);
+      pin.style.opacity = '0';
+      board.canvas.appendChild(pin);
+      board.markGhost = pin;
+    }
+    if (board.stage) {
+      board.stage.addEventListener('pointermove', moveGhost);
+      board.stage.addEventListener('pointerleave', leaveGhost);
+    }
+  }
+
+  function pushEditor(entry) {
+    if (!board.editors) board.editors = [];
+    board.editors.push(entry);
+  }
+
+  function dropEditor(entry) {
+    if (!board.editors) return;
+    var at = board.editors.indexOf(entry);
+    if (at >= 0) board.editors.splice(at, 1);
+  }
+
+  function commitEdits(event) {
+    if (!board.editors || !board.editors.length) return;
+    var open = board.editors.slice();
+    for (var i = 0; i < open.length; i++) {
+      if (event && event.target && open[i].field.contains(event.target)) continue;
+      open[i].commit();
+    }
+  }
+
   function setMarking(on) {
     board.marking = !!on;
     if (board.stage) board.stage.classList.toggle('is-marking', board.marking);
+    if (board.root) board.root.classList.toggle('is-marking', board.marking);
     if (board.marksAdd) board.marksAdd.classList.toggle('is-on', board.marking);
+    markGhost(board.marking);
     if (board.marking) util.toast('Click the board to drop a landmark');
   }
 
@@ -1784,31 +1863,56 @@ window.NoteApp = window.NoteApp || {};
     }
   }
 
-  function renameRow(row, mark) {
-    if (row.querySelector('.board__mark-edit')) return;
+  function editRow(row, mark) {
+    commitEdits(null);
+    var fresh = board.marksList ? board.marksList.querySelector('[data-mark="' + mark.id + '"]') : null;
+    if (fresh) row = fresh;
+    if (row.querySelector('.board__mark-editor')) return;
     var name = row.querySelector('.board__mark-name');
-    var input = node('input', 'board__mark-edit');
-    input.type = 'text';
-    input.value = mark.name;
-    input.setAttribute('aria-label', 'Landmark name');
+    var box = node('div', 'board__mark-editor');
+    var nameInput = node('input', 'board__mark-edit');
+    nameInput.type = 'text';
+    nameInput.value = mark.name;
+    nameInput.placeholder = 'Name';
+    nameInput.setAttribute('aria-label', 'Landmark name');
+    var descInput = node('input', 'board__mark-desc-edit');
+    descInput.type = 'text';
+    descInput.value = mark.desc || '';
+    descInput.placeholder = 'Add a description (optional)';
+    descInput.setAttribute('aria-label', 'Landmark description');
+    box.appendChild(nameInput);
+    box.appendChild(descInput);
     name.style.display = 'none';
-    row.insertBefore(input, name);
-    input.focus();
-    input.select();
+    row.appendChild(box);
+    nameInput.focus();
+    nameInput.select();
     var done = function (keep) {
-      if (!input.parentNode) return;
-      var value = input.value.trim();
-      if (keep && value && value !== mark.name) { mark.name = value; saveMarks(true); }
-      input.parentNode.removeChild(input);
+      if (!box.parentNode) return;
+      var nextName = nameInput.value.trim();
+      var nextDesc = descInput.value.trim();
+      var changed = !!(keep && ((nextName && nextName !== mark.name) || nextDesc !== (mark.desc || '')));
+      if (keep) {
+        if (nextName) mark.name = nextName;
+        mark.desc = nextDesc;
+      }
+      dropEditor(entry);
+      box.parentNode.removeChild(box);
       name.style.display = '';
       paintMarks();
+      if (changed) saveMarks(true);
       renderMarkList();
     };
-    input.addEventListener('keydown', function (event) {
+    var entry = { commit: function () { done(true); }, field: box };
+    pushEditor(entry);
+    box.addEventListener('keydown', function (event) {
       if (event.key === 'Enter') { event.preventDefault(); done(true); }
       else if (event.key === 'Escape') { event.preventDefault(); done(false); }
     });
-    input.addEventListener('blur', function () { done(true); });
+    box.addEventListener('focusout', function () {
+      setTimeout(function () {
+        if (!box.contains(document.activeElement)) done(true);
+      }, 0);
+    });
   }
 
   function markIcons(row, mark) {
@@ -1857,14 +1961,14 @@ window.NoteApp = window.NoteApp || {};
       name.type = 'button';
       name.title = 'Go to ' + mark.name;
       name.addEventListener('click', function () { goToMark(mark); });
-      name.addEventListener('dblclick', function (event) { event.preventDefault(); renameRow(row, mark); });
+      name.addEventListener('dblclick', function (event) { event.preventDefault(); editRow(row, mark); });
       var tools = node('div', 'board__mark-tools');
       var edit = node('button', 'board__mark-act');
       edit.type = 'button';
       edit.title = 'Rename';
       edit.setAttribute('aria-label', 'Rename');
       edit.appendChild(App.ui.icon('pencil', 14));
-      edit.addEventListener('click', function (event) { event.stopPropagation(); renameRow(row, mark); });
+      edit.addEventListener('click', function (event) { event.stopPropagation(); editRow(row, mark); });
       var drop = node('button', 'board__mark-act');
       drop.type = 'button';
       drop.title = 'Remove';
@@ -1876,6 +1980,11 @@ window.NoteApp = window.NoteApp || {};
       row.appendChild(pick);
       row.appendChild(name);
       row.appendChild(tools);
+      if (mark.desc) {
+        var line = node('div', 'board__mark-desc', mark.desc);
+        line.title = mark.desc;
+        row.appendChild(line);
+      }
       list.appendChild(row);
     });
   }
@@ -1898,9 +2007,13 @@ window.NoteApp = window.NoteApp || {};
     head.appendChild(back);
     head.appendChild(add);
     panel.appendChild(head);
-    panel.appendChild(node('p', 'board__marks-hint', 'Drop a pin on the board, then name it. Drag a pin to move it, double click to rename.'));
+    panel.appendChild(node('p', 'board__marks-hint', 'Drop a pin on the board, then name it. Drag a pin to move it. Use the pencil to rename a pin or add a description.'));
     var list = node('div', 'board__marks-list');
     panel.appendChild(list);
+    panel.addEventListener('wheel', function (event) {
+      if (event.ctrlKey || event.metaKey) event.preventDefault();
+      event.stopPropagation();
+    }, { passive: false });
     board.marksPanel = panel;
     board.marksList = list;
     board.marksAdd = add;
@@ -1940,7 +2053,6 @@ window.NoteApp = window.NoteApp || {};
     var foot = node('div', 'board__rail-group board__rail--foot');
     foot.appendChild(railButton('arrowLeft', 'Back', close));
     rail.appendChild(foot);
-    rail.appendChild(buildMarks());
     return rail;
   }
 
@@ -4399,6 +4511,7 @@ window.NoteApp = window.NoteApp || {};
     stage.addEventListener('pointerdown', onStageDown);
     stage.addEventListener('wheel', onWheel, { passive: false });
     root.appendChild(stage);
+    root.appendChild(buildMarks());
     var top = node('div', 'board__top');
     top.appendChild(node('span', 'board__title', 'Xave'));
     top.appendChild(node('span', 'board__sub', 'Infinite board'));
@@ -4909,9 +5022,11 @@ window.NoteApp = window.NoteApp || {};
     board.open = true;
     board.marking = false;
     board.railMarks = false;
+    board.editors = [];
     if (board.stage) board.stage.classList.remove('is-marking');
     if (board.rail) board.rail.classList.remove('is-marks');
     if (board.root) board.root.classList.remove('is-marks');
+    if (board.root) board.root.classList.remove('is-marking');
     if (!board.root) document.body.appendChild(buildRoot());
     board.root.classList.add('is-open');
     document.body.classList.add('is-board');
@@ -4923,6 +5038,7 @@ window.NoteApp = window.NoteApp || {};
       board.bound = true;
       board.root.addEventListener('contextmenu', onBoardContext);
       document.addEventListener('paste', onPaste);
+      document.addEventListener('pointerdown', commitEdits, true);
     }
     document.addEventListener('keydown', onKeyDown, true);
     document.addEventListener('keyup', onKeyUp, true);
@@ -4940,6 +5056,8 @@ window.NoteApp = window.NoteApp || {};
     document.body.classList.remove('is-board');
     document.removeEventListener('keydown', onKeyDown, true);
     document.removeEventListener('keyup', onKeyUp, true);
+    document.removeEventListener('pointerdown', commitEdits, true);
+    setMarking(false);
     window.removeEventListener('resize', applyView);
     try { App.db.boardSaveView(BOARD_ID, board.view.x, board.view.y, board.view.z); } catch (e) { }
   }
