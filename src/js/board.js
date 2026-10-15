@@ -2477,22 +2477,132 @@ window.NoteApp = window.NoteApp || {};
     ellipse: { label: 'Ellipse', icon: 'ellipse', def: [240, 170], points: shapeEllipse },
     triangle: { label: 'Triangle', icon: 'triangle', def: [210, 170], points: function (w, h) { return [[w / 2, 0], [w, h], [0, h], [w / 2, 0]]; } },
     diamond: { label: 'Diamond', icon: 'diamond', def: [180, 180], points: function (w, h) { return [[w / 2, 0], [w, h / 2], [w / 2, h], [0, h / 2], [w / 2, 0]]; } },
+    pentagon: { label: 'Pentagon', icon: 'pentagon', def: [200, 180], points: shapeRing(5) },
+    hexagon: { label: 'Hexagon', icon: 'hexagon', def: [220, 150], points: function (w, h) { return [[w * 0.25, 0], [w * 0.75, 0], [w, h / 2], [w * 0.75, h], [w * 0.25, h], [0, h / 2], [w * 0.25, 0]]; } },
+    octagon: { label: 'Octagon', icon: 'octagon', def: [180, 180], points: shapeRing(8) },
+    trapezoid: { label: 'Trapezoid', icon: 'trapezoid', def: [220, 150], points: function (w, h) { return [[w * 0.22, 0], [w * 0.78, 0], [w, h], [0, h], [w * 0.22, 0]]; } },
+    parallelogram: { label: 'Parallelogram', icon: 'parallelogram', def: [230, 150], points: function (w, h) { return [[w * 0.25, 0], [w, 0], [w * 0.75, h], [0, h], [w * 0.25, 0]]; } },
     hexagon: { label: 'Hexagon', icon: 'hexagon', def: [220, 150], points: function (w, h) { return [[w * 0.25, 0], [w * 0.75, 0], [w, h / 2], [w * 0.75, h], [w * 0.25, h], [0, h / 2], [w * 0.25, 0]]; } },
     star: { label: 'Star', icon: 'star', def: [180, 180], points: shapeStar },
+    sparkle: { label: 'Sparkle', icon: 'sparkle', def: [170, 170], points: shapeSparkle },
     cross: { label: 'Cross', icon: 'cross', def: [170, 170], points: shapeCross },
+    bolt: { label: 'Bolt', icon: 'bolt', def: [140, 200], points: function (w, h) { return [[w * 0.6, 0], [w * 0.15, h * 0.6], [w * 0.45, h * 0.6], [w * 0.3, h], [w * 0.85, h * 0.4], [w * 0.55, h * 0.4], [w * 0.72, 0], [w * 0.6, 0]]; } },
     heart: { label: 'Heart', icon: 'heart', def: [180, 160], points: shapeHeart },
+    moon: { label: 'Moon', icon: 'moon', def: [160, 180], points: shapeMoon },
+    cloud: { label: 'Cloud', icon: 'cloud', def: [250, 160], points: shapeCloud },
+    shield: { label: 'Shield', icon: 'shield', def: [180, 200], points: shapeShield },
+    flag: { label: 'Flag', icon: 'flag', def: [200, 140], points: function (w, h) { return [[0, 0], [w, 0], [w * 0.76, h / 2], [w, h], [0, h], [0, 0]]; } },
+    gear: { label: 'Gear', icon: 'gear', def: [180, 180], points: shapeGear },
+    wave: { label: 'Wave', icon: 'wave', def: [240, 120], points: shapeWave },
     callout: { label: 'Callout', icon: 'callout', def: [240, 160], points: shapeCallout },
     cylinder: { label: 'Cylinder', icon: 'cylinder', def: [200, 170], points: shapeCylinder },
     line: { label: 'Line', icon: 'line', free: true, def: [240, 0], points: function (dx, dy) { return [[0, 0], [dx, dy]]; } },
     arrow: { label: 'Arrow', icon: 'arrow', free: true, def: [240, 0], points: shapeArrow },
   };
-  var SHAPE_ORDER = ['rect', 'ellipse', 'triangle', 'diamond', 'hexagon', 'star', 'cross', 'heart', 'callout', 'cylinder', 'line', 'arrow'];
+  var SHAPE_ORDER = ['rect', 'ellipse', 'triangle', 'diamond', 'pentagon', 'hexagon', 'octagon', 'trapezoid', 'parallelogram', 'star', 'sparkle', 'cross', 'bolt', 'heart', 'moon', 'cloud', 'shield', 'flag', 'gear', 'wave', 'callout', 'cylinder', 'line', 'arrow'];
 
   function shapeEllipse(w, h) {
     var out = [];
     for (var i = 0; i <= 48; i++) {
       var a = (i / 48) * Math.PI * 2;
       out.push([(w / 2) * (1 + Math.cos(a)), (h / 2) * (1 + Math.sin(a))]);
+    }
+    return out;
+  }
+
+  function shapeRing(sides) {
+    return function (w, h) {
+      var out = [];
+      for (var i = 0; i <= sides; i++) {
+        var a = -Math.PI / 2 + (i / sides) * Math.PI * 2;
+        out.push([(w / 2) * (1 + Math.cos(a)), (h / 2) * (1 + Math.sin(a))]);
+      }
+      return out;
+    };
+  }
+
+  function shapeSparkle(w, h) {
+    var out = [];
+    for (var i = 0; i <= 8; i++) {
+      var a = -Math.PI / 2 + (i * Math.PI) / 4;
+      var r = i % 2 ? 0.34 : 1;
+      out.push([(w / 2) * (1 + r * Math.cos(a)), (h / 2) * (1 + r * Math.sin(a))]);
+    }
+    return out;
+  }
+
+  function shapeMoon(w, h) {
+    var out = [];
+    var i;
+    for (i = 0; i <= 24; i++) {
+      var a = -Math.PI / 2 + (i / 24) * Math.PI;
+      out.push([(w / 2) * (1 + Math.cos(a)), (h / 2) * (1 + Math.sin(a))]);
+    }
+    for (i = 20; i >= 0; i--) {
+      var t = i / 20;
+      out.push([w * 0.5 + w * 0.24 * Math.sin(Math.PI * t), h * t]);
+    }
+    return out;
+  }
+
+  function shapeCloud(w, h) {
+    var lobes = [[0.22, 0.74, 0.22], [0.44, 0.52, 0.3], [0.7, 0.58, 0.24], [0.88, 0.76, 0.15]];
+    var base = h * 0.88;
+    var left = lobes[0][0] * w - lobes[0][2] * Math.min(w, h);
+    var right = lobes[3][0] * w + lobes[3][2] * Math.min(w, h);
+    var out = [[left, base]];
+    for (var i = 0; i <= 60; i++) {
+      var x = left + ((right - left) * i) / 60;
+      var y = base;
+      for (var n = 0; n < lobes.length; n++) {
+        var cx = lobes[n][0] * w;
+        var cy = lobes[n][1] * h;
+        var r = lobes[n][2] * Math.min(w, h);
+        var dx = x - cx;
+        if (Math.abs(dx) < r) y = Math.min(y, cy - Math.sqrt(r * r - dx * dx));
+      }
+      out.push([x, y]);
+    }
+    out.push([right, base]);
+    return out;
+  }
+
+  function shapeShield(w, h) {
+    var out = [[w / 2, 0], [w, h * 0.14]];
+    var i;
+    for (i = 0; i <= 8; i++) {
+      var a = (i / 8) * (Math.PI / 2);
+      out.push([w / 2 + (w / 2) * Math.cos(a), h * 0.5 + (h / 2) * Math.sin(a)]);
+    }
+    for (i = 0; i <= 8; i++) {
+      var b = Math.PI / 2 + (i / 8) * (Math.PI / 2);
+      out.push([w / 2 + (w / 2) * Math.cos(b), h * 0.5 + (h / 2) * Math.sin(b)]);
+    }
+    out.push([0, h * 0.14], [w / 2, 0]);
+    return out;
+  }
+
+  function shapeGear(w, h) {
+    var teeth = 8;
+    var out = [];
+    var step = (Math.PI * 2) / teeth;
+    var put = function (a, r) { out.push([(w / 2) * (1 + r * Math.cos(a)), (h / 2) * (1 + r * Math.sin(a))]); };
+    for (var i = 0; i < teeth; i++) {
+      var a0 = (i / teeth) * Math.PI * 2;
+      put(a0, 1);
+      put(a0 + step * 0.42, 1);
+      put(a0 + step * 0.5, 0.68);
+      put(a0 + step * 0.92, 0.68);
+    }
+    out.push(out[0]);
+    return out;
+  }
+
+  function shapeWave(w, h) {
+    var out = [];
+    for (var i = 0; i <= 40; i++) {
+      var t = i / 40;
+      out.push([w * t, h / 2 + (h / 2) * 0.8 * Math.sin(t * Math.PI * 4)]);
     }
     return out;
   }
