@@ -113,6 +113,7 @@ window.NoteApp = window.NoteApp || {};
     board.grid.style.backgroundSize = (26 * view.z) + 'px ' + (26 * view.z) + 'px';
     board.grid.style.backgroundPosition = view.x + 'px ' + view.y + 'px';
     board.zoomLabel.textContent = Math.round(view.z * 100) + '%';
+    cullPass();
     inkRepaintCards();
     scaleMarks();
     mapDraw();
@@ -126,6 +127,67 @@ window.NoteApp = window.NoteApp || {};
       board.viewTimer = null;
       try { App.db.boardSaveView(BOARD_ID, board.view.x, board.view.y, board.view.z); } catch (e) { }
     }, 320);
+  }
+
+  var CULL_PAD = 420;
+
+  function stageSize() {
+    if (board.size) return board.size;
+    var rect = board.stage ? board.stage.getBoundingClientRect() : null;
+    if (!rect || !rect.width || !rect.height) return { w: 0, h: 0 };
+    board.size = { w: rect.width, h: rect.height };
+    return board.size;
+  }
+
+  function materializeItem(item) {
+    if (item.node) return;
+    paintItem(item);
+    if (board.selectedIds.indexOf(item.id) >= 0) item.node.classList.add('is-selected');
+  }
+
+  function cullPass() {
+    if (!board.open || !board.canvas || !board.stage) return;
+    if (board.editors.length || board.drag || board.marquee) return;
+    var active = document.activeElement;
+    if (active && active !== document.body && board.canvas.contains(active)) return;
+    var size = stageSize();
+    if (!size.w || !size.h) return;
+    var view = board.view;
+    var z = view.z || 1;
+    var at = board.cullAt;
+    if (at && !board.cullForce && at.z === view.z && board.items.length === at.n && Math.abs(at.x - view.x) + Math.abs(at.y - view.y) < 280) return;
+    var pad = CULL_PAD / z;
+    var x1 = -view.x / z - pad;
+    var y1 = -view.y / z - pad;
+    var x2 = (size.w - view.x) / z + pad;
+    var y2 = (size.h - view.y) / z + pad;
+    var items = board.items;
+    var keep = null;
+    var item, data, i;
+    for (i = 0; i < items.length; i++) {
+      item = items[i];
+      data = item.data;
+      if (item.kind === 'column' || item.kind === 'group' || (data && (data.parent || data.group))) {
+        if (!keep) keep = {};
+        keep[item.id] = true;
+        if (data.parent) keep[data.parent] = true;
+      }
+    }
+    var sel = board.selectedIds;
+    if (sel.length) {
+      if (!keep) keep = {};
+      for (i = 0; i < sel.length; i++) keep[sel[i]] = true;
+    }
+    board.cullAt = { x: view.x, y: view.y, z: view.z, n: items.length };
+    board.cullForce = false;
+    for (i = 0; i < items.length; i++) {
+      item = items[i];
+      if (keep && keep[item.id]) { materializeItem(item); continue; }
+      if (item.x + item.w > x1 && item.x < x2 && item.y + item.h > y1 && item.y < y2) { materializeItem(item); continue; }
+      if (!item.node) continue;
+      if (item.node.parentNode) item.node.parentNode.removeChild(item.node);
+      delete item.node;
+    }
   }
 
   function zoomAt(factor, point) {
@@ -339,7 +401,7 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function placeItem(item) {
-    if (isChild(item)) return;
+    if (isChild(item) || !item.node) return;
     item.node.style.left = item.x + 'px';
     item.node.style.top = item.y + 'px';
     item.node.style.width = item.w + 'px';
@@ -2855,10 +2917,8 @@ window.NoteApp = window.NoteApp || {};
   function repaintAll() {
     if (!board.canvas) return;
     clearCanvas();
-    board.items.forEach(function (item) {
-      delete item.node;
-      paintItem(item);
-    });
+    board.cullForce = true;
+    cullPass();
     settleChildren();
     paintLinks();
     paintSelection();
@@ -3135,6 +3195,7 @@ window.NoteApp = window.NoteApp || {};
   function clearCanvas() {
     board.items.forEach(function (item) {
       if (item.node && item.node.parentNode) item.node.parentNode.removeChild(item.node);
+      delete item.node;
     });
   }
 
@@ -5182,6 +5243,8 @@ window.NoteApp = window.NoteApp || {};
     applyView();
   }  function load() {
     clearCanvas();
+    board.cullAt = null;
+    board.cullForce = true;
     board.items = [];
     var stored = [];
     try { stored = App.db.boardItems(BOARD_ID) || []; } catch (e) { stored = []; }
@@ -5189,7 +5252,6 @@ window.NoteApp = window.NoteApp || {};
       var item = row;
       item.data = row.data || {};
       board.items.push(item);
-      paintItem(item);
     });
     board.items.forEach(function (item) {
       if (item.kind !== 'image' || item.ref_kind || !item.data || !item.data.fileId) return;
@@ -5249,7 +5311,7 @@ window.NoteApp = window.NoteApp || {};
     }
     document.addEventListener('keydown', onKeyDown, true);
     document.addEventListener('keyup', onKeyUp, true);
-    window.addEventListener('resize', applyView);
+    window.addEventListener('resize', function () { board.size = null; applyView(); });
   }
 
   function close() {
