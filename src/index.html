@@ -25,6 +25,16 @@
 </style>
 </head>
 <body>
+<script>
+  // The board is restored at the end of boot, so a reload would otherwise show the
+  // whole note view first. Hide the shell until the board decides.
+  try {
+    if (JSON.parse(window.localStorage.getItem('noteapp.pref.board.open') || 'false')) {
+      document.documentElement.classList.add('is-board-boot');
+      setTimeout(function () { document.documentElement.classList.remove('is-board-boot'); }, 12000);
+    }
+  } catch (e) { }
+</script>
 
 <header class="topbar">
 

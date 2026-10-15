@@ -5545,6 +5545,7 @@ window.NoteApp = window.NoteApp || {};
   function open() {
     if (board.open) return;
     BOARD_ID = activeBoardId();
+    document.documentElement.classList.remove('is-board-boot');
     board.open = true;
     try { App.prefs.set('board.open', true); } catch (e) { }
     board.marking = false;
