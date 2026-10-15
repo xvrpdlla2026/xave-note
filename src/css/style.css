@@ -3807,6 +3807,7 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-rich__btn:hover { background: var(--bg-hover); color: var(--text); }
 .bd-rich__btn.is-on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 .bd-rich__btn--wide { width: auto; padding: 0 8px; }
+.bd-rich__btn--shut:hover { color: var(--danger); }
 .bd-rich__btn--bold { font-weight: 750; }
 .bd-rich__btn--italic { font-style: italic; }
 .bd-rich__btn--underline { text-decoration: underline; }

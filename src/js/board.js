@@ -120,6 +120,7 @@ window.NoteApp = window.NoteApp || {};
     inkRepaintCards();
     scaleMarks();
     mapDraw();
+    richFollow();
     queueViewSave();
   }
 
@@ -1272,6 +1273,9 @@ window.NoteApp = window.NoteApp || {};
     var clear = richButton('bd-rich__btn--clear bd-rich__btn--wide', 'Clear', 'Clear formatting');
     clear.addEventListener('click', function () { clearFormatting(null); });
     done.appendChild(clear);
+    var shut = richButton('bd-rich__btn--shut', '\u2715', 'Close the formatting bar');
+    shut.addEventListener('click', function () { richHide(); });
+    done.appendChild(shut);
     document.body.appendChild(bar);
     return bar;
   }
@@ -1300,6 +1304,15 @@ window.NoteApp = window.NoteApp || {};
     });
   }
 
+  function richFollow() {
+    if (!richBar || !richBar.classList.contains('is-on')) return;
+    var range = richCtx ? richCtx.range : null;
+    if (!range) return;
+    var rect = range.getBoundingClientRect();
+    if (!rect || (!rect.width && !rect.height)) return;
+    richPlace(rect);
+  }
+
   function richPlace(rect) {
     richBar.style.visibility = 'hidden';
     richBar.classList.add('is-on');
@@ -1319,6 +1332,7 @@ window.NoteApp = window.NoteApp || {};
     if (!richBar) return;
     richBar.classList.remove('is-on');
     richBar.classList.remove('is-picking');
+    richCtx = null;
   }
 
   function richRefresh() {
@@ -2469,6 +2483,10 @@ window.NoteApp = window.NoteApp || {};
     if (board.marquee) {
       if (board.marquee.node && board.marquee.node.parentNode) board.marquee.node.parentNode.removeChild(board.marquee.node);
       board.marquee = null;
+    }
+    if (board.pan) {
+      var travelled = Math.abs(event.clientX - board.pan.x) + Math.abs(event.clientY - board.pan.y);
+      if (travelled < 5) richHide();
     }
     board.pan = null;
   }
@@ -6229,7 +6247,6 @@ window.NoteApp = window.NoteApp || {};
       document.addEventListener('selectionchange', onSelectionChange);
       if (board.canvas) {
         board.canvas.addEventListener('pointerdown', richHide);
-        board.canvas.addEventListener('wheel', richHide, { passive: true });
       }
       board.root.addEventListener('contextmenu', onBoardContext);
       document.addEventListener('paste', onPaste);
