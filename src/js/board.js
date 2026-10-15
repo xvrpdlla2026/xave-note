@@ -125,6 +125,7 @@ window.NoteApp = window.NoteApp || {};
     board.grid.style.backgroundSize = (26 * view.z) + 'px ' + (26 * view.z) + 'px';
     board.grid.style.backgroundPosition = view.x + 'px ' + view.y + 'px';
     board.zoomLabel.textContent = Math.round(view.z * 100) + '%';
+    inkRepaintCards();
     queueViewSave();
   }
 
@@ -2608,6 +2609,7 @@ window.NoteApp = window.NoteApp || {};
 
   var INK_PAD = 18;
   var INK_BAR = 30;
+  var DRAW_PIX = 6000000;
 
   function inkPoint(event) {
     var rect = board.stage.getBoundingClientRect();
@@ -3110,6 +3112,22 @@ window.NoteApp = window.NoteApp || {};
     addItem('draw', { data: data });
   }
 
+  function inkScale(w, h) {
+    var z = (board.view && board.view.z) || 1;
+    var k = (window.devicePixelRatio || 1) * z;
+    var cap = Math.sqrt(DRAW_PIX / Math.max(1, w * h));
+    return Math.max(1, Math.min(k, cap));
+  }
+
+  function inkRepaintCards() {
+    if (!board.items) return;
+    board.items.forEach(function (item) {
+      if (item.kind !== 'draw' || !item.node) return;
+      var canvas = item.node.querySelector('.bd-draw__canvas');
+      if (canvas && canvas.inkPaint) canvas.inkPaint();
+    });
+  }
+
   function drawBody(item) {
     var wrap = node('div', 'bd-draw');
     var canvas = node('canvas', 'bd-draw__canvas');
@@ -3119,20 +3137,25 @@ window.NoteApp = window.NoteApp || {};
       var w = wrap.offsetWidth;
       var h = wrap.offsetHeight;
       if (w < 2 || h < 2) return;
-      var dpr = window.devicePixelRatio || 1;
-      canvas.width = Math.max(1, Math.round(w * dpr));
-      canvas.height = Math.max(1, Math.round(h * dpr));
+      var k = inkScale(w, h);
+      if (canvas.inkScale && canvas.inkW === w && canvas.inkH === h && Math.abs(k - canvas.inkScale) / canvas.inkScale < 0.2) return;
+      canvas.inkScale = k;
+      canvas.inkW = w;
+      canvas.inkH = h;
+      canvas.width = Math.max(1, Math.round(w * k));
+      canvas.height = Math.max(1, Math.round(h * k));
       var ctx = canvas.getContext('2d');
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.setTransform(k, 0, 0, k, 0, 0);
       ctx.clearRect(0, 0, w, h);
       if (item.data && typeof item.data.ox === 'number') {
-        ctx.setTransform(dpr, 0, 0, dpr, dpr * (item.data.ox - item.x - 1), dpr * (item.data.oy - item.y - 1 - INK_BAR));
+        ctx.setTransform(k, 0, 0, k, k * (item.data.ox - item.x - 1), k * (item.data.oy - item.y - 1 - INK_BAR));
       } else {
         var box = strokeBox(strokes);
-        ctx.setTransform(dpr, 0, 0, dpr, dpr * ((w - box.w) / 2 - box.x), dpr * ((h - box.h) / 2 - box.y));
+        ctx.setTransform(k, 0, 0, k, k * ((w - box.w) / 2 - box.x), k * ((h - box.h) / 2 - box.y));
       }
       strokes.forEach(function (stroke) { paintStroke(ctx, stroke); });
     };
+    canvas.inkPaint = paint;
     wrap.addEventListener('dblclick', function (event) {
       event.stopPropagation();
       startInk(item);
