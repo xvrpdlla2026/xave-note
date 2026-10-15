@@ -3887,12 +3887,10 @@ dialog:not([open]) { display: none; }
 .bd-draw { position: relative; flex: 1; min-height: 0; }
 .bd-draw__canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; background: transparent; }
 .bd-item--draw { background: transparent; border-color: transparent; box-shadow: none; }
-.bd-item--draw:hover { border-color: var(--border); }
 .bd-item--draw .bd-item__bar { height: 30px; opacity: 0; transition: opacity .12s ease; }
 .bd-item--draw:hover .bd-item__bar, .bd-item--draw.is-selected .bd-item__bar, .bd-item--draw.is-locked .bd-item__bar { opacity: 1; }
 .bd-item--draw .bd-item__resize { opacity: 0; transition: opacity .12s ease; }
 .bd-item--draw:hover .bd-item__resize, .bd-item--draw.is-selected .bd-item__resize { opacity: 1; }
-.bd-item--draw:hover, .bd-item--draw.is-selected { background: var(--bg-sunken); }
 .bd-item--draw .bd-draw { cursor: move; }
 .bd-item--draw.is-locked .bd-draw { cursor: default; }
 .drawpad { position: fixed; inset: 0; z-index: 300; display: flex; align-items: center; justify-content: center; }
