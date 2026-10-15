@@ -18,6 +18,7 @@ window.NoteApp = window.NoteApp || {};
     open: false,
     items: [],
     view: { x: 0, y: 0, z: 1 },
+    viewZ: null,
     selectedId: null,
     selectedIds: [],
     redo: [],
@@ -30,6 +31,7 @@ window.NoteApp = window.NoteApp || {};
     resize: null,
     viewTimer: null,
     glide: null,
+    glideTimer: null,
     picker: null,
     pickerCount: null,
     pickChecked: {},
@@ -109,18 +111,22 @@ window.NoteApp = window.NoteApp || {};
     saveItem(item);
   }
 
-  function applyView() {
+  function applyView(lite) {
     var view = board.view;
+    if (board.viewZ !== view.z) {
+      board.viewZ = view.z;
+      board.canvas.style.setProperty('--bd-z', view.z);
+      board.grid.style.backgroundSize = (26 * view.z) + 'px ' + (26 * view.z) + 'px';
+      board.zoomLabel.textContent = Math.round(view.z * 100) + '%';
+    }
     board.canvas.style.transform = 'translate(' + view.x + 'px, ' + view.y + 'px) scale(' + view.z + ')';
-    board.canvas.style.setProperty('--bd-z', view.z);
-    board.grid.style.backgroundSize = (26 * view.z) + 'px ' + (26 * view.z) + 'px';
     board.grid.style.backgroundPosition = view.x + 'px ' + view.y + 'px';
-    board.zoomLabel.textContent = Math.round(view.z * 100) + '%';
+    richFollow();
+    if (lite === true) return;
     cullPass();
     inkRepaintCards();
     scaleMarks();
     mapDraw();
-    richFollow();
     queueViewSave();
   }
 
@@ -454,9 +460,19 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function cancelViewGlide() {
-    if (!board.glide) return;
-    cancelAnimationFrame(board.glide);
-    board.glide = null;
+    if (board.glideTimer) {
+      clearTimeout(board.glideTimer);
+      board.glideTimer = null;
+    }
+    if (board.glide) {
+      cancelAnimationFrame(board.glide);
+      board.glide = null;
+    }
+    if (!board.canvas) return;
+    board.canvas.classList.remove('is-gliding');
+    board.grid.classList.remove('is-gliding');
+    board.canvas.style.transition = '';
+    board.grid.style.transition = '';
   }
 
   function glideViewTo(x, y, ms) {
@@ -475,23 +491,33 @@ window.NoteApp = window.NoteApp || {};
       applyView();
       return;
     }
-    var started = performance.now();
-    var step = function (now) {
-      var t = Math.min(1, (now - started) / ms);
-      var ease = 1 - Math.pow(1 - t, 3);
-      view.x = fromX + dx * ease;
-      view.y = fromY + dy * ease;
-      applyView();
-      if (t < 1) {
-        board.glide = requestAnimationFrame(step);
-        return;
+    var easing = 'cubic-bezier(0.16, 0.84, 0.28, 1)';
+    board.canvas.classList.add('is-gliding');
+    board.grid.classList.add('is-gliding');
+    board.canvas.style.transition = 'transform ' + ms + 'ms ' + easing;
+    board.grid.style.transition = 'background-position ' + ms + 'ms ' + easing;
+    view.x = x;
+    view.y = y;
+    cullPass();
+    view.x = fromX;
+    view.y = fromY;
+    var finish = function () {
+      if (board.glideTimer) {
+        clearTimeout(board.glideTimer);
+        board.glideTimer = null;
       }
-      board.glide = null;
+      board.canvas.classList.remove('is-gliding');
+      board.grid.classList.remove('is-gliding');
+      board.canvas.style.transition = '';
+      board.grid.style.transition = '';
       view.x = Math.round(x);
       view.y = Math.round(y);
       applyView();
     };
-    board.glide = requestAnimationFrame(step);
+    board.glideTimer = setTimeout(finish, ms + 40);
+    view.x = Math.round(x);
+    view.y = Math.round(y);
+    applyView(true);
   }
 
   function mapToWorld(event) {

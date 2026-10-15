@@ -3738,6 +3738,7 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .board__mode.is-select { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 .board__marquee { position: absolute; z-index: 4; border: 1px solid var(--accent); border-radius: 4px; background: var(--accent-ring); pointer-events: none; }
 .board__grid { position: absolute; inset: 0; background-image: radial-gradient(circle, var(--border-strong) 1px, transparent 1px); background-size: 26px 26px; pointer-events: none; }
+.board__canvas.is-gliding { will-change: transform; }
 .board__canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform-origin: 0 0; }
 .board__stage { cursor: auto; }
 .board__top { position: absolute; top: 14px; left: 98px; display: flex; align-items: baseline; gap: 10px; pointer-events: none; }
