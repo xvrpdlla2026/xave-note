@@ -496,8 +496,6 @@ window.NoteApp = window.NoteApp || {};
     var easing = 'cubic-bezier(0.4, 0, 0.2, 1)';
     board.canvas.classList.add('is-gliding');
     board.grid.classList.add('is-gliding');
-    board.canvas.style.transition = 'transform ' + ms + 'ms ' + easing;
-    board.grid.style.transition = 'background-position ' + ms + 'ms ' + easing;
     view.x = x;
     view.y = y;
     cullPass();
@@ -517,9 +515,17 @@ window.NoteApp = window.NoteApp || {};
       applyView();
     };
     board.glideTimer = setTimeout(finish, ms + 40);
-    view.x = Math.round(x);
-    view.y = Math.round(y);
-    applyView(true);
+    // Give the destination one frame to exist before the transition starts, so the
+    // first animated frame is not also paying to build and paint what just arrived.
+    board.glide = requestAnimationFrame(function () {
+      board.glide = null;
+      if (!board.canvas || !board.canvas.classList.contains('is-gliding')) return;
+      board.canvas.style.transition = 'transform ' + ms + 'ms ' + easing;
+      board.grid.style.transition = 'background-position ' + ms + 'ms ' + easing;
+      view.x = Math.round(x);
+      view.y = Math.round(y);
+      applyView(true);
+    });
   }
 
   function mapToWorld(event) {
