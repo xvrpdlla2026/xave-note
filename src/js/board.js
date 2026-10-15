@@ -910,6 +910,7 @@ window.NoteApp = window.NoteApp || {};
     input.value = item.data.title || '';
     input.placeholder = kindLabel(item);
     input.setAttribute('aria-label', 'Rename card');
+    input.style.width = Math.max(48, span.offsetWidth + 14) + 'px';
     var closed = false;
     var finish = function (commit) {
       if (closed) return;

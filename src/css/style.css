@@ -3762,7 +3762,7 @@ dialog:not([open]) { display: none; }
 .bd-item--comment .bd-comment__edit { background: #ffffff; border-color: #ddd8ca; color: #2f2c26; }
 .bd-item__bar { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 4px 4px 4px 10px; border-bottom: 1px solid var(--border); background: var(--bg-sunken); }
 .bd-item__kind { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); }
-.bd-item__title { flex: 1; min-width: 0; height: 20px; padding: 0 4px; border: 1px solid var(--accent); border-radius: 4px; background: var(--bg-raised); color: var(--text); font: inherit; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
+.bd-item__title { min-width: 0; height: 20px; padding: 0 4px; border: 1px solid var(--accent); border-radius: 4px; background: var(--bg-raised); color: var(--text); font: inherit; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
 .bd-item__x { width: 20px; height: 20px; border: none; border-radius: 6px; background: none; color: var(--text-faint); font: inherit; font-size: 14px; line-height: 1; cursor: pointer; }
 .bd-item__x:hover { background: var(--danger-soft); color: var(--danger); }
 .bd-item__body { flex: 1; min-height: 0; padding: 10px 12px; overflow: auto; }
