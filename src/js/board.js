@@ -710,6 +710,105 @@ window.NoteApp = window.NoteApp || {};
     ['var(--text-muted)', 'Muted'],
   ];
   var richBar = null;
+  var richCtx = null;
+  var richSaved = null;
+
+  function richRecents() {
+    var list = App.prefs.get('board.textRecents', []);
+    return Array.isArray(list) ? list : [];
+  }
+
+  function richCollection() {
+    var list = App.prefs.get('board.textColors', []);
+    return Array.isArray(list) ? list : [];
+  }
+
+  function richRemember(value) {
+    if (!value) return;
+    var list = richRecents().filter(function (one) { return one !== value; });
+    list.unshift(value);
+    App.prefs.set('board.textRecents', list.slice(0, 3));
+  }
+
+  function richKeep() {
+    var sel = window.getSelection();
+    richSaved = sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+  }
+
+  function richRestore() {
+    if (!richSaved) return false;
+    var sel = window.getSelection();
+    if (!sel) return false;
+    sel.removeAllRanges();
+    sel.addRange(richSaved);
+    return true;
+  }
+
+  function richSizeNow() {
+    var ctx = richSelection();
+    if (!ctx) return '';
+    var host = richHost(ctx.range, ctx.box, 'font-size');
+    var from = host || (ctx.range.startContainer.nodeType === 3 ? ctx.range.startContainer.parentNode : ctx.range.startContainer);
+    return String(Math.round(parseFloat(getComputedStyle(from).fontSize) || fontNow(ctx.item)));
+  }
+
+  function richSizeTo(value) {
+    var px = parseFloat(String(value === null || value === undefined ? '' : value).replace(/[^0-9.]/g, ''));
+    if (!px || !isFinite(px)) return;
+    richRestore();
+    var ctx = richSelection();
+    if (!ctx) return;
+    var base = Math.max(6, fontNow(ctx.item));
+    var next = Math.max(6, Math.min(160, px));
+    pushUndo('format');
+    var em = (next / base).toFixed(3) + 'em';
+    var host = richHost(ctx.range, ctx.box, 'font-size');
+    if (host) {
+      host.style.setProperty('font-size', em);
+      richSync(ctx);
+      return;
+    }
+    var span = document.createElement('span');
+    span.style.setProperty('font-size', em);
+    richWrap(ctx.range, span);
+    richSync(ctx);
+  }
+
+  function richHeadingHost(ctx) {
+    var el = ctx.range.commonAncestorContainer;
+    if (el && el.nodeType === 3) el = el.parentNode;
+    while (el && el !== ctx.box) {
+      if (el.nodeType === 1 && /^H[1-6]$/.test(el.tagName)) return el;
+      el = el.parentNode;
+    }
+    return null;
+  }
+
+  function richHeading() {
+    var ctx = richSelection();
+    if (!ctx) return;
+    pushUndo('format');
+    var host = richHeadingHost(ctx);
+    if (host) {
+      var parent = host.parentNode;
+      var after = host.nextSibling;
+      richUnwrap(host);
+      if (parent && after && !/^BR$/i.test(after.tagName)) parent.insertBefore(document.createElement('br'), after);
+      richSync(ctx);
+      return;
+    }
+    var heading = document.createElement('h4');
+    heading.appendChild(ctx.range.extractContents());
+    ctx.range.insertNode(heading);
+    var sel = window.getSelection();
+    if (sel) {
+      sel.removeAllRanges();
+      var range = document.createRange();
+      range.selectNodeContents(heading);
+      sel.addRange(range);
+    }
+    richSync(ctx);
+  }
 
   function richBoxOf(start) {
     var el = start && start.nodeType === 3 ? start.parentNode : start;
@@ -748,6 +847,12 @@ window.NoteApp = window.NoteApp || {};
     Array.prototype.slice.call(root.querySelectorAll('*')).forEach(function (el) {
       if (/^(IMG|BR)$/i.test(el.tagName)) return;
       el.removeAttribute('style');
+      if (/^H[1-6]$/.test(el.tagName)) {
+        var after = el.nextSibling;
+        richUnwrap(el);
+        if (after && !/^BR$/i.test(after.tagName)) after.parentNode.insertBefore(document.createElement('br'), after);
+        return;
+      }
       if (RICH_INLINE.test(el.tagName)) richUnwrap(el);
     });
   }
@@ -825,6 +930,7 @@ window.NoteApp = window.NoteApp || {};
     var ctx = richSelection();
     if (!ctx) return;
     pushUndo('format');
+    richRemember(value);
     var host = richHost(ctx.range, ctx.box, 'color');
     if (host) {
       if (value) host.style.setProperty('color', value);
@@ -923,6 +1029,115 @@ window.NoteApp = window.NoteApp || {};
     });
   }
 
+  function richPopToggle() {
+    if (!richBar) return;
+    var open = !richBar.classList.contains('is-picking');
+    richBar.classList.toggle('is-picking', open);
+    if (open) richPopPaint();
+  }
+
+  function richHex(value) {
+    var text = String(value || '').trim();
+    if (/^#[0-9a-f]{3}$/i.test(text)) {
+      return '#' + text[1] + text[1] + text[2] + text[2] + text[3] + text[3];
+    }
+    if (/^#[0-9a-f]{6}$/i.test(text)) return text.toLowerCase();
+    var rgb = /^rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/i.exec(text);
+    if (!rgb) return '';
+    return '#' + [rgb[1], rgb[2], rgb[3]].map(function (part) {
+      return ('0' + Math.max(0, Math.min(255, parseInt(part, 10))).toString(16)).slice(-2);
+    }).join('');
+  }
+
+  function richPick() {
+    var ctx = richCtx && richCtx.range ? richCtx : richSelection();
+    var host = ctx ? richHost(ctx.range, ctx.box, 'color') : null;
+    var value = host ? (host.style.getPropertyValue('color') || '') : '';
+    return richHex(value) || '#e0555a';
+  }
+
+  function richPopSwatch(value, title, removable) {
+    var swatch = node('button', 'bd-rich__swatch' + (value ? '' : ' bd-rich__swatch--default'));
+    swatch.type = 'button';
+    swatch.title = title;
+    swatch.setAttribute('aria-label', title);
+    if (value) swatch.style.background = value;
+    swatch.addEventListener('pointerdown', function (event) { event.preventDefault(); event.stopPropagation(); });
+    swatch.addEventListener('click', function () {
+      richColor(value);
+      richPopPaint();
+    });
+    if (!removable) return swatch;
+    var wrap = node('span', 'bd-rich__swatch-wrap');
+    var drop = node('button', 'bd-rich__drop', '\u00d7');
+    drop.type = 'button';
+    drop.title = 'Remove from the collection';
+    drop.setAttribute('aria-label', 'Remove from the collection');
+    drop.addEventListener('pointerdown', function (event) { event.preventDefault(); event.stopPropagation(); });
+    drop.addEventListener('click', function () {
+      App.prefs.set('board.textColors', richCollection().filter(function (one) { return one !== value; }));
+      richPopPaint();
+    });
+    wrap.appendChild(swatch);
+    wrap.appendChild(drop);
+    return wrap;
+  }
+
+  function richPopRow(label, items, empty) {
+    var row = node('div', 'bd-rich__pop-row');
+    row.appendChild(node('span', 'bd-rich__pop-label', label));
+    if (!items.length && empty) {
+      row.appendChild(node('span', 'bd-rich__pop-empty', empty));
+      return row;
+    }
+    items.forEach(function (item) { row.appendChild(item); });
+    return row;
+  }
+
+  function richPopPaint() {
+    if (!richBar) return;
+    var pop = richBar.querySelector('.bd-rich__pop');
+    if (!pop) return;
+    pop.textContent = '';
+    pop.appendChild(richPopRow('Recent', richRecents().map(function (value) {
+      return richPopSwatch(value, value);
+    }), 'None yet'));
+    pop.appendChild(richPopRow('Saved', richCollection().map(function (value) {
+      return richPopSwatch(value, value, true);
+    }), 'Nothing saved'));
+    var make = node('div', 'bd-rich__pop-row');
+    make.appendChild(node('span', 'bd-rich__pop-label', 'Custom'));
+    var picker = node('input', 'bd-rich__colour');
+    picker.type = 'color';
+    picker.value = richPick();
+    picker.title = 'Pick a colour';
+    picker.setAttribute('aria-label', 'Pick a colour');
+    picker.addEventListener('pointerdown', function (event) { richKeep(); event.stopPropagation(); });
+    picker.addEventListener('focus', function () { richKeep(); });
+    picker.addEventListener('input', function () {
+      richRestore();
+      richColor(picker.value);
+    });
+    picker.addEventListener('change', function () { richPopPaint(); });
+    make.appendChild(picker);
+    var save = node('button', 'bd-rich__save', 'Save');
+    save.type = 'button';
+    save.title = 'Save this colour to the collection';
+    save.addEventListener('pointerdown', function (event) { event.preventDefault(); event.stopPropagation(); });
+    save.addEventListener('click', function () {
+      var value = picker.value;
+      if (!value) return;
+      var list = richCollection().filter(function (one) { return one !== value; });
+      list.push(value);
+      App.prefs.set('board.textColors', list.slice(-12));
+      richRemember(value);
+      util.toast('Colour saved.', 'info');
+      richPopPaint();
+    });
+    make.appendChild(save);
+    pop.appendChild(make);
+  }
+
   function richButton(cls, label, title) {
     var button = node('button', 'bd-rich__btn' + (cls ? ' ' + cls : ''), label);
     button.type = 'button';
@@ -945,12 +1160,29 @@ window.NoteApp = window.NoteApp || {};
       button.addEventListener('click', function () { richToggle(kind); });
       style.appendChild(button);
     });
+    var heading = richButton(null, 'H4', 'Heading');
+    heading.setAttribute('data-heading', 'h4');
+    heading.addEventListener('click', function () { richHeading(); });
+    style.appendChild(heading);
     var size = group();
     [['A-', -1, 'Smaller text'], ['A+', 1, 'Larger text']].forEach(function (pair) {
       var button = richButton(null, pair[0], pair[2]);
       button.addEventListener('click', function () { richStep(pair[1]); });
       size.appendChild(button);
     });
+    var field = node('input', 'bd-rich__size');
+    field.type = 'text';
+    field.inputMode = 'numeric';
+    field.title = 'Text size in pixels';
+    field.setAttribute('aria-label', 'Text size in pixels');
+    field.addEventListener('pointerdown', function (event) { richKeep(); event.stopPropagation(); });
+    field.addEventListener('focus', function () { richKeep(); });
+    field.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') { event.preventDefault(); field.blur(); }
+      if (event.key === 'Escape') { field.value = richSizeNow(); field.blur(); }
+    });
+    field.addEventListener('change', function () { richSizeTo(field.value); });
+    size.appendChild(field);
     var colour = group();
     RICH_COLORS.forEach(function (pair) {
       var swatch = node('button', 'bd-rich__swatch' + (pair[0] ? '' : ' bd-rich__swatch--default'));
@@ -963,6 +1195,15 @@ window.NoteApp = window.NoteApp || {};
       swatch.addEventListener('click', function () { richColor(pair[0]); });
       colour.appendChild(swatch);
     });
+    var custom = richButton('bd-rich__swatch bd-rich__swatch--custom', '', 'Custom colours');
+    custom.setAttribute('data-custom', '1');
+    custom.addEventListener('click', function (event) {
+      event.stopPropagation();
+      richPopToggle();
+    });
+    colour.appendChild(custom);
+    var pop = node('div', 'bd-rich__pop');
+    bar.appendChild(pop);
     var done = group();
     var clear = richButton('bd-rich__btn--clear', '\u2715', 'Clear formatting');
     clear.addEventListener('click', function () { clearFormatting(null); });
@@ -977,6 +1218,16 @@ window.NoteApp = window.NoteApp || {};
       var pair = RICH_STYLE[button.getAttribute('data-rich')];
       button.classList.toggle('is-on', !!(ctx && richHost(ctx.range, ctx.box, pair[0])));
     });
+    Array.prototype.forEach.call(richBar.querySelectorAll('[data-heading]'), function (button) {
+      button.classList.toggle('is-on', !!(ctx && richHeadingHost(ctx)));
+    });
+    var custom = richBar.querySelector('[data-custom]');
+    if (custom) {
+      var picked = ctx ? richHost(ctx.range, ctx.box, 'color') : null;
+      var own = richHex(picked ? (picked.style.getPropertyValue('color') || '') : '');
+      custom.style.background = own;
+      custom.classList.toggle('is-on', !!own);
+    }
     var host = ctx ? richHost(ctx.range, ctx.box, 'color') : null;
     var value = host ? (host.style.getPropertyValue('color') || '') : '';
     if (value === 'inherit') value = '';
@@ -1001,16 +1252,22 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function richHide() {
-    if (richBar) richBar.classList.remove('is-on');
+    if (!richBar) return;
+    richBar.classList.remove('is-on');
+    richBar.classList.remove('is-picking');
   }
 
   function richRefresh() {
     var ctx = richSelection();
+    if (ctx) richCtx = ctx;
+    if (richBar && richBar.contains(document.activeElement)) { richState(richCtx); return; }
     if (!ctx) { richHide(); return; }
     var rect = ctx.range.getBoundingClientRect();
     if (!rect || (!rect.width && !rect.height)) { richHide(); return; }
     if (!richBar) richBar = buildRichBar();
     richPlace(rect);
+    var field = richBar.querySelector('.bd-rich__size');
+    if (field && document.activeElement !== field) field.value = richSizeNow();
     richState(ctx);
   }
 
