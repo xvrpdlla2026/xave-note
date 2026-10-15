@@ -2978,12 +2978,33 @@ window.NoteApp = window.NoteApp || {};
     if (!quiet) util.toast('Board background: ' + board.bg);
   }
 
+  var CLONE_SKIP = { node: true, saveTimer: true, src: true };
+
+  // A hand written copy instead of a JSON round trip: the board snapshots itself on
+  // every edit, so this runs over every card and the string it used to build was pure
+  // garbage the moment it was parsed.
+  function cloneValue(value) {
+    if (value === null || typeof value !== 'object') return value;
+    if (Array.isArray(value)) {
+      var list = new Array(value.length);
+      for (var i = 0; i < value.length; i++) list[i] = cloneValue(value[i]);
+      return list;
+    }
+    var copy = {};
+    var keys = Object.keys(value);
+    for (var k = 0; k < keys.length; k++) {
+      var key = keys[k];
+      if (CLONE_SKIP[key]) continue;
+      copy[key] = cloneValue(value[key]);
+    }
+    return copy;
+  }
+
   function snapshotBoard() {
+    var items = new Array(board.items.length);
+    for (var i = 0; i < board.items.length; i++) items[i] = cloneValue(board.items[i]);
     return {
-      items: JSON.parse(JSON.stringify(board.items, function (key, value) {
-        if (key === 'node' || key === 'saveTimer' || key === 'src') return undefined;
-        return value;
-      })),
+      items: items,
       view: { x: board.view.x, y: board.view.y, z: board.view.z },
       bg: board.bg,
       marks: markData(board.marks),
@@ -3019,19 +3040,34 @@ window.NoteApp = window.NoteApp || {};
     mapDraw();
   }
 
+  function rowChanged(item, row) {
+    if (item.x !== row.x || item.y !== row.y || item.w !== row.w || item.h !== row.h) return true;
+    if ((item.z || 0) !== (row.z || 0) || item.kind !== row.kind) return true;
+    if ((item.ref_kind || null) !== (row.ref_kind || null)) return true;
+    if ((item.ref_id || null) !== (row.ref_id || null)) return true;
+    return JSON.stringify(item.data || {}) !== JSON.stringify(row.data || {});
+  }
+
   function applySnap(snap) {
     var keep = {};
     snap.items.forEach(function (row) { keep[row.id] = true; });
+    var live = {};
     board.items.forEach(function (item) {
+      live[item.id] = item;
       if (keep[item.id]) return;
       if (item.saveTimer) { clearTimeout(item.saveTimer); item.saveTimer = null; }
       if (item.node && item.node.parentNode) item.node.parentNode.removeChild(item.node);
       try { App.db.boardDeleteItem(item.id); } catch (e) { }
     });
     clearCanvas();
+    // An undo used to rewrite every row of the board. Only the cards this step actually
+    // changed are written back, which is what keeps an undo on a large board quick.
     board.items = snap.items.map(function (row) {
-      var copy = JSON.parse(JSON.stringify(row));
-      try { App.db.boardAddItem(copy); } catch (e) { }
+      var copy = cloneValue(row);
+      var before = live[row.id];
+      if (!before || rowChanged(before, copy)) {
+        try { App.db.boardAddItem(copy); } catch (e) { }
+      }
       return copy;
     });
     setSelection([], null);
@@ -3070,10 +3106,7 @@ window.NoteApp = window.NoteApp || {};
 
   function duplicateItem(item) {
     pushUndo('duplicate');
-    var copy = JSON.parse(JSON.stringify(item, function (key, value) {
-      if (key === 'node' || key === 'saveTimer' || key === 'src') return undefined;
-      return value;
-    }));
+    var copy = cloneValue(item);
     copy.id = util.uuid();
     copy.x = item.x + 28;
     copy.y = item.y + 28;
