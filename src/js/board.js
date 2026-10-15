@@ -2758,11 +2758,30 @@ window.NoteApp = window.NoteApp || {};
     });
   }
 
+  function flushBoardState() {
+    if (!board.open) return;
+    if (board.markTimer) saveMarks(true);
+    if (board.viewTimer) {
+      clearTimeout(board.viewTimer);
+      board.viewTimer = null;
+      try { App.db.boardSaveView(BOARD_ID, board.view.x, board.view.y, board.view.z); } catch (e) { }
+    }
+  }
+
+  function markSaveFailed(err) {
+    console.error('landmark save failed', err);
+    util.toast('Could not save the landmarks', 'error');
+  }
+
   function saveMarks(now) {
     if (board.markTimer) clearTimeout(board.markTimer);
     var flush = function () {
       board.markTimer = null;
-      try { App.db.boardSaveMarks(BOARD_ID, JSON.stringify(markData(board.marks))); } catch (e) { }
+      var rows = JSON.stringify(markData(board.marks));
+      var saved = null;
+      try { saved = App.db.boardSaveMarks(BOARD_ID, rows); } catch (e) { }
+      if (saved && typeof saved.catch === 'function') saved.catch(markSaveFailed);
+      else if (!saved) markSaveFailed();
     };
     if (now) { flush(); return; }
     board.markTimer = setTimeout(flush, 260);
@@ -2906,7 +2925,10 @@ window.NoteApp = window.NoteApp || {};
       input.parentNode.removeChild(input);
       mark.text.style.display = '';
       paintMarks();
-      if (changed) { saveMarks(true); renderMarkList(); }
+      if (!keep) { renderMarkList(); return; }
+      if (board.marks.indexOf(mark) < 0) board.marks.push(mark);
+      saveMarks(true);
+      renderMarkList();
     };
     var entry = { commit: function () { done(true); }, field: input };
     pushEditor(entry);
@@ -3032,7 +3054,6 @@ window.NoteApp = window.NoteApp || {};
       if (!box.parentNode) return;
       var nextName = nameInput.value.trim();
       var nextDesc = descInput.value.trim();
-      var changed = !!(keep && ((nextName && nextName !== mark.name) || nextDesc !== (mark.desc || '')));
       if (keep) {
         if (nextName) mark.name = nextName;
         mark.desc = nextDesc;
@@ -3041,7 +3062,7 @@ window.NoteApp = window.NoteApp || {};
       box.parentNode.removeChild(box);
       name.style.display = '';
       paintMarks();
-      if (changed) saveMarks(true);
+      if (keep) saveMarks(true);
       renderMarkList();
     };
     var entry = { commit: function () { done(true); }, field: box };
@@ -6430,6 +6451,10 @@ window.NoteApp = window.NoteApp || {};
     document.addEventListener('keydown', onKeyDown, true);
     document.addEventListener('keyup', onKeyUp, true);
     window.addEventListener('resize', function () { board.size = null; applyView(); });
+    window.addEventListener('pagehide', flushBoardState);
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'hidden') flushBoardState();
+    });
   }
 
   function close() {
