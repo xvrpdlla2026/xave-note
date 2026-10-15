@@ -210,12 +210,24 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function resetView() {
-    board.view = { x: 0, y: 0, z: 1 };
+    var view = board.view;
+    if (view.z === 1) return;
+    var rect = board.stage.getBoundingClientRect();
+    var k = 1 / view.z;
+    view.x = rect.width / 2 - (rect.width / 2 - view.x) * k;
+    view.y = rect.height / 2 - (rect.height / 2 - view.y) * k;
+    view.z = 1;
     applyView();
   }
 
   function fitView() {
-    if (!board.items.length) { resetView(); return; }
+    if (!board.items.length) {
+      board.view.x = 0;
+      board.view.y = 0;
+      board.view.z = 1;
+      applyView();
+      return;
+    }
     var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     board.items.forEach(function (item) {
       minX = Math.min(minX, item.x);
