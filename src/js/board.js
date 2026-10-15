@@ -902,7 +902,12 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function renameCard(item, span) {
-    if (lockOf(item)) return;
+    if (lockOf(item)) {
+      util.toast('Unlock this card to rename it');
+      return;
+    }
+    if (!span && item.node) span = item.node.querySelector('.bd-item__kind');
+    if (!span) return;
     if (span.parentNode.querySelector('.bd-item__title')) return;
     if (!item.data) item.data = {};
     var input = node('input', 'bd-item__title');
@@ -2302,6 +2307,8 @@ window.NoteApp = window.NoteApp || {};
   function showItemMenu(item, at) {
     var items = [];
     var data = item.data || {};
+    items.push({ label: data.title ? 'Rename' : 'Name this card', icon: 'type', onclick: function () { renameCard(item); } });
+    items.push({ sep: true });
     var fileCard = item.kind === 'image' || (item.kind === 'ref' && item.ref_kind === 'file');
     if (fileCard && (data.fileId || data.src)) {
       items.push({ label: 'Download', icon: 'download', onclick: function () { downloadItem(item); } });
