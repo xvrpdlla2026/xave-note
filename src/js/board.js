@@ -167,6 +167,23 @@ window.NoteApp = window.NoteApp || {};
   var MAP_W = 200;
   var MAP_H = 132;
 
+  function setMapHidden(on) {
+    board.mapHidden = !!on;
+    try { App.prefs.set('board.mapHidden', board.mapHidden); } catch (e) { }
+    if (board.root) board.root.classList.toggle('is-maphidden', board.mapHidden);
+    var button = board.mapToggle;
+    if (button) {
+      var label = board.mapHidden ? 'Show the minimap' : 'Hide the minimap';
+      button.title = label;
+      button.setAttribute('aria-label', label);
+      button.setAttribute('aria-pressed', board.mapHidden ? 'true' : 'false');
+      button.textContent = '';
+      var mark = App.ui.icon(board.mapHidden ? 'eye' : 'eyeOff', 14);
+      if (mark) button.appendChild(mark);
+    }
+    if (!board.mapHidden) mapDraw();
+  }
+
   function mapFit() {
     var rect = board.stage.getBoundingClientRect();
     var view = board.view;
@@ -208,7 +225,7 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function mapDraw() {
-    if (!board.mapCtx || !board.open) return;
+    if (!board.mapCtx || !board.open || board.mapHidden) return;
     if (board.mapFrame) return;
     board.mapFrame = window.requestAnimationFrame(function () {
       board.mapFrame = null;
@@ -4663,7 +4680,13 @@ window.NoteApp = window.NoteApp || {};
     zoom.appendChild(label);
     zoom.appendChild(inside);
     var map = node('div', 'board__map');
-    var mapTitle = node('span', 'board__map-title', 'Minimap');
+    var mapHead = node('div', 'board__map-head');
+    var mapToggle = node('button', 'board__map-toggle');
+    mapToggle.type = 'button';
+    mapToggle.addEventListener('click', function () { setMapHidden(!board.mapHidden); });
+    mapHead.appendChild(mapToggle);
+    mapHead.appendChild(node('span', 'board__map-title', 'Minimap'));
+    board.mapToggle = mapToggle;
     var mapCanvas = node('canvas', 'board__map-canvas');
     mapCanvas.setAttribute('aria-label', 'Board minimap, click or drag to move the view');
     mapCanvas.title = 'Click or drag to move the view';
@@ -4706,13 +4729,14 @@ window.NoteApp = window.NoteApp || {};
     };
     mapCanvas.addEventListener('pointerup', mapRelease);
     mapCanvas.addEventListener('pointercancel', mapRelease);
-    map.appendChild(mapTitle);
+    map.appendChild(mapHead);
     map.appendChild(zoom);
     map.appendChild(mapCanvas);
     root.appendChild(map);
     board.map = map;
     board.mapCanvas = mapCanvas;
     board.mapCtx = mapCanvas.getContext('2d');
+    setMapHidden(App.prefs.get('board.mapHidden', false));
     root.appendChild(top);
     board.root = root;
     board.stage = stage;
@@ -5212,6 +5236,7 @@ window.NoteApp = window.NoteApp || {};
     if (board.root) board.root.classList.remove('is-marking');
     if (!board.root) document.body.appendChild(buildRoot());
     board.root.classList.add('is-open');
+    board.root.classList.toggle('is-maphidden', !!board.mapHidden);
     document.body.classList.add('is-board');
     try { App.db.boardEnsure(BOARD_ID, 'Xave'); } catch (e) { }
     load();
