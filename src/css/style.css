@@ -3994,9 +3994,9 @@ dialog:not([open]) { display: none; }
 .board__mark-act { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: 6px; background: none; color: var(--text-faint); cursor: pointer; }
 .board__mark-act:hover { background: var(--bg); color: var(--text); }
 .board__mark-desc { flex: 0 0 100%; padding: 0 6px 2px 33px; font-size: 11px; line-height: 1.4; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.board__mark-editor { flex: 1 1 100%; display: flex; flex-direction: column; gap: 4px; padding: 2px 0 3px 33px; }
-.board__mark-edit { width: 100%; min-width: 0; padding: 3px 6px; border: 1px solid var(--accent); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; font-size: 12px; }
-.board__mark-desc-edit { width: 100%; min-width: 0; padding: 3px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text-muted); font: inherit; font-size: 11.5px; }
+.board__mark-editor { flex: 1 1 100%; display: flex; flex-direction: column; gap: 10px; padding: 6px 0 7px 33px; }
+.board__mark-edit { width: 100%; min-width: 0; padding: 5px 8px; border: 1px solid var(--accent); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; font-size: 12px; }
+.board__mark-desc-edit { width: 100%; min-width: 0; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text-muted); font: inherit; font-size: 11.5px; }
 .board__mark-icons { flex: 0 0 100%; display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px; padding: 5px; margin: 3px 0 4px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg); }
 .board__mark-pick { width: 100%; height: 26px; display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: 6px; background: none; color: var(--text-muted); cursor: pointer; }
 .board__mark-pick:hover { background: var(--bg-hover); color: var(--text); }
