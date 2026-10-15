@@ -4023,4 +4023,7 @@ dialog:not([open]) { display: none; }
 .board__map-toggle { display: flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 26px; height: 24px; padding: 0; border: none; border-radius: 7px; background: none; color: var(--text-faint); cursor: pointer; }
 .board__map-toggle:hover { background: var(--bg-hover); color: var(--text); }
 [data-board="root"].is-maphidden .board__map-canvas, [data-board="root"].is-maphidden .board__map .board__zoom { display: none; }
-[data-board="root"].is-maphidden .board__map-bar { justify-content: flex-end; border-top-color: transparent; }
+[data-board="root"].is-maphidden .board__map { width: auto; border-width: 0; background: none; box-shadow: none; overflow: visible; }
+[data-board="root"].is-maphidden .board__map-bar { padding: 0; border-top-width: 0; }
+[data-board="root"].is-maphidden .board__map-toggle { width: 32px; height: 32px; border: 1px solid var(--border); background: var(--bg-raised); color: var(--text-muted); box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3); }
+[data-board="root"].is-maphidden .board__map-toggle:hover { background: var(--bg-hover); color: var(--text); }
