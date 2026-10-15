@@ -32,6 +32,8 @@ window.NoteApp = window.NoteApp || {};
     viewTimer: null,
     glide: null,
     glideTimer: null,
+    bin: [],
+    binButton: null,
     picker: null,
     pickerCount: null,
     pickChecked: {},
@@ -2256,20 +2258,143 @@ window.NoteApp = window.NoteApp || {};
     try { App.db.boardDeleteItem(row.id); } catch (e) { }
   }
 
-  function removeItem(item) {
-    if (lockOf(item)) { util.toast('Unlock this card first'); return; }
-    pushUndo('remove');
-    containerKids(item.id).forEach(function (kid) { releaseChild(kid, item); });
-    var doomed = [item].concat(descendantsOf(item.id)).filter(function (row) { return !lockOf(row); });
-    doomed.forEach(deleteRow);
-    board.items = board.items.filter(function (other) { return doomed.indexOf(other) < 0; });
-    setSelection([], null);
-    paintLinks();
+  var BIN_MAX = 20;
+
+  function binKey() {
+    return 'boardBin.' + BOARD_ID;
   }
 
-  function removeSelected() {
+  function binSave() {
+    var list = board.bin.slice(0, BIN_MAX);
+    while (list.length) {
+      try { App.prefs.set(binKey(), list); return; } catch (e) { list.pop(); }
+    }
+    try { App.prefs.set(binKey(), []); } catch (e) { }
+  }
+
+  function binLoad() {
+    var stored = App.prefs.get(binKey(), []);
+    board.bin = Array.isArray(stored)
+      ? stored.filter(function (entry) { return entry && Array.isArray(entry.rows); }).slice(0, BIN_MAX)
+      : [];
+    paintBin();
+  }
+
+  function binPush(rows) {
+    var keep = rows.filter(Boolean);
+    if (!keep.length) return;
+    board.bin.unshift({ label: itemLabel(keep[0]) || 'Block', rows: cloneValue(keep) });
+    board.bin = board.bin.slice(0, BIN_MAX);
+    binSave();
+    paintBin();
+  }
+
+  function paintBin() {
+    if (!board.binButton) return;
+    var count = board.binButton.querySelector('.board__bin-count');
+    var size = board.bin.length;
+    if (count) {
+      count.textContent = size > 9 ? '9+' : String(size);
+      count.hidden = !size;
+    }
+    board.binButton.classList.toggle('has-items', !!size);
+    board.binButton.title = size ? 'Board trash, ' + size + ' to restore' : 'Board trash is empty';
+    board.binButton.setAttribute('aria-label', board.binButton.title);
+  }
+
+  function restoreBin(index) {
+    var entry = board.bin[index];
+    if (!entry) return;
+    pushUndo('restore');
+    entry.rows.forEach(function (row) {
+      var copy = cloneValue(row);
+      if (findItem(copy.id)) return;
+      board.items.push(copy);
+      paintItem(copy);
+      try { App.db.boardAddItem(copy); } catch (e) { }
+    });
+    board.bin.splice(index, 1);
+    binSave();
+    paintBin();
+    paintLinks();
+    util.toast(entry.rows.length > 1 ? entry.rows.length + ' blocks restored' : 'Block restored');
+  }
+
+  function binRows(host) {
+    host.textContent = '';
+    if (!board.bin.length) {
+      host.appendChild(node('p', 'board__bin-empty', 'Nothing in the board trash.'));
+      return;
+    }
+    board.bin.forEach(function (entry, index) {
+      var row = node('div', 'board__bin-row');
+      row.appendChild(node('span', 'board__bin-name', entry.label || 'Block'));
+      row.appendChild(node('span', 'board__bin-meta', entry.rows.length > 1 ? entry.rows.length + ' blocks' : '1 block'));
+      var back = node('button', 'board__bin-back', 'Restore');
+      back.type = 'button';
+      back.addEventListener('click', function () {
+        restoreBin(index);
+        binRows(host);
+      });
+      row.appendChild(back);
+      host.appendChild(row);
+    });
+  }
+
+  function openBin() {
+    var host = node('div', 'board__bin-list');
+    binRows(host);
+    var full = board.bin.length > 0;
+    App.ui.dialog({
+      title: 'Board trash',
+      icon: 'trash',
+      body: host,
+      wide: true,
+      danger: full,
+      confirmLabel: full ? 'Delete permanently' : 'Close',
+      cancelLabel: 'Close',
+    }).then(function (yes) {
+      if (!yes || !board.bin.length) return;
+      board.bin = [];
+      binSave();
+      paintBin();
+      util.toast('Board trash emptied');
+    });
+  }
+
+  function askRemove(rows, run) {
+    var count = rows.length;
+    rows.forEach(function (row) { count += descendantsOf(row.id).length; });
+    App.ui.confirm({
+      title: count > 1 ? 'Remove ' + count + ' blocks?' : 'Remove this block?',
+      message: count > 1
+        ? 'They go to the board trash, so you can put them back.'
+        : 'It goes to the board trash, so you can put it back.',
+      confirmLabel: 'Remove',
+      cancelLabel: 'Keep',
+      danger: true,
+    }).then(function (yes) { if (yes) run(); });
+  }
+
+  function removeItem(item, ask) {
+    if (lockOf(item)) { util.toast('Unlock this card first'); return; }
+    var run = function () {
+      pushUndo('remove');
+      containerKids(item.id).forEach(function (kid) { releaseChild(kid, item); });
+      var doomed = [item].concat(descendantsOf(item.id)).filter(function (row) { return !lockOf(row); });
+      binPush(doomed);
+      doomed.forEach(deleteRow);
+      board.items = board.items.filter(function (other) { return doomed.indexOf(other) < 0; });
+      setSelection([], null);
+      paintLinks();
+    };
+    if (ask === false) { run(); return; }
+    askRemove([item], run);
+  }
+
+  function removeSelected(ask) {
     var rows = board.selectedIds.map(findItem).filter(Boolean);
-    if (rows.length < 2) { if (rows.length) removeItem(rows[0]); return; }
+    if (rows.length < 2) { if (rows.length) removeItem(rows[0], ask); return; }
     var free = [];
     var doomed = [];
     rows.forEach(function (row) {
@@ -2280,12 +2405,31 @@ window.NoteApp = window.NoteApp || {};
       });
     });
     if (!free.length) { util.toast(rows.length > 1 ? 'Unlock these cards first' : 'Unlock this card first'); return; }
-    pushUndo('remove');
-    doomed.forEach(deleteRow);
-    board.items = board.items.filter(function (other) { return doomed.indexOf(other) < 0; });
-    setSelection([], null);
-    paintLinks();
-    if (free.length < rows.length) util.toast('Locked cards were kept');
+    var run = function () {
+      pushUndo('remove');
+      binPush(doomed);
+      doomed.forEach(deleteRow);
+      board.items = board.items.filter(function (other) { return doomed.indexOf(other) < 0; });
+      setSelection([], null);
+      paintLinks();
+      if (free.length < rows.length) util.toast('Locked cards were kept');
+    };
+    if (ask === false) { run(); return; }
+    askRemove(free, run);
+  }
+
+  function binButton() {
+    var bin = node('button', 'board__bin');
+    bin.type = 'button';
+    bin.title = 'Board trash is empty';
+    bin.setAttribute('aria-label', bin.title);
+    bin.addEventListener('click', openBin);
+    var glyph = App.ui.icon('trash', 16);
+    if (glyph) bin.appendChild(glyph);
+    var count = node('span', 'board__bin-count');
+    count.hidden = true;
+    bin.appendChild(count);
+    return bin;
   }
 
   function onItemDown(event) {
@@ -5772,6 +5916,9 @@ window.NoteApp = window.NoteApp || {};
     });
     board.modeButton = mode;
     root.appendChild(mode);
+    board.binButton = binButton();
+    root.appendChild(board.binButton);
+    paintBin();
     return root;
   }
 
@@ -6228,6 +6375,7 @@ window.NoteApp = window.NoteApp || {};
     applyView();
     paintMarks();
     renderMarkList();
+    binLoad();
   }
 
   function setMode(next, quiet) {

@@ -194,6 +194,8 @@ window.NoteApp = window.NoteApp || {};
         body.appendChild(list);
       }
 
+      if (config.body) body.appendChild(config.body);
+
       var field = null;
       var gate = null;
 

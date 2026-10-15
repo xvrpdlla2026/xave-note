@@ -3736,6 +3736,18 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .board__mode { position: absolute; top: 50%; right: 16px; z-index: 6; width: 34px; height: 34px; margin-top: -17px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-raised); color: var(--text-muted); cursor: pointer; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22); }
 .board__mode:hover { color: var(--text); }
 .board__mode.is-select { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.board__bin { position: absolute; top: calc(50% + 25px); right: 16px; z-index: 6; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-raised); color: var(--text-muted); cursor: pointer; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22); }
+.board__bin:hover { color: var(--text); }
+.board__bin.has-items { border-color: var(--danger); color: var(--danger); }
+.board__bin-count { position: absolute; top: -6px; right: -6px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--danger); color: #fff; font-size: 10px; font-weight: 640; line-height: 16px; text-align: center; }
+.board__bin-count[hidden] { display: none; }
+.board__bin-list { display: flex; flex-direction: column; gap: 4px; max-height: 46vh; overflow: auto; }
+.board__bin-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-raised); }
+.board__bin-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+.board__bin-meta { color: var(--text-faint); font-size: 11px; }
+.board__bin-back { padding: 3px 8px; border: none; border-radius: 6px; background: none; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; }
+.board__bin-back:hover { background: var(--bg-hover); }
+.board__bin-empty { margin: 0; color: var(--text-faint); font-size: 12.5px; }
 .board__marquee { position: absolute; z-index: 4; border: 1px solid var(--accent); border-radius: 4px; background: var(--accent-ring); pointer-events: none; }
 .board__grid { position: absolute; inset: 0; background-image: radial-gradient(circle, var(--border-strong) 1px, transparent 1px); background-size: 26px 26px; pointer-events: none; }
 .board__canvas.is-gliding { will-change: transform; }
