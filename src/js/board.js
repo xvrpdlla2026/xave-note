@@ -493,7 +493,7 @@ window.NoteApp = window.NoteApp || {};
       applyView();
       return;
     }
-    var easing = 'cubic-bezier(0.16, 0.84, 0.28, 1)';
+    var easing = 'cubic-bezier(0.4, 0, 0.2, 1)';
     board.canvas.classList.add('is-gliding');
     board.grid.classList.add('is-gliding');
     board.canvas.style.transition = 'transform ' + ms + 'ms ' + easing;
@@ -3020,7 +3020,7 @@ window.NoteApp = window.NoteApp || {};
     var rect = board.stage.getBoundingClientRect();
     var x = rect.width / 2 - mark.x * board.view.z;
     var y = rect.height / 2 - mark.y * board.view.z;
-    glideViewTo(x, y, clamp(Math.hypot(x - board.view.x, y - board.view.y) / 1.2, 260, 1000));
+    glideViewTo(x, y, clamp(Math.hypot(x - board.view.x, y - board.view.y) / 0.85, 320, 1150));
     if (mark.node && mark.node.isConnected) {
       mark.node.classList.add('is-hot');
       setTimeout(function () { if (mark.node) mark.node.classList.remove('is-hot'); }, 900);
