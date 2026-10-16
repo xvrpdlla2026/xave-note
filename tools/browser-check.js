@@ -23,6 +23,8 @@
  *   --size=1280x820             device metrics for the run (also used by --shot)
  *   --shot=<file.png>           write a screenshot after the eval runs
  *   --shot-clip=<selector>      clip that screenshot to one element (plus a 10px margin)
+ *   --screencast=<file.png>     write the last live compositor frame (shows stale layer rasters)
+ *                               that a screenshot hides, because capturing re-rasterises
  */
 
 const { spawn } = require('child_process');
@@ -49,6 +51,7 @@ const exportPath = opt('export-dump', '');
 const keepProfile = argv.includes('--keep-profile');
 const shotPath = opt('shot', '');
 const shotClip = opt('shot-clip', '');
+const screencastPath = opt('screencast', '');
 const sizeOpt = opt('size', '');
 const viewport = /^\d+x\d+$/.test(sizeOpt) ? sizeOpt.split('x').map(Number) : [1280, 820];
 const throwawayProfile = path.join(os.tmpdir(), 'dsh-cdp-profile-' + process.pid);
@@ -360,6 +363,25 @@ async function evaluate(cdp, expr) {
         console.log('--- eval exception ---');
         console.log(res.exceptionDetails.exception?.description || res.exceptionDetails.text);
         exitCode = 1;
+      }
+
+      if (screencastPath) {
+        await cdp.send('Page.enable');
+        const frames = [];
+        cdp.on('Page.screencastFrame', (p) => {
+          frames.push(p);
+          cdp.send('Page.screencastFrameAck', { sessionId: p.sessionId }).catch(() => {});
+        });
+        await cdp.send('Page.startScreencast', { format: 'png', everyNthFrame: 1 });
+        await sleep(2000);
+        await cdp.send('Page.stopScreencast');
+        const last = frames[frames.length - 1];
+        if (last) {
+          fs.writeFileSync(screencastPath, Buffer.from(last.data, 'base64'));
+          console.log('--- screencast frame: ' + screencastPath + ' (' + frames.length + ' frames) ---');
+        } else {
+          console.log('--- screencast produced no frames ---');
+        }
       }
 
       if (shotPath) {
