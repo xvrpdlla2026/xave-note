@@ -2558,6 +2558,35 @@ window.NoteApp = window.NoteApp || {};
     return done;
   }
 
+  function setSpaceHeld(on) {
+    board.space = !!on;
+    if (board.stage) board.stage.classList.toggle('is-space', !!on);
+  }
+
+  function releasePointer() {
+    window.removeEventListener('pointermove', onPointerMove);
+    window.removeEventListener('pointerup', onPointerUp);
+    board.pan = null;
+    if (board.stage) board.stage.classList.remove('is-panning');
+    if (board.marquee) endMarquee();
+    if (board.resize) {
+      if (board.stage) board.stage.style.cursor = '';
+      saveItem(board.resize.item);
+      board.resize = null;
+    }
+    if (board.drag) {
+      var rows = board.drag.rows;
+      clearSwap();
+      clearDropSlot();
+      board.drag = null;
+      rows.forEach(function (row) { placeItem(row.item); });
+      clearLift();
+      settleChildren();
+      paintLinks();
+    }
+    setSpaceHeld(false);
+  }
+
   function startMarquee(event) {
     var box = node('div', 'board__marquee');
     var rect = board.stage.getBoundingClientRect();
@@ -2734,8 +2763,7 @@ window.NoteApp = window.NoteApp || {};
       return;
     }
     if (event.code === 'Space' && !editing) {
-      board.space = true;
-      board.stage.classList.add('is-space');
+      setSpaceHeld(true);
       var live = endMarquee();
       if (live) {
         var at = live.pointer || { x: live.x, y: live.y };
@@ -2789,8 +2817,7 @@ window.NoteApp = window.NoteApp || {};
 
   function onKeyUp(event) {
     if (event.code !== 'Space') return;
-    board.space = false;
-    if (board.stage) board.stage.classList.remove('is-space');
+    setSpaceHeld(false);
   }
 
   var MARK_ICONS = ['pin', 'star', 'flag', 'heart', 'bolt', 'check', 'warning', 'info', 'sun', 'moon', 'cloud', 'shield', 'gear', 'eye', 'search', 'document', 'link', 'folder', 'chart', 'note'];
@@ -6501,6 +6528,10 @@ window.NoteApp = window.NoteApp || {};
     }
     document.addEventListener('keydown', onKeyDown, true);
     document.addEventListener('keyup', onKeyUp, true);
+    window.addEventListener('blur', releasePointer);
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) releasePointer();
+    });
     window.addEventListener('resize', function () { board.size = null; applyView(); });
     window.addEventListener('pagehide', flushBoardState);
     document.addEventListener('visibilitychange', function () {
