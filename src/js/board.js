@@ -2445,6 +2445,7 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function onItemDown(event) {
+    if (board.space) return;
     if (event.button !== 0) return;
     var target = event.target;
     if (target.closest && target.closest('input, textarea, [contenteditable="true"], a, button')) return;
@@ -2513,6 +2514,11 @@ window.NoteApp = window.NoteApp || {};
     var target = event.target;
     var card = target.closest ? target.closest('.bd-item') : null;
     var handle = target.closest ? target.closest('.bd-item__bar') : null;
+    if (target.closest && target.closest('.board__rail, .board__picker, .board__mode')) return;
+    if (board.space) {
+      startPan(event, true);
+      return;
+    }
     if (board.marking && !(target.closest && target.closest('.bd-mark'))) {
       var at = canvasPoint(event.clientX, event.clientY);
       var placed = addMark(at.x, at.y);
@@ -2523,17 +2529,33 @@ window.NoteApp = window.NoteApp || {};
       return;
     }
     if (card && (!card.classList.contains('bd-item--column') || handle)) return;
-    if (target.closest && target.closest('.board__rail, .board__picker, .board__mode')) return;
-    if (board.mode === 'select' && !board.space) {
+    if (board.mode === 'select') {
       startMarquee(event);
       return;
     }
-    select(null);
-    board.pan = { x: event.clientX, y: event.clientY, vx: board.view.x, vy: board.view.y };
+    startPan(event);
+  }
+
+  function beginPan(x, y, keepSelection) {
+    if (!keepSelection) select(null);
+    board.pan = { x: x, y: y, vx: board.view.x, vy: board.view.y };
     board.stage.classList.add('is-panning');
+    return board.pan;
+  }
+
+  function startPan(event, keepSelection) {
+    beginPan(event.clientX, event.clientY, keepSelection);
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
     event.preventDefault();
+  }
+
+  function endMarquee() {
+    var done = board.marquee;
+    if (!done) return null;
+    if (done.node && done.node.parentNode) done.node.parentNode.removeChild(done.node);
+    board.marquee = null;
+    return done;
   }
 
   function startMarquee(event) {
@@ -2567,6 +2589,7 @@ window.NoteApp = window.NoteApp || {};
     m.node.style.width = (x2 - x1) + 'px';
     m.node.style.height = (y2 - y1) + 'px';
     m.last = { x1: x1, y1: y1, x2: x2, y2: y2 };
+    m.pointer = { x: event.clientX, y: event.clientY };
     var ids = m.base.slice();
     board.items.forEach(function (item) {
       var box = itemScreenRect(item);
@@ -2676,10 +2699,7 @@ window.NoteApp = window.NoteApp || {};
       paintLinks();
     }
     if (board.resize) { saveItem(board.resize.item); board.resize = null; }
-    if (board.marquee) {
-      if (board.marquee.node && board.marquee.node.parentNode) board.marquee.node.parentNode.removeChild(board.marquee.node);
-      board.marquee = null;
-    }
+    if (board.marquee) endMarquee();
     if (board.pan) {
       var travelled = Math.abs(event.clientX - board.pan.x) + Math.abs(event.clientY - board.pan.y);
       if (travelled < 5) richHide();
@@ -2716,6 +2736,11 @@ window.NoteApp = window.NoteApp || {};
     if (event.code === 'Space' && !editing) {
       board.space = true;
       board.stage.classList.add('is-space');
+      var live = endMarquee();
+      if (live) {
+        var at = live.pointer || { x: live.x, y: live.y };
+        beginPan(at.x, at.y, true);
+      }
       event.preventDefault();
       return;
     }
@@ -6433,7 +6458,7 @@ window.NoteApp = window.NoteApp || {};
       var glyph = App.ui.icon(on ? 'marquee' : 'hand', 16);
       if (glyph) board.modeButton.appendChild(glyph);
       board.modeButton.classList.toggle('is-select', on);
-      board.modeButton.title = on ? 'Drag to select blocks' : 'Drag to pan the board';
+      board.modeButton.title = on ? 'Drag to select blocks, hold Space to pan' : 'Drag to pan the board';
       board.modeButton.setAttribute('aria-label', board.modeButton.title);
       board.modeButton.setAttribute('aria-pressed', on ? 'true' : 'false');
     }
