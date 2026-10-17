@@ -3543,6 +3543,32 @@ function richItemOf(box) {
     board.planner = null;
   }
 
+  function revealOnBoard(item) {
+    if (!item) return;
+    closePlanner();
+    var view = board.view;
+    var rect = board.stage.getBoundingClientRect();
+    if (view.z < 0.8) {
+      view.z = 1;
+      applyView(true);
+    }
+    glideViewTo(
+      Math.round(rect.width / 2 - (item.x + item.w / 2) * view.z),
+      Math.round(rect.height / 2 - (item.y + item.h / 2) * view.z),
+      320
+    );
+    select(item);
+    window.setTimeout(function () {
+      if (!item.node) return;
+      paintSelection();
+      item.node.classList.add('is-pinged');
+      window.setTimeout(function () {
+        if (item.node) item.node.classList.remove('is-pinged');
+      }, 1200);
+    }, 400);
+  }
+
+
   function planIcon(kind) {
     var map = { note: 'note', todo: 'check', link: 'external', comment: 'info', table: 'grid', image: 'upload', file: 'file', ref: 'file', column: 'panel', group: 'folder', draw: 'pencil' };
     return map[kind] || 'note';
@@ -3906,7 +3932,19 @@ function richItemOf(box) {
       Array.prototype.forEach.call(document.querySelectorAll('.bd-item.is-dragging'), function (card) { card.classList.remove('is-dragging'); });
     });
     var label = barLabel(view);
-    if (isBoard) label.appendChild(node('span', 'bd-item__plan', 'board'));
+    if (isBoard) {
+      var jump = node('button', 'bd-item__plan is-jump', 'board');
+      jump.type = 'button';
+      jump.setAttribute('data-plan-jump', item.id);
+      jump.title = 'Show this block on the board';
+      jump.setAttribute('aria-label', 'Show this block on the board');
+      jump.appendChild(App.ui.icon('external', 11));
+      jump.addEventListener('click', function (event) {
+        event.stopPropagation();
+        revealOnBoard(item);
+      });
+      label.appendChild(jump);
+    }
     bar.appendChild(label);
     var tools = node('div', 'bd-item__tools');
     var time = node('input', 'bd-plan__time');
