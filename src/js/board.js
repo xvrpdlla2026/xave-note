@@ -3368,6 +3368,35 @@ function richItemOf(box) {
     return out;
   }
 
+  function kindRank(kind) {
+    for (var i = 0; i < BLOCK_KINDS.length; i++) if (BLOCK_KINDS[i].kind === kind) return i;
+    return BLOCK_KINDS.length;
+  }
+
+  function planSort(entries) {
+    entries.sort(function (a, b) {
+      var at = planTimeOf(a.item, a.board);
+      var bt = planTimeOf(b.item, b.board);
+      if (!at !== !bt) return at ? -1 : 1;
+      if (at && bt && at !== bt) return at < bt ? -1 : 1;
+      var ak = kindRank(a.item.kind);
+      var bk = kindRank(b.item.kind);
+      if (ak !== bk) return ak - bk;
+      return planPlain(a.title).toLowerCase() < planPlain(b.title).toLowerCase() ? -1 : 1;
+    });
+    return entries;
+  }
+
+  function planFiltered(entries) {
+    var query = board.planner && board.planner.query ? String(board.planner.query).trim().toLowerCase() : '';
+    if (!query) return entries;
+    return entries.filter(function (entry) {
+      var hay = kindText(entry.item.kind).label + ' ' + planPlain(entry.title) + ' ' + (planTimeOf(entry.item, entry.board) || '');
+      return hay.toLowerCase().indexOf(query) >= 0;
+    });
+  }
+
+
   function paintPlan(item) {
     if (!item.node) return;
     var keys = planKeysOf(item);
@@ -3885,6 +3914,22 @@ function richItemOf(box) {
       book: 'Book a slot',
     };
     top.appendChild(node('div', 'bd-cal__label', titles[plan.mode] || 'Planner'));
+    var filter = node('input', 'bd-cal__filter');
+    filter.type = 'search';
+    filter.placeholder = 'Filter blocks by type or text';
+    filter.value = plan.query || '';
+    filter.setAttribute('aria-label', 'Filter planned blocks');
+    filter.addEventListener('input', function () {
+      plan.query = filter.value;
+      board.plannerFilter = true;
+      paintPlanner();
+    });
+    if (board.plannerFilter) {
+      filter.focus();
+      try { filter.setSelectionRange(filter.value.length, filter.value.length); } catch (e) { }
+      board.plannerFilter = false;
+    }
+    top.appendChild(filter);
     top.appendChild(node('div', 'bd-cal__spacer'));
     if (plan.mode === 'assign') {
       top.appendChild(calButton('Remove from planner', function () {
@@ -3931,8 +3976,15 @@ function richItemOf(box) {
       if (day.getMonth() !== first.getMonth()) cell.classList.add('is-out');
       if (key === todayKey) cell.classList.add('is-today');
       if (key === plan.date) cell.classList.add('is-sel');
-      cell.appendChild(node('span', 'bd-cal__n', String(day.getDate())));
-      var entries = planEntries(key);
+      var entries = planFiltered(planEntries(key));
+      var num = node('span', 'bd-cal__n');
+      num.appendChild(node('span', '', String(day.getDate())));
+      if (key < todayKey) {
+        var late = 0;
+        entries.forEach(function (entry) { if (!planDoneOf(entry.item, entry.board)) late++; });
+        if (late) num.appendChild(node('span', 'bd-cal__nlate', late + ' late'));
+      }
+      cell.appendChild(num);
       var groups = [];
       entries.forEach(function (entry) {
         var found = null;
@@ -3981,6 +4033,30 @@ function richItemOf(box) {
     var ms = calMs(plan.date);
     var picked = new Date(ms === null ? Date.now() : ms);
     column.appendChild(node('div', 'bd-cal__dayhead', CAL_DAYS[picked.getDay()] + ', ' + CAL_MONTHS[picked.getMonth()] + ' ' + picked.getDate()));
+    var week = node('div', 'bd-cal__week');
+    var weekStart = new Date(ms === null ? Date.now() : ms);
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+    for (var w = 0; w < 7; w++) {
+      var stripDay = new Date(weekStart.getTime());
+      stripDay.setDate(weekStart.getDate() + w);
+      var stripKey = calKey(stripDay.getTime());
+      var chip = node('button', 'bd-cal__wday' + (stripKey === todayKey ? ' is-today' : '') + (stripKey === plan.date ? ' is-sel' : ''));
+      chip.type = 'button';
+      chip.title = CAL_DAYS[stripDay.getDay()] + ', ' + CAL_MONTHS[stripDay.getMonth()] + ' ' + stripDay.getDate();
+      chip.setAttribute('data-week-key', stripKey);
+      chip.appendChild(node('span', '', CAL_DOW[stripDay.getDay()]));
+      chip.appendChild(node('span', 'bd-cal__wn', String(stripDay.getDate())));
+      var count = planFiltered(planEntries(stripKey)).length;
+      chip.appendChild(node('span', 'bd-cal__wc', count ? String(count) : '\u00b7'));
+      chip.addEventListener('click', function () {
+        var useKey = this.getAttribute('data-week-key');
+        plan.date = useKey;
+        plan.month = monthStart(calMs(useKey));
+        paintPlanner();
+      });
+      week.appendChild(chip);
+    }
+    column.appendChild(week);
     if (plan.mode === 'browse') {
       var add = node('div', 'bd-cal__add');
       var addButton = calButton('+ Block', function () { kindMenu(addButton, plan.date); }, 'is-quiet');
@@ -3989,11 +4065,11 @@ function richItemOf(box) {
     }
     if (plan.mode === 'book') column.appendChild(slotPanel(plan.date, plan));
     var list = node('div', 'bd-cal__list');
-    var dayEntries = planEntries(plan.date);
+    var dayEntries = planSort(planFiltered(planEntries(plan.date)));
     if (!dayEntries.length) {
-      list.appendChild(node('div', 'bd-cal__empty', plan.mode === 'assign'
-        ? 'Nothing on this day yet'
-        : 'Nothing planned. Add a block, or schedule one from the board.'));
+      list.appendChild(node('div', 'bd-cal__empty', plan.query
+        ? 'Nothing here matches the filter.'
+        : (plan.mode === 'assign' ? 'Nothing on this day yet' : 'Nothing planned. Add a block, or schedule one from the board.')));
     }
     list.addEventListener('dragover', function (event) {
       if (planDragHas(event)) { event.preventDefault(); list.classList.add('is-over'); }
