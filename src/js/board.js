@@ -3874,8 +3874,16 @@ function richItemOf(box) {
     var item = drag.board ? findItem(drag.id) : board.plans.filter(function (row) { return row.id === drag.id; })[0];
     if (!item) return;
     var added = false;
+    var moved = false;
+    var keys = planKeysOf(item);
     if (drag.board) {
-      if (planKeysOf(item).indexOf(key) < 0) {
+      // A card dragged out of the planner keeps its other dates, but the day it came from is
+      // replaced, because a drop on another day reads as a move and not as a second date.
+      if (drag.from && drag.from !== key && keys.indexOf(drag.from) >= 0) {
+        planSync(item, keys.filter(function (other) { return other !== drag.from; }).concat([key]).sort());
+        added = true;
+        moved = true;
+      } else if (keys.indexOf(key) < 0) {
         planAdd(item, key, true);
         added = true;
       }
@@ -3883,9 +3891,10 @@ function richItemOf(box) {
       item.data.planner = key;
       savePlanItem(item);
       added = true;
+      moved = true;
     }
     if (typeof index === 'number') planReorder(planSort(planFiltered(planEntries(key)), key), item, key, index);
-    if (added) util.toast((drag.board ? 'Planned for ' : 'Moved to ') + calShort(key));
+    if (added) util.toast((moved ? 'Moved to ' : (drag.board ? 'Planned for ' : 'Moved to ')) + calShort(key));
     if (board.planner) board.planner.date = key;
     paintPlanner();
   }
@@ -4041,7 +4050,7 @@ function richItemOf(box) {
     bar.setAttribute('draggable', 'true');
     bar.title = 'Drag to reorder, or onto another day';
     bar.addEventListener('dragstart', function (event) {
-      board.planDrag = { id: item.id, board: isBoard };
+      board.planDrag = { id: item.id, board: isBoard, from: entry.key };
       if (event.dataTransfer) {
         event.dataTransfer.effectAllowed = 'move';
         try { event.dataTransfer.setData('text/plain', item.id); } catch (e) { }
