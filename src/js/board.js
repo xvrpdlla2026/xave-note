@@ -3408,8 +3408,53 @@ window.NoteApp = window.NoteApp || {};
     board.planner = null;
   }
 
-  function addPlannerItem(kind, key) {
+  function planIcon(kind) {
+    var map = { note: 'note', todo: 'check', link: 'external', comment: 'info', table: 'grid', image: 'upload', file: 'file', ref: 'file', column: 'panel', group: 'folder', draw: 'pencil' };
+    return map[kind] || 'note';
+  }
+
+  function planTimeOf(item, isBoard) {
+    if (!item.data) return '';
+    return String((isBoard ? item.data.planTime : item.data.time) || '');
+  }
+
+  function setPlanTime(item, isBoard, value) {
+    if (!item.data) item.data = {};
+    if (isBoard) item.data.planTime = value;
+    else item.data.time = value;
+    savePlanItem(item);
+    paintPlanner();
+  }
+
+  function planDoneOf(item, isBoard) {
+    if (isBoard || !item.data) return false;
+    if (item.kind === 'todo') {
+      var rows = item.data.items || [];
+      var done = 0;
+      rows.forEach(function (row) { if (row.done) done++; });
+      return rows.length > 0 && done === rows.length;
+    }
+    return !!item.data.done;
+  }
+
+  function planSetDone(item, done) {
+    if (!item.data) item.data = {};
+    if (item.kind === 'todo') (item.data.items || []).forEach(function (row) { row.done = done; });
+    else item.data.done = done;
+    savePlanItem(item);
+  }
+
+  function queuePlanSave(item) {
+    if (item.saveTimer) clearTimeout(item.saveTimer);
+    item.saveTimer = setTimeout(function () { item.saveTimer = null; savePlanItem(item); }, 400);
+  }
+
+  function addPlannerItem(kind, key, time) {
     var now = util.nowIso();
+    var size = { note: [268, 176], todo: [256, 196], link: [268, 96], image: [288, 216], comment: [268, 132], table: [320, 208], file: [300, 236] }[kind] || [260, 160];
+    var data = defaultData(kind);
+    data.planner = key;
+    if (time) data.time = time;
     var item = {
       id: util.uuid(),
       board_id: PLAN_BOARD,
@@ -3418,16 +3463,17 @@ window.NoteApp = window.NoteApp || {};
       ref_id: null,
       x: 0,
       y: 0,
-      w: 240,
-      h: 160,
+      w: size[0],
+      h: size[1],
       z: 0,
-      data: { planner: key, text: '', done: false },
+      data: data,
       created_at: now,
       updated_at: now,
     };
     board.plans.push(item);
     savePlanItem(item);
     paintPlanner();
+    return item;
   }
 
   function removePlannerItem(item) {
@@ -3436,6 +3482,139 @@ window.NoteApp = window.NoteApp || {};
     paintPlanner();
   }
 
+  function kindMenu(button, key) {
+    var rect = button.getBoundingClientRect();
+    var pick = function (kind) { return function () { addPlannerItem(kind, key, ''); }; };
+    App.ui.openMenu({
+      x: Math.round(rect.left),
+      y: Math.round(rect.bottom + 4),
+      title: 'Add a block',
+      items: [
+        { label: 'Note', icon: 'note', onclick: pick('note') },
+        { label: 'To-do', icon: 'check', onclick: pick('todo') },
+        { label: 'Link', icon: 'external', onclick: pick('link') },
+        { label: 'Comment', icon: 'info', onclick: pick('comment') },
+        { label: 'Table', icon: 'grid', onclick: pick('table') },
+        { label: 'Image or File', icon: 'upload', onclick: pick('image') },
+      ],
+    });
+  }
+
+  function moveUnfinished() {
+    var today = calKey(Date.now());
+    var moved = 0;
+    board.items.forEach(function (item) {
+      var key = planKeyOf(item);
+      if (key && key < today) { item.data.plan = today; savePlanItem(item); paintPlan(item); moved++; }
+    });
+    board.plans.forEach(function (item) {
+      var key = item.data && item.data.planner;
+      if (key && key < today && !planDoneOf(item, false)) { item.data.planner = today; savePlanItem(item); moved++; }
+    });
+    if (board.planner) board.planner.date = today;
+    paintPlanner();
+    util.toast(moved ? 'Moved ' + moved + (moved === 1 ? ' block' : ' blocks') + ' to today' : 'Nothing overdue');
+  }
+
+  function dropPlanOn(key) {
+    var drag = board.planDrag;
+    board.planDrag = null;
+    if (!drag) return;
+    var item = drag.board ? findItem(drag.id) : board.plans.filter(function (row) { return row.id === drag.id; })[0];
+    if (!item) return;
+    if (drag.board) setPlan(item, key);
+    else { item.data.planner = key; savePlanItem(item); }
+    if (board.planner) board.planner.date = key;
+    paintPlanner();
+    util.toast('Moved to ' + calShort(key));
+  }
+
+  function minutesOf(text) {
+    var m = /^(\d{1,2}):(\d{2})$/.exec(String(text || ''));
+    return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  }
+
+  function clockOf(mins) { return calPad(Math.floor(mins / 60)) + ':' + calPad(mins % 60); }
+
+  function freeSlots(key) {
+    var win = (board.planner && board.planner.window) || { from: '09:00', to: '17:00', slot: 30 };
+    var from = minutesOf(win.from);
+    var to = minutesOf(win.to);
+    if (from === null || to === null || to <= from) return [];
+    var busy = [];
+    planEntries(key).forEach(function (entry) {
+      var at = minutesOf(planTimeOf(entry.item, entry.board));
+      if (at !== null) busy.push([at, at + 30]);
+    });
+    var out = [];
+    for (var t = from; t + win.slot <= to; t += win.slot) {
+      var clash = busy.some(function (span) { return t < span[1] && t + win.slot > span[0]; });
+      if (!clash) out.push(clockOf(t));
+    }
+    return out;
+  }
+
+  function bookSlot(key, time) {
+    var item = addPlannerItem('note', key, time);
+    item.data.text = 'Booked ' + time;
+    savePlanItem(item);
+    paintPlanner();
+    util.toast('Booked ' + calShort(key) + ' at ' + time);
+  }
+
+  function copyBookLink() {
+    var plan = board.planner;
+    if (!plan) return;
+    var url = location.href.split('#')[0] + '#book=' + plan.date;
+    plan.lastLink = url;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(function () { util.toast('Booking link copied'); }, function () { util.toast(url); });
+    } else util.toast(url);
+  }
+
+  function bookFromHash() {
+    var m = /(?:^|[#&])book=(\d{4}-\d{2}-\d{2})/.exec(String(location.hash || ''));
+    if (!m) return;
+    if (!board.open) { try { App.board.open(); } catch (e) { } }
+    openPlanner('book', [], m[1]);
+  }
+
+  if (document.readyState === 'complete') setTimeout(bookFromHash, 900);
+  else window.addEventListener('load', function () { setTimeout(bookFromHash, 900); });
+  window.addEventListener('hashchange', bookFromHash);
+
+  function planField(value, onChange) {
+    var input = node('input', 'bd-plan__time');
+    input.type = 'time';
+    input.value = String(value || '');
+    input.addEventListener('change', function () { onChange(input.value); });
+    return input;
+  }
+
+  function slotPanel(day, plan) {
+    if (!plan.window) plan.window = { from: '09:00', to: '17:00', slot: 30 };
+    var win = plan.window;
+    var box = node('div', 'bd-plan__slotpanel');
+    var row = node('div', 'bd-cal__add');
+    row.appendChild(planField(win.from, function (value) { win.from = value; paintPlanner(); }));
+    row.appendChild(planField(win.to, function (value) { win.to = value; paintPlanner(); }));
+    var slot = node('select', 'bd-plan__select');
+    [15, 30, 45, 60, 90].forEach(function (n) {
+      var option = node('option', '', n + ' min');
+      option.value = String(n);
+      if (n === win.slot) option.selected = true;
+      slot.appendChild(option);
+    });
+    slot.addEventListener('change', function () { win.slot = Number(slot.value) || 30; paintPlanner(); });
+    row.appendChild(slot);
+    box.appendChild(row);
+    var grid = node('div', 'bd-cal__slots');
+    var slots = freeSlots(day);
+    if (!slots.length) grid.appendChild(node('div', 'bd-cal__empty', 'No free slot in that window.'));
+    slots.forEach(function (time) { grid.appendChild(calButton(time, function () { bookSlot(day, time); }, 'is-quiet')); });
+    box.appendChild(grid);
+    return box;
+  }
   function focusBoardItem(item) {
     closePlanner();
     select(item);
@@ -3445,43 +3624,187 @@ window.NoteApp = window.NoteApp || {};
     applyView();
   }
 
-  function planRow(entry) {
-    var row = node('div', 'bd-cal__row');
-    var item = entry.item;
-    if (entry.board) {
-      row.appendChild(node('span', 'bd-cal__tag', 'board'));
-      row.appendChild(node('div', 'bd-cal__text', entry.title));
-      row.appendChild(calButton('Show', function () { focusBoardItem(item); }, 'is-quiet'));
-      row.appendChild(calButton('\u00d7', function () { setPlan(item, null); paintPlanner(); }, 'is-icon'));
-      return row;
-    }
-    if (item.kind === 'todo') {
-      var box = node('input', 'bd-cal__check');
-      box.type = 'checkbox';
-      box.checked = !!(item.data && item.data.done);
-      box.addEventListener('change', function () { item.data.done = box.checked; savePlanItem(item); });
-      row.appendChild(box);
-    }
-    var text = node('div', 'bd-cal__text is-edit');
-    text.contentEditable = 'true';
-    text.textContent = String(item.data.text || '');
-    text.addEventListener('input', function () { item.data.text = text.textContent; });
-    text.addEventListener('blur', function () { savePlanItem(item); paintPlanner(); });
-    row.appendChild(text);
-    row.appendChild(calButton('\u00d7', function () { removePlannerItem(item); }, 'is-icon'));
-    return row;
+  function planTextBody(item, body) {
+    var edit = node('div', 'bd-plan__text is-edit');
+    edit.contentEditable = 'true';
+    edit.innerHTML = String(item.data.text || '');
+    edit.addEventListener('input', function () { item.data.text = edit.innerHTML; queuePlanSave(item); });
+    edit.addEventListener('blur', function () { savePlanItem(item); });
+    edit.addEventListener('keydown', function (event) { if (event.key === 'Escape') edit.blur(); });
+    body.appendChild(edit);
   }
 
+  function planTodoBody(item, body) {
+    var data = item.data;
+    if (!Array.isArray(data.items) || !data.items.length) data.items = [{ text: '', done: false }];
+    var list = node('div', 'bd-plan__items');
+    data.items.forEach(function (row, index) {
+      var line = node('div', 'bd-plan__item');
+      var box = node('input', 'bd-plan__check');
+      box.type = 'checkbox';
+      box.checked = !!row.done;
+      box.addEventListener('change', function () { row.done = box.checked; savePlanItem(item); paintPlanner(); });
+      line.appendChild(box);
+      var field = node('div', 'bd-plan__itemtext' + (row.done ? ' is-done' : ''));
+      field.contentEditable = 'true';
+      field.textContent = String(row.text || '');
+      field.addEventListener('input', function () { row.text = field.textContent; queuePlanSave(item); });
+      field.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          data.items.splice(index + 1, 0, { text: '', done: false });
+          savePlanItem(item);
+          paintPlanner();
+        }
+        if (event.key === 'Backspace' && !field.textContent && data.items.length > 1) {
+          event.preventDefault();
+          data.items.splice(index, 1);
+          savePlanItem(item);
+          paintPlanner();
+        }
+      });
+      line.appendChild(field);
+      line.appendChild(calButton('\u00d7', function () {
+        data.items.splice(index, 1);
+        if (!data.items.length) data.items.push({ text: '', done: false });
+        savePlanItem(item);
+        paintPlanner();
+      }, 'is-icon'));
+      list.appendChild(line);
+    });
+    body.appendChild(list);
+    body.appendChild(calButton('+ item', function () { data.items.push({ text: '', done: false }); savePlanItem(item); paintPlanner(); }, 'is-quiet'));
+  }
+
+  function planLinkBody(item, body) {
+    var title = node('input', 'bd-plan__title');
+    title.value = String(item.data.title || '');
+    title.placeholder = 'Title';
+    title.addEventListener('change', function () { item.data.title = title.value; savePlanItem(item); });
+    body.appendChild(title);
+    var url = node('input', 'bd-plan__title');
+    url.value = String(item.data.url || '');
+    url.placeholder = 'https://';
+    url.addEventListener('change', function () { item.data.url = url.value; savePlanItem(item); paintPlanner(); });
+    body.appendChild(url);
+    if (item.data.url) body.appendChild(calButton('Open', function () { window.open(item.data.url, '_blank', 'noopener'); }, 'is-quiet'));
+  }
+
+  function planTableBody(item, body) {
+    var data = item.data;
+    if (!Array.isArray(data.cells) || !data.cells.length) data.cells = [['', ''], ['', '']];
+    var grid = node('div', 'bd-plan__grid');
+    grid.style.gridTemplateColumns = 'repeat(' + Math.max(1, data.cells[0].length) + ', minmax(0, 1fr))';
+    data.cells.forEach(function (row, r) {
+      row.forEach(function (cell, c) {
+        var box = node('div', 'bd-plan__cell');
+        box.contentEditable = 'true';
+        box.textContent = String(cell || '');
+        box.addEventListener('input', function () { data.cells[r][c] = box.textContent; queuePlanSave(item); });
+        box.addEventListener('blur', function () { savePlanItem(item); });
+        grid.appendChild(box);
+      });
+    });
+    body.appendChild(grid);
+  }
+
+  function planImageBody(item, body) {
+    if (item.data.src) {
+      var img = node('img', 'bd-plan__img');
+      img.src = item.data.src;
+      img.alt = String(item.data.name || '');
+      body.appendChild(img);
+    }
+    var name = node('input', 'bd-plan__title');
+    name.value = String(item.data.name || '');
+    name.placeholder = 'Name, or drop an image here';
+    name.addEventListener('change', function () { item.data.name = name.value; savePlanItem(item); });
+    body.appendChild(name);
+    body.addEventListener('dragover', function (event) { event.preventDefault(); });
+    body.addEventListener('drop', function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      var file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+      if (!file) return;
+      if (!/^image\//.test(file.type)) { util.toast('Only images can attach inside the planner'); return; }
+      var reader = new FileReader();
+      reader.onload = function () {
+        item.data.src = String(reader.result || '');
+        item.data.name = item.data.name || file.name;
+        savePlanItem(item);
+        paintPlanner();
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function planBody(item, isBoard, body) {
+    if (isBoard) { body.appendChild(node('div', 'bd-plan__text', planTitle(item) || item.kind)); return; }
+    if (item.kind === 'todo') return planTodoBody(item, body);
+    if (item.kind === 'link') return planLinkBody(item, body);
+    if (item.kind === 'table') return planTableBody(item, body);
+    if (item.kind === 'image' || item.kind === 'file' || item.kind === 'ref') return planImageBody(item, body);
+    return planTextBody(item, body);
+  }
+
+  function planBlock(entry) {
+    var item = entry.item;
+    var isBoard = !!entry.board;
+    var done = planDoneOf(item, isBoard);
+    var card = node('div', 'bd-plan bd-plan--' + item.kind + (done ? ' is-done' : ''));
+    card.setAttribute('data-plan-id', item.id);
+    card.setAttribute('draggable', 'true');
+    card.addEventListener('dragstart', function (event) {
+      board.planDrag = { id: item.id, board: isBoard };
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = 'move';
+        try { event.dataTransfer.setData('text/plain', item.id); } catch (e) { }
+      }
+    });
+    card.addEventListener('dragend', function () { board.planDrag = null; });
+    var head = node('div', 'bd-plan__head');
+    var glyph = App.ui.icon(planIcon(item.kind), 13);
+    if (glyph) { var badge = node('span', 'bd-plan__kind'); badge.appendChild(glyph); head.appendChild(badge); }
+    if (isBoard) head.appendChild(node('span', 'bd-cal__tag', 'board'));
+    head.appendChild(planField(planTimeOf(item, isBoard), function (value) { setPlanTime(item, isBoard, value); }));
+    head.appendChild(node('div', 'bd-cal__spacer'));
+    if (!isBoard && (item.kind === 'todo' || item.kind === 'note' || item.kind === 'comment')) {
+      var toggle = node('button', 'bd-plan__btn' + (done ? ' is-on' : ''), '');
+      toggle.type = 'button';
+      toggle.title = done ? 'Mark not done' : 'Mark done';
+      toggle.appendChild(App.ui.icon('check', 12));
+      toggle.addEventListener('click', function () { planSetDone(item, !done); paintPlanner(); });
+      head.appendChild(toggle);
+    }
+    if (isBoard) {
+      head.appendChild(calButton('Show', function () { focusBoardItem(item); }, 'is-quiet'));
+      head.appendChild(calButton('\u00d7', function () { setPlan(item, null); paintPlanner(); }, 'is-icon'));
+    } else {
+      head.appendChild(calButton('\u00d7', function () { removePlannerItem(item); }, 'is-icon'));
+    }
+    card.appendChild(head);
+    var body = node('div', 'bd-plan__body');
+    planBody(item, isBoard, body);
+    card.appendChild(body);
+    return card;
+  }
   function paintPlanner() {
     var plan = board.planner;
     if (!plan || !board.root) return;
+    if (!plan.window) plan.window = { from: '09:00', to: '17:00', slot: 30 };
     var el = plannerEl();
+    var keepScroll = 0;
+    var before = el.querySelector('.bd-cal__list');
+    if (before) keepScroll = before.scrollTop;
     el.textContent = '';
     var main = node('div', 'bd-cal__main');
     var top = node('div', 'bd-cal__top');
-    top.appendChild(node('div', 'bd-cal__label', plan.mode === 'assign'
-      ? 'Choose a date for ' + plan.rows.length + (plan.rows.length === 1 ? ' block' : ' blocks')
-      : 'Planner'));
+    var titles = {
+      browse: 'Planner',
+      assign: 'Choose a date for ' + plan.rows.length + (plan.rows.length === 1 ? ' block' : ' blocks'),
+      book: 'Book a slot',
+    };
+    top.appendChild(node('div', 'bd-cal__label', titles[plan.mode] || 'Planner'));
     top.appendChild(node('div', 'bd-cal__spacer'));
     if (plan.mode === 'assign') {
       top.appendChild(calButton('Remove from planner', function () {
@@ -3489,6 +3812,14 @@ window.NoteApp = window.NoteApp || {};
         closePlanner();
         util.toast('Removed from the planner');
       }, 'is-quiet'));
+    }
+    if (plan.mode === 'browse') {
+      top.appendChild(calButton('Move unfinished to today', function () { moveUnfinished(); }, 'is-quiet'));
+      top.appendChild(calButton('Booking', function () { plan.mode = 'book'; paintPlanner(); }, 'is-quiet'));
+    }
+    if (plan.mode === 'book') {
+      top.appendChild(calButton('Copy link', function () { copyBookLink(); }, 'is-quiet'));
+      top.appendChild(calButton('Back', function () { plan.mode = 'browse'; paintPlanner(); }, 'is-quiet'));
     }
     top.appendChild(calButton('Today', function () {
       plan.date = calKey(Date.now());
@@ -3516,40 +3847,64 @@ window.NoteApp = window.NoteApp || {};
       var key = calKey(day.getTime());
       var cell = node('button', 'bd-cal__cell');
       cell.type = 'button';
+      cell.setAttribute('data-key', key);
       if (day.getMonth() !== first.getMonth()) cell.classList.add('is-out');
       if (key === todayKey) cell.classList.add('is-today');
       if (key === plan.date) cell.classList.add('is-sel');
       cell.appendChild(node('span', 'bd-cal__n', String(day.getDate())));
       var entries = planEntries(key);
       entries.slice(0, 3).forEach(function (entry) {
-        cell.appendChild(node('span', 'bd-cal__t' + (entry.board ? ' is-board' : ''), entry.title));
+        var time = planTimeOf(entry.item, entry.board);
+        var tag = node('span', 'bd-cal__t' + (entry.board ? ' is-board' : '') + (planDoneOf(entry.item, entry.board) ? ' is-done' : ''));
+        tag.textContent = (time ? time + ' ' : '') + entry.title;
+        cell.appendChild(tag);
       });
       if (entries.length > 3) cell.appendChild(node('span', 'bd-cal__t', '+' + (entries.length - 3) + ' more'));
       cell.addEventListener('click', (function (useKey) {
         return function () { onCell(useKey); };
       })(key));
+      cell.addEventListener('dragover', function (event) {
+        if (!board.planDrag) return;
+        event.preventDefault();
+        event.currentTarget.classList.add('is-over');
+      });
+      cell.addEventListener('dragleave', function (event) { event.currentTarget.classList.remove('is-over'); });
+      cell.addEventListener('drop', function (event) {
+        if (!board.planDrag) return;
+        event.preventDefault();
+        event.currentTarget.classList.remove('is-over');
+        dropPlanOn(event.currentTarget.getAttribute('data-key'));
+      });
       grid.appendChild(cell);
     }
     main.appendChild(grid);
     el.appendChild(main);
-    var day = node('div', 'bd-cal__day');
+    var column = node('div', 'bd-cal__day');
     var ms = calMs(plan.date);
     var picked = new Date(ms === null ? Date.now() : ms);
-    day.appendChild(node('div', 'bd-cal__dayhead', CAL_DAYS[picked.getDay()] + ', ' + CAL_MONTHS[picked.getMonth()] + ' ' + picked.getDate()));
-    if (plan.mode !== 'assign') {
+    column.appendChild(node('div', 'bd-cal__dayhead', CAL_DAYS[picked.getDay()] + ', ' + CAL_MONTHS[picked.getMonth()] + ' ' + picked.getDate()));
+    if (plan.mode === 'browse') {
       var add = node('div', 'bd-cal__add');
-      add.appendChild(calButton('+ Note', function () { addPlannerItem('note', plan.date); }, 'is-quiet'));
-      add.appendChild(calButton('+ To-do', function () { addPlannerItem('todo', plan.date); }, 'is-quiet'));
-      day.appendChild(add);
+      var addButton = calButton('+ Block', function () { kindMenu(addButton, plan.date); }, 'is-quiet');
+      add.appendChild(addButton);
+      column.appendChild(add);
     }
+    if (plan.mode === 'book') column.appendChild(slotPanel(plan.date, plan));
     var list = node('div', 'bd-cal__list');
     var dayEntries = planEntries(plan.date);
-    if (!dayEntries.length) list.appendChild(node('div', 'bd-cal__empty', plan.mode === 'assign' ? 'Nothing on this day yet' : 'Nothing planned. Add a note or schedule a block from the board.'));
-    dayEntries.forEach(function (entry) { list.appendChild(planRow(entry)); });
-    day.appendChild(list);
-    el.appendChild(day);
+    if (!dayEntries.length) {
+      list.appendChild(node('div', 'bd-cal__empty', plan.mode === 'assign'
+        ? 'Nothing on this day yet'
+        : 'Nothing planned. Add a block, or schedule one from the board.'));
+    }
+    dayEntries.forEach(function (entry) { list.appendChild(planBlock(entry)); });
+    column.appendChild(list);
+    el.appendChild(column);
+    if (keepScroll) {
+      var after = el.querySelector('.bd-cal__list');
+      if (after) after.scrollTop = keepScroll;
+    }
   }
-
   function shiftMonth(plan, delta) {
     var d = new Date(plan.month);
     d.setMonth(d.getMonth() + delta);
