@@ -3943,33 +3943,6 @@ function richItemOf(box) {
     return view;
   }
 
-  function planDragPill(label) {
-    var text = String(label || 'block').slice(0, 20).toUpperCase();
-    var cs = window.getComputedStyle(board.root);
-    var font = '600 11px ' + (cs.fontFamily || 'system-ui, sans-serif');
-    var probe = document.createElement('canvas').getContext('2d');
-    probe.font = font;
-    var wide = Math.max(46, Math.ceil(probe.measureText(text).width) + 22);
-    var ratio = window.devicePixelRatio || 1;
-    var pill = document.createElement('canvas');
-    pill.width = Math.round(wide * ratio);
-    pill.height = Math.round(28 * ratio);
-    var ctx = pill.getContext('2d');
-    ctx.scale(ratio, ratio);
-    ctx.font = font;
-    ctx.fillStyle = cs.getPropertyValue('--bg-raised').trim() || '#1b1d22';
-    ctx.strokeStyle = cs.getPropertyValue('--accent').trim() || '#3b4ede';
-    ctx.lineWidth = 1;
-    if (ctx.roundRect) ctx.roundRect(0.5, 0.5, wide - 1, 27, 13.5);
-    else ctx.rect(0.5, 0.5, wide - 1, 27);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = cs.getPropertyValue('--text').trim() || '#ffffff';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(text, 11, 14.5);
-    return pill;
-  }
-
   function planCard(entry) {
     var item = entry.item;
     var isBoard = !!entry.board;
@@ -3987,7 +3960,6 @@ function richItemOf(box) {
       if (event.dataTransfer) {
         event.dataTransfer.effectAllowed = 'move';
         try { event.dataTransfer.setData('text/plain', item.id); } catch (e) { }
-        if (event.dataTransfer.setDragImage) event.dataTransfer.setDragImage(planDragPill(item.kind || 'block'), 14, 16);
       }
     });
     bar.addEventListener('dragend', function () {
@@ -4176,6 +4148,7 @@ function richItemOf(box) {
         return function () { onCell(useKey); };
       })(key));
       cell.addEventListener('dragover', function (event) {
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
         if (!board.planDrag && !planDragHas(event)) return;
         event.preventDefault();
         event.currentTarget.classList.add('is-over');
@@ -4262,6 +4235,7 @@ function richItemOf(box) {
         : (plan.mode === 'assign' ? 'Nothing on this day yet' : 'Nothing planned. Add a block, or schedule one from the board.')));
     }
     list.addEventListener('dragover', function (event) {
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
       if (!board.planDrag && !planDragHas(event)) return;
       event.preventDefault();
       list.classList.add('is-over');
@@ -4323,6 +4297,7 @@ function richItemOf(box) {
       if (ink && ink.inkPaint) requestAnimationFrame(function () { ink.inkPaint(); });
     });
     column.addEventListener('dragover', function (event) {
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
       if (!board.planDrag && !planDragHas(event)) return;
       event.preventDefault();
       column.classList.add('is-over');
