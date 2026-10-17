@@ -1861,6 +1861,7 @@ function richItemOf(box) {
       saveItem(item);
       repaintBody(item);
       paintKind(item);
+      if (board.planner) paintPlanner();
       return item;
     });
   }

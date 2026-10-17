@@ -4294,3 +4294,6 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__list .bd-item--draw .bd-draw { height: 220px; }
 .bd-cal__list .bd-item--column .bd-item__body { height: 220px; }
 .bd-cal__list .bd-item--table .bd-item__body { max-height: 320px; }
+.bd-cal__list > .bd-item { flex: none; }
+.bd-cal__list .bd-item--image .bd-item__body { flex: none; height: 220px; }
+.bd-cal__list .bd-item--ref .bd-ref__preview { flex: none; height: 180px; }
