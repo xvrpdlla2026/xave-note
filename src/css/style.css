@@ -4381,7 +4381,8 @@ html.is-board-boot body > *:not(.board) { display: none; }
   .bd-cal__dow span { padding: 0 6px; }
   .bd-cal__grid { gap: 4px; }
   .bd-cal__cell { min-height: 58px; gap: 3px; padding: 4px 6px 5px; }
-  .bd-cal__filters { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
+  .bd-cal__filters { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+  .bd-cal__filters::-webkit-scrollbar { display: none; }
   .bd-cal__chip { flex: 0 0 auto; height: 30px; }
   .bd-cal__row { padding: 9px 10px; }
   .bd-cal__day {
