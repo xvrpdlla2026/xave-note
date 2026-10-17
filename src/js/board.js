@@ -5601,6 +5601,11 @@ function richItemOf(box) {
       return;
     }
     if (target && target.closest && target.closest('input, textarea, [contenteditable="true"]') && !target.closest('.bd-table__cell')) return;
+    if (target && target.closest && target.closest('.bd-cal')) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     board.menuAt = canvasPoint(event.clientX, event.clientY);
