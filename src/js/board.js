@@ -2035,8 +2035,9 @@ function richItemOf(box) {
     return title ? title : kindLabel(item);
   }
 
-  function barLabel(item) {
-    var span = node('span', 'bd-item__kind', labelText(item));
+  function barLabel(item, kindOnly) {
+    var span = node('span', 'bd-item__kind', kindOnly ? kindLabel(item) : labelText(item));
+    if (kindOnly) span.setAttribute('data-kind-only', '1');
     span.title = 'Double-click to rename';
     span.addEventListener('dblclick', function (event) {
       event.preventDefault();
@@ -2083,7 +2084,7 @@ function richItemOf(box) {
         saveItem(item);
       }
       if (input.parentNode) input.parentNode.removeChild(input);
-      span.textContent = labelText(item);
+      span.textContent = span.hasAttribute('data-kind-only') ? kindLabel(item) : labelText(item);
       span.style.display = '';
     };
     var onClickAway = function (event) {
@@ -3915,7 +3916,7 @@ function richItemOf(box) {
       Array.prototype.forEach.call(document.querySelectorAll('.bd-item.is-dragging'), function (card) { card.classList.remove('is-dragging'); });
       Array.prototype.forEach.call(document.querySelectorAll('.bd-plan__pill'), function (n) { n.remove(); });
     });
-    var label = barLabel(view);
+    var label = barLabel(view, true);
     if (isBoard) {
       if (entry.foreign) label.appendChild(node('span', 'bd-plan__board', boardName(entry.boardId)));
       var jump = node('button', 'bd-item__plan is-jump', 'board');
