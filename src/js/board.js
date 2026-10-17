@@ -1397,6 +1397,7 @@ function richItemOf(box) {
     var button = node('button', 'bd-item__clear', '');
     button.type = 'button';
     button.title = 'Clear formatting';
+    button.setAttribute('data-font', 'clear');
     button.setAttribute('aria-label', 'Clear formatting');
     var glyph = App.ui.icon('restore', 12);
     if (glyph) button.appendChild(glyph);
@@ -1412,6 +1413,7 @@ function richItemOf(box) {
     var button = node('button', 'bd-item__font', label);
     button.type = 'button';
     button.setAttribute('aria-label', dir > 0 ? 'Bigger text' : 'Smaller text');
+    button.setAttribute('data-font', dir > 0 ? 'up' : 'down');
     button.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
     button.addEventListener('click', function (event) { event.stopPropagation(); bumpFont(item, dir); });
     return button;
@@ -2135,9 +2137,12 @@ function richItemOf(box) {
     });
     var tools = node('div', 'bd-item__tools');
     if (item.kind === 'note') {
-      tools.appendChild(fontButton(item, 'A-', -1));
-      tools.appendChild(fontButton(item, 'A+', 1));
-      tools.appendChild(clearFormatButton(item));
+      var fmt = node('div', 'bd-item__fmt');
+      fmt.appendChild(fontButton(item, 'A\u2212', -1));
+      fmt.appendChild(fontButton(item, 'A+', 1));
+      fmt.appendChild(clearFormatButton(item));
+      tools.appendChild(fmt);
+      tools.appendChild(node('span', 'bd-item__sep'));
     }
     var planButton = node('button', 'bd-item__plan-btn', '');
     planButton.type = 'button';
