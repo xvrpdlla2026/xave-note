@@ -15,6 +15,12 @@ window.NoteApp = window.NoteApp || {};
     marks: [],
     marking: false,
     railMarks: false,
+    dateRail: null,
+    railLayer: null,
+    railCols: null,
+    railDrop: null,
+    railBar: null,
+    railButton: null,
     open: false,
     items: [],
     view: { x: 0, y: 0, z: 1 },
@@ -170,6 +176,7 @@ window.NoteApp = window.NoteApp || {};
     if (active && active !== document.body && board.canvas.contains(active)) return;
     var size = stageSize();
     if (!size.w || !size.h) return;
+    if (board.dateRail) railRefresh();
     var view = board.view;
     var z = view.z || 1;
     var at = board.cullAt;
@@ -199,7 +206,8 @@ window.NoteApp = window.NoteApp || {};
     for (i = 0; i < items.length; i++) {
       item = items[i];
       if (keep && keep[item.id]) { materializeItem(item); continue; }
-      if (item.x + item.w > x1 && item.x < x2 && item.y + item.h > y1 && item.y < y2) { materializeItem(item); continue; }
+      var org = posOf(item);
+      if (org.x + item.w > x1 && org.x < x2 && org.y + item.h > y1 && org.y < y2) { materializeItem(item); continue; }
       if (!item.node) continue;
       if (item.node.parentNode) item.node.parentNode.removeChild(item.node);
       delete item.node;
@@ -561,16 +569,19 @@ window.NoteApp = window.NoteApp || {};
 
   function itemScreenRect(item) {
     var view = board.view;
-    return { x: view.x + item.x * view.z, y: view.y + item.y * view.z, w: item.w * view.z, h: item.h * view.z };
+    var at = posOf(item);
+    return { x: view.x + at.x * view.z, y: view.y + at.y * view.z, w: item.w * view.z, h: item.h * view.z };
   }
 
   function placeItem(item) {
     if (isChild(item) || !item.node) return;
-    item.node.style.left = item.x + 'px';
-    item.node.style.top = item.y + 'px';
+    var at = posOf(item);
+    item.node.style.left = at.x + 'px';
+    item.node.style.top = at.y + 'px';
     item.node.style.width = item.w + 'px';
     item.node.style.height = item.h + 'px';
     item.node.style.zIndex = String(item.z || 1);
+    paintDue(item);
     mapDraw();
   }
 
@@ -2113,6 +2124,10 @@ window.NoteApp = window.NoteApp || {};
     box.setAttribute('data-board-id', item.id);
     var bar = node('div', 'bd-item__bar');
     bar.appendChild(barLabel(item));
+    var dueChip = node('span', 'bd-item__due');
+    dueChip.hidden = true;
+    bar.appendChild(dueChip);
+    item.dueNode = dueChip;
     var remove = node('button', 'bd-item__x', '\u00d7');
     remove.type = 'button';
     remove.setAttribute('data-board-del', item.id);
@@ -2577,24 +2592,27 @@ window.NoteApp = window.NoteApp || {};
       rows = (multi ? board.selectedIds.map(findItem) : [item]).filter(function (row) {
         return row && !lockOf(row);
       });
-      var held = rows.filter(function (row) { return row.kind === 'column'; }).map(function (row) { return row.id; });
+      if (board.dateRail) rows = rows.filter(function (row) { return !isChild(row); });
+      var held = board.dateRail ? [] : rows.filter(function (row) { return row.kind === 'column'; }).map(function (row) { return row.id; });
       if (held.length) {
         rows = rows.filter(function (row) {
           return !(row.data && row.data.parent && held.indexOf(row.data.parent) >= 0);
         });
       }
       if (!rows.length) return;
-      rows.forEach(function (row) {
-        var home = containerOf(row);
-        row.home = home && home.grid && row.node ? { left: row.node.offsetLeft, top: row.node.offsetTop } : null;
-        row.homeIndex = home && home.grid && row.node ? gridSlots(home).indexOf(row.node) : -1;
-        row.homeCell = home && home.grid ? cellOf(home, row) : null;
-        if (home && home.grid && row.node) liftChild(row, home, row.homeCell);
-      });
-      clearDropSlot();
+      if (!board.dateRail) {
+        rows.forEach(function (row) {
+          var home = containerOf(row);
+          row.home = home && home.grid && row.node ? { left: row.node.offsetLeft, top: row.node.offsetTop } : null;
+          row.homeIndex = home && home.grid && row.node ? gridSlots(home).indexOf(row.node) : -1;
+          row.homeCell = home && home.grid ? cellOf(home, row) : null;
+          if (home && home.grid && row.node) liftChild(row, home, row.homeCell);
+        });
+        clearDropSlot();
+        lift.forEach(function (entry) { layoutContainer(entry.container, null); });
+      }
       pushUndo('move');
-      rows.forEach(function (row) { detachChild(row, event.clientX, event.clientY); });
-      lift.forEach(function (entry) { layoutContainer(entry.container, null); });
+      if (!board.dateRail) rows.forEach(function (row) { detachChild(row, event.clientX, event.clientY); });
     }
     if (grip && isChild(item) && item.node) {
       var boxed = item.node.getBoundingClientRect();
@@ -2602,7 +2620,8 @@ window.NoteApp = window.NoteApp || {};
       if (boxed.width) item.w = Math.round(boxed.width / unit);
       if (boxed.height) item.h = Math.round(boxed.height / unit);
     }
-    var start = { x: event.clientX, y: event.clientY, w: item.w, h: item.h, ix: item.x, iy: item.y };
+    var atStart = posOf(item);
+    var start = { x: event.clientX, y: event.clientY, w: item.w, h: item.h, ix: atStart.x, iy: atStart.y };
     if (grip) pushUndo('resize');
     if (grip) {
       board.resize = { item: item, start: start, dir: dir };
@@ -2610,6 +2629,7 @@ window.NoteApp = window.NoteApp || {};
     } else {
       board.drag = {
         item: item,
+        rail: !!board.dateRail,
         start: start,
         rows: rows.map(function (row) { return { item: row, x: row.x, y: row.y, home: row.home || null, homeIndex: row.homeIndex, homeCell: row.homeCell || null, span: row.data && row.data.span ? row.data.span : 1, rows: row.data && row.data.rows ? row.data.rows : 3 }; }),
       };
@@ -2626,7 +2646,7 @@ window.NoteApp = window.NoteApp || {};
     var target = event.target;
     var card = target.closest ? target.closest('.bd-item') : null;
     var handle = target.closest ? target.closest('.bd-item__bar') : null;
-    if (target.closest && target.closest('.board__rail, .board__picker, .board__mode')) return;
+    if (target.closest && target.closest('.board__rail, .board__picker, .board__mode, .bd-railbar')) return;
     if (board.space) {
       startPan(event, true);
       return;
@@ -2759,6 +2779,7 @@ window.NoteApp = window.NoteApp || {};
     }
     if (board.drag) {
       var drag = board.drag;
+      if (drag.rail) { railMove(event); return; }
       var dx = (event.clientX - drag.start.x) / scale;
       var dy = (event.clientY - drag.start.y) / scale;
       drag.rows.forEach(function (row) {
@@ -2825,6 +2846,7 @@ window.NoteApp = window.NoteApp || {};
     board.stage.classList.remove('is-panning');
     if (board.resize) board.stage.style.cursor = '';
     if (board.drag) {
+      if (board.drag.rail) { railCommit(); return; }
       var dragged = board.drag.rows;
       var over = containerUnder(event.clientX, event.clientY, dragged);
       var overItem = over ? over.item : null;
@@ -3258,6 +3280,345 @@ window.NoteApp = window.NoteApp || {};
     if (board.root) board.root.classList.toggle('is-marks', board.railMarks);
     if (!board.railMarks) setMarking(false);
     renderMarkList();
+  }
+
+  var RAIL_CW = { day: 260, week: 300, month: 340 };
+  var RAIL_GAP = 14;
+  var RAIL_PAD = 8;
+  var RAIL_HEAD = 58;
+  var RAIL_TOP = 10;
+  var RAIL_MIN_H = 460;
+
+  function pad2(value) { return (value < 10 ? '0' : '') + value; }
+
+  function dayStartOf(ms) {
+    var d = new Date(ms);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  }
+
+  function isoOfDay(ms) {
+    var d = new Date(ms);
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+  }
+
+  function parseDay(value) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || ''));
+    if (!m) return null;
+    var ms = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getTime();
+    return isNaN(ms) ? null : ms;
+  }
+
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  var WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  function posOf(item) {
+    if (board.dateRail && item.rail) return item.rail;
+    return { x: item.x, y: item.y };
+  }
+
+  function dueOf(item) {
+    return item && item.data ? parseDay(item.data.due) : null;
+  }
+
+  function shortDay(ms) {
+    var d = new Date(ms);
+    return MONTHS[d.getMonth()] + ' ' + d.getDate();
+  }
+
+  function paintDue(item) {
+    var chip = item.dueNode;
+    if (!chip) return;
+    var due = dueOf(item);
+    if (due === null) {
+      chip.hidden = true;
+      chip.textContent = '';
+      return;
+    }
+    chip.hidden = false;
+    chip.textContent = shortDay(due);
+    chip.title = 'Scheduled for ' + isoOfDay(due) + '. Drag this card in the date rail to reschedule it.';
+  }
+
+  function setDue(item, ms) {
+    if (!item.data) item.data = {};
+    if (ms === null) delete item.data.due;
+    else item.data.due = isoOfDay(ms);
+    saveItem(item);
+    paintDue(item);
+  }
+
+  function unitStart(ms, unit) {
+    var d = new Date(dayStartOf(ms));
+    if (unit === 'week') d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    else if (unit === 'month') d.setDate(1);
+    return d.getTime();
+  }
+
+  function unitIndex(ms, unit, anchor) {
+    if (unit === 'month') {
+      var a = new Date(anchor);
+      var b = new Date(ms);
+      return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+    }
+    var step = unit === 'week' ? 7 * 86400000 : 86400000;
+    return Math.round((unitStart(ms, unit) - anchor) / step);
+  }
+
+  function railColumnX(index) {
+    return Math.round(index * (RAIL_CW[board.dateRail.unit] + RAIL_GAP));
+  }
+
+  function railUnitMs(index) {
+    var d = new Date(board.dateRail.anchor);
+    if (board.dateRail.unit === 'month') d.setMonth(d.getMonth() + index);
+    else d.setDate(d.getDate() + (board.dateRail.unit === 'week' ? index * 7 : index));
+    return d.getTime();
+  }
+
+  function railDropMs(index, item) {
+    var base = railUnitMs(index);
+    var was = dueOf(item);
+    if (was === null || board.dateRail.unit === 'day') return base;
+    var out = new Date(base);
+    if (board.dateRail.unit === 'week') out.setDate(out.getDate() + ((new Date(was).getDay() + 6) % 7));
+    else {
+      var last = new Date(out.getFullYear(), out.getMonth() + 1, 0).getDate();
+      out.setDate(Math.min(new Date(was).getDate(), last));
+    }
+    return out.getTime();
+  }
+
+  function railLabel(index) {
+    if (index === -2) return 'Unscheduled';
+    if (index === -1) return 'Overdue';
+    var ms = railUnitMs(index);
+    var d = new Date(ms);
+    if (board.dateRail.unit === 'month') return MONTHS[d.getMonth()] + ' ' + d.getFullYear();
+    if (board.dateRail.unit === 'week') return MONTHS[d.getMonth()] + ' ' + d.getDate();
+    return WEEKDAYS[d.getDay()] + ' ' + d.getDate();
+  }
+
+  function railLayout() {
+    if (!board.dateRail) return;
+    var unit = board.dateRail.unit;
+    var cols = {};
+    board.items.forEach(function (item) {
+      item.rail = null;
+      if (isChild(item)) return;
+      var due = dueOf(item);
+      var index = -2;
+      if (due !== null) {
+        var at = unitIndex(due, unit, board.dateRail.anchor);
+        index = at < 0 ? -1 : at;
+      }
+      var col = cols[index] || (cols[index] = { y: 0, n: 0 });
+      item.rail = { col: index, x: railColumnX(index) + RAIL_PAD, y: RAIL_TOP + col.y };
+      col.y += (item.h || 160) + RAIL_GAP;
+      col.n++;
+    });
+    board.railCols = cols;
+  }
+
+  function railHasContainers() {
+    for (var i = 0; i < board.items.length; i++) if (board.items[i].grid) return true;
+    return false;
+  }
+
+  function railSpan() {
+    var size = stageSize();
+    var z = board.view.z || 1;
+    var step = RAIL_CW[board.dateRail.unit] + RAIL_GAP;
+    var first = Math.floor(-board.view.x / z / step) - 1;
+    var last = Math.ceil((size.w - board.view.x) / z / step) + 1;
+    if (first < -2) first = -2;
+    if (last < 0) last = 0;
+    if (last - first > 80) last = first + 80;
+    return { first: first, last: last };
+  }
+
+  function railPaint() {
+    if (!board.dateRail || !board.canvas) return;
+    var span = railSpan();
+    var unit = board.dateRail.unit;
+    var cw = RAIL_CW[unit];
+    var cols = board.railCols || {};
+    var key = [unit, board.dateRail.anchor, span.first, span.last, board.items.length].join(':') + ':' + board.railDrop;
+    if (board.railKey === key && board.railLayer && board.railLayer.parentNode) return;
+    board.railKey = key;
+    var layer = board.railLayer;
+    if (!layer || !layer.parentNode) {
+      layer = node('div', 'bd-rail');
+      board.canvas.appendChild(layer);
+      board.railLayer = layer;
+    }
+    layer.textContent = '';
+    var today = unitStart(Date.now(), unit);
+    for (var i = span.first; i <= span.last; i++) {
+      var x = railColumnX(i);
+      var count = cols[i] ? cols[i].n : 0;
+      var col = node('div', 'bd-rail__col');
+      col.setAttribute('data-rail-col', String(i));
+      col.style.left = x + 'px';
+      col.style.top = -RAIL_HEAD + 'px';
+      col.style.width = cw + 'px';
+      col.style.height = Math.max(RAIL_MIN_H, (cols[i] ? cols[i].y : 0) + 40) + 'px';
+      if (i === -2) col.classList.add('is-undated');
+      if (i === -1) col.classList.add('is-overdue');
+      if (i >= 0 && railUnitMs(i) === today) col.classList.add('is-today');
+      if (i === board.railDrop) col.classList.add('is-over');
+      layer.appendChild(col);
+      var head = node('div', 'bd-rail__head');
+      head.style.left = x + RAIL_PAD + 4 + 'px';
+      head.style.top = -RAIL_HEAD + 12 + 'px';
+      head.style.width = cw - RAIL_PAD * 2 - 8 + 'px';
+      head.appendChild(node('span', 'bd-rail__title', railLabel(i)));
+      if (i === -2) head.appendChild(node('span', 'bd-rail__hint', cw > 250 ? 'drag a card here to unschedule' : ''));
+      head.appendChild(node('span', 'bd-rail__n', String(count)));
+      layer.appendChild(head);
+    }
+  }
+
+  function railRefresh() {
+    var containers = railHasContainers();
+    railLayout();
+    if (containers) {
+      settleChildren();
+      railLayout();
+    }
+    railPaint();
+  }
+
+  function railFit() {
+    var size = stageSize();
+    var z = board.view.z || 1;
+    if (size.w) {
+      var step = RAIL_CW[board.dateRail.unit] + RAIL_GAP;
+      z = Math.min(1, Math.max(0.35, size.w / (5.4 * step)));
+    }
+    board.view.z = z;
+    board.view.x = 156 - railColumnX(-2) * z;
+    board.view.y = (RAIL_HEAD + 16) * z;
+    cancelViewGlide();
+    applyView();
+  }
+
+  function railColAt(clientX, clientY) {
+    var at = canvasPoint(clientX, clientY);
+    var cw = RAIL_CW[board.dateRail.unit];
+    var span = railSpan();
+    for (var i = span.first; i <= span.last; i++) {
+      var x = railColumnX(i);
+      if (at.x >= x && at.x <= x + cw) return i;
+    }
+    return null;
+  }
+
+  function railMove(event) {
+    var drag = board.drag;
+    var scale = board.view.z || 1;
+    var dx = (event.clientX - drag.start.x) / scale;
+    var dy = (event.clientY - drag.start.y) / scale;
+    drag.rows.forEach(function (row) {
+      if (!row.item.node) return;
+      row.item.node.style.left = Math.round(drag.start.ix + dx) + 'px';
+      row.item.node.style.top = Math.round(drag.start.iy + dy) + 'px';
+      row.item.node.classList.add('is-rail-drag');
+    });
+    var col = railColAt(event.clientX, event.clientY);
+    if (col !== board.railDrop) {
+      board.railDrop = col;
+      railMark();
+    }
+  }
+
+  function railMark() {
+    if (!board.railLayer) return;
+    var cols = board.railLayer.querySelectorAll('[data-rail-col]');
+    for (var i = 0; i < cols.length; i++) {
+      cols[i].classList.toggle('is-over', Number(cols[i].getAttribute('data-rail-col')) === board.railDrop);
+    }
+  }
+
+  function railCommit() {
+    var col = board.railDrop;
+    var rows = board.drag ? board.drag.rows.slice() : [];
+    board.railDrop = null;
+    board.drag = null;
+    rows.forEach(function (row) {
+      if (row.item.node) row.item.node.classList.remove('is-rail-drag');
+    });
+    if (col !== null && col !== undefined && col !== -1) {
+      rows.forEach(function (row) {
+        setDue(row.item, col === -2 ? null : railDropMs(col, row.item));
+      });
+    }
+    board.cullForce = true;
+    repaintAll();
+  }
+
+  function railBarBuild() {
+    if (board.railBar || !board.stage) return board.railBar;
+    var bar = node('div', 'bd-railbar');
+    bar.hidden = true;
+    [['day', 'Day'], ['week', 'Week'], ['month', 'Month']].forEach(function (pair) {
+      var button = node('button', 'bd-railbar__b', pair[1]);
+      button.type = 'button';
+      button.setAttribute('data-rail-unit', pair[0]);
+      button.addEventListener('click', function () {
+        if (!board.dateRail || board.dateRail.unit === pair[0]) return;
+        setRail(pair[0]);
+      });
+      bar.appendChild(button);
+    });
+    var today = node('button', 'bd-railbar__b is-quiet', 'Today');
+    today.type = 'button';
+    today.addEventListener('click', function () { if (board.dateRail) railFit(); });
+    bar.appendChild(today);
+    var off = node('button', 'bd-railbar__b is-quiet', 'Close');
+    off.type = 'button';
+    off.addEventListener('click', function () { setRail(null); });
+    bar.appendChild(off);
+    board.stage.appendChild(bar);
+    board.railBar = bar;
+    return bar;
+  }
+
+  function setRail(unit) {
+    var next = unit && RAIL_CW[unit] ? unit : null;
+    setMarking(false);
+    disarmMarkMove();
+    var bar = railBarBuild();
+    if (!next) {
+      board.dateRail = null;
+      board.railDrop = null;
+      board.items.forEach(function (item) { item.rail = null; });
+      if (board.railLayer && board.railLayer.parentNode) board.railLayer.parentNode.removeChild(board.railLayer);
+      board.railLayer = null;
+      board.railKey = '';
+      if (bar) bar.hidden = true;
+      if (board.railButton) board.railButton.classList.remove('is-on');
+      board.cullForce = true;
+      repaintAll();
+      return;
+    }
+    board.dateRail = { unit: next, anchor: unitStart(Date.now(), next) };
+    board.items.forEach(function (item) { item.rail = null; });
+    if (bar) {
+      bar.hidden = false;
+      var buttons = bar.querySelectorAll('[data-rail-unit]');
+      for (var i = 0; i < buttons.length; i++) buttons[i].classList.toggle('is-on', buttons[i].getAttribute('data-rail-unit') === next);
+    }
+    if (board.railButton) board.railButton.classList.add('is-on');
+    railFit();
+    board.cullForce = true;
+    repaintAll();
+    util.toast('Drag a card onto a day to schedule it');
+  }
+
+  function toggleRail() {
+    if (board.dateRail) setRail(null);
+    else setRail('day');
   }
 
   function goToMark(mark) {
@@ -3719,8 +4080,9 @@ window.NoteApp = window.NoteApp || {};
         entry.item.data.span = box.span;
         if (typeof entry.item.data.col !== 'number') entry.item.data.col = box.col;
         if (typeof entry.item.data.row !== 'number') entry.item.data.row = box.row;
-        entry.item.x = Math.round(container.x + offsetX + box.left);
-        entry.item.y = Math.round(container.y + offsetY + box.top);
+        var org = posOf(container);
+        entry.item.x = Math.round(org.x + offsetX + box.left);
+        entry.item.y = Math.round(org.y + offsetY + box.top);
       }
       bottom = Math.max(bottom, box.top + box.height);
     });
@@ -4158,6 +4520,7 @@ window.NoteApp = window.NoteApp || {};
 
   function repaintAll() {
     if (!board.canvas) return;
+    board.railKey = '';
     clearCanvas();
     board.cullForce = true;
     cullPass();
@@ -6177,6 +6540,15 @@ window.NoteApp = window.NoteApp || {};
     board.mapCtx = mapCanvas.getContext('2d');
     setMapHidden(App.prefs.get('board.mapHidden', false));
     root.appendChild(top);
+    var plan = node('button', 'board__plan');
+    plan.type = 'button';
+    plan.title = 'Plan by date';
+    plan.setAttribute('aria-label', 'Plan by date');
+    plan.setAttribute('aria-pressed', 'false');
+    plan.appendChild(App.ui.icon('grid', 15));
+    plan.addEventListener('click', function () { toggleRail(); });
+    board.railButton = plan;
+    top.appendChild(plan);
     board.root = root;
     board.stage = stage;
     board.canvas = canvas;
@@ -6676,6 +7048,10 @@ window.NoteApp = window.NoteApp || {};
     try { App.prefs.set('board.open', true); } catch (e) { }
     board.marking = false;
     board.moving = null;
+    board.dateRail = null;
+    board.railDrop = null;
+    board.railLayer = null;
+    board.railKey = '';
     board.railMarks = false;
     board.editors = [];
     if (board.stage) board.stage.classList.remove('is-marking');
