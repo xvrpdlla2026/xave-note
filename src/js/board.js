@@ -3313,8 +3313,20 @@ function richItemOf(box) {
     return d.getTime();
   }
 
+  function planKeysOf(item) {
+    if (!item || !item.data) return [];
+    var out = [];
+    var list = item.data.plans;
+    if (Object.prototype.toString.call(list) === '[object Array]') {
+      list.forEach(function (key) { if (key && out.indexOf(key) < 0) out.push(key); });
+    }
+    if (item.data.plan && out.indexOf(item.data.plan) < 0) out.push(item.data.plan);
+    return out;
+  }
+
   function planKeyOf(item) {
-    return item && item.data && item.data.plan ? item.data.plan : null;
+    var keys = planKeysOf(item);
+    return keys.length ? keys[0] : null;
   }
 
   function planTitle(item) {
@@ -3348,26 +3360,27 @@ function richItemOf(box) {
   function planEntries(key) {
     var out = [];
     board.items.forEach(function (item) {
-      if (planKeyOf(item) === key) out.push({ board: true, item: item, title: planTitle(item) || item.kind });
+      if (planKeysOf(item).indexOf(key) >= 0) out.push({ board: true, key: key, item: item, title: planTitle(item) || item.kind });
     });
     board.plans.forEach(function (item) {
-      if (item.data && item.data.planner === key) out.push({ board: false, item: item, title: planLabelOf(item) });
+      if (item.data && item.data.planner === key) out.push({ board: false, key: key, item: item, title: planLabelOf(item) });
     });
     return out;
   }
 
   function paintPlan(item) {
     if (!item.node) return;
-    var key = planKeyOf(item);
+    var keys = planKeysOf(item);
+    var label = keys.map(function (key) { return calShort(key); }).join(', ');
     var button = item.node.querySelector('.bd-item__plan-btn');
     if (button) {
-      button.classList.toggle('is-on', !!key);
-      button.title = key ? 'Planned for ' + calShort(key) + '. Click to change or clear.' : 'Add to planner';
+      button.classList.toggle('is-on', keys.length > 0);
+      button.title = keys.length ? 'Planned for ' + label + '. Click to add another day.' : 'Add to planner';
     }
     var chip = item.node.querySelector('.bd-item__plan');
     if (!chip) return;
-    chip.hidden = !key;
-    chip.textContent = key ? calShort(key) : '';
+    chip.hidden = keys.length === 0;
+    if (keys.length) chip.textContent = keys.length > 1 ? calShort(keys[0]) + ' +' + (keys.length - 1) : calShort(keys[0]);
   }
 
   function rowsFor(item) {
@@ -3377,13 +3390,45 @@ function richItemOf(box) {
     return [item];
   }
 
-  function setPlan(item, key) {
-    if (!item || !item.data) return;
-    if (key) item.data.plan = key;
-    else delete item.data.plan;
+  function planAdd(item, key, quiet) {
+    if (!item || !item.data || !key) return false;
+    var keys = planKeysOf(item);
+    if (keys.indexOf(key) >= 0) {
+      if (!quiet) util.toast('Already planned for ' + calShort(key));
+      return false;
+    }
+    keys.push(key);
+    keys.sort();
+    item.data.plans = keys;
+    item.data.plan = keys[0];
     item.updated_at = util.nowIso();
     try { App.db.boardAddItem(item); } catch (e) { }
     paintPlan(item);
+    return true;
+  }
+
+  function planSync(item, keys) {
+    if (keys.length) { item.data.plans = keys; item.data.plan = keys[0]; }
+    else { delete item.data.plans; delete item.data.plan; }
+    item.updated_at = util.nowIso();
+    try { App.db.boardAddItem(item); } catch (e) { }
+    paintPlan(item);
+  }
+
+  function planRemove(item, key) {
+    if (!item || !item.data) return;
+    planSync(item, planKeysOf(item).filter(function (other) { return other !== key; }));
+  }
+
+  function planClear(item) {
+    if (!item || !item.data) return;
+    planSync(item, []);
+  }
+
+  function setPlan(item, key) {
+    if (!item || !item.data) return;
+    if (!key) return planClear(item);
+    planAdd(item, key);
   }
 
   function savePlanItem(item) {
@@ -3524,8 +3569,11 @@ function richItemOf(box) {
     var today = calKey(Date.now());
     var moved = 0;
     board.items.forEach(function (item) {
-      var key = planKeyOf(item);
-      if (key && key < today) { item.data.plan = today; savePlanItem(item); paintPlan(item); moved++; }
+      var stale = planKeysOf(item).filter(function (key) { return key < today; });
+      if (!stale.length) return;
+      planSync(item, planKeysOf(item).filter(function (key) { return key >= today; }));
+      planAdd(item, today, true);
+      moved++;
     });
     board.plans.forEach(function (item) {
       var key = item.data && item.data.planner;
@@ -3542,11 +3590,16 @@ function richItemOf(box) {
     if (!drag) return;
     var item = drag.board ? findItem(drag.id) : board.plans.filter(function (row) { return row.id === drag.id; })[0];
     if (!item) return;
-    if (drag.board) setPlan(item, key);
-    else { item.data.planner = key; savePlanItem(item); }
+    if (drag.board) {
+      if (!planAdd(item, key)) return;
+      util.toast('Planned for ' + calShort(key));
+    } else {
+      item.data.planner = key;
+      savePlanItem(item);
+      util.toast('Moved to ' + calShort(key));
+    }
     if (board.planner) board.planner.date = key;
     paintPlanner();
-    util.toast('Moved to ' + calShort(key));
   }
 
   function minutesOf(text) {
@@ -3706,6 +3759,26 @@ function richItemOf(box) {
     util.toast(/^(https?:\/\/|www\.)\S+$/i.test(value) ? 'Added a link' : 'Added a note');
   }
 
+  function adoptDragText(text, key) {
+    var id = String(text || '').trim();
+    if (!id || id.length > 64 || /^https?:\/\//i.test(id)) return false;
+    var item = findItem(id);
+    if (item) {
+      planAdd(item, key);
+      if (board.planner) board.planner.date = key;
+      paintPlanner();
+      return true;
+    }
+    var row = board.plans.filter(function (other) { return other.id === id; })[0];
+    if (!row) return false;
+    row.data.planner = key;
+    savePlanItem(row);
+    if (board.planner) board.planner.date = key;
+    paintPlanner();
+    util.toast('Moved to ' + calShort(key));
+    return true;
+  }
+
   function planDropEvent(event, key) {
     if (!planDragHas(event)) return false;
     event.preventDefault();
@@ -3714,7 +3787,9 @@ function richItemOf(box) {
     if (dt.files && dt.files.length) { planDropFiles(dt.files, key); return true; }
     var text = '';
     try { text = dt.getData('text/uri-list') || dt.getData('text/plain') || ''; } catch (e) { text = ''; }
-    if (!text.trim()) return false;
+    text = String(text).trim();
+    if (!text) return false;
+    if (adoptDragText(text, key)) return true;
     planDropText(text, key);
     return true;
   }
@@ -3778,7 +3853,7 @@ function richItemOf(box) {
     kill.title = isBoard ? 'Remove from planner' : 'Delete this block';
     kill.addEventListener('click', function (event) {
       event.stopPropagation();
-      if (isBoard) { setPlan(item, null); paintPlanner(); }
+      if (isBoard) { planRemove(item, entry.key || plan.date); paintPlanner(); }
       else removePlannerItem(item);
     });
     tools.appendChild(kill);
@@ -3914,10 +3989,16 @@ function richItemOf(box) {
     list.addEventListener('dragleave', function () { list.classList.remove('is-over'); });
     list.addEventListener('drop', function (event) {
       event.stopPropagation();
-      if (!planDropEvent(event, plan.date)) return;
       list.classList.remove('is-over');
+      if (board.planDrag) { dropPlanOn(plan.date); return; }
+      planDropEvent(event, plan.date);
     });
-    dayEntries.forEach(function (entry) { list.appendChild(planCard(entry)); });
+    dayEntries.forEach(function (entry) {
+      var card = planCard(entry);
+      list.appendChild(card);
+      var ink = card.querySelector('.bd-draw__canvas');
+      if (ink && ink.inkPaint) requestAnimationFrame(function () { ink.inkPaint(); });
+    });
     var rail = node('div', 'bd-cal__rail');
     BLOCK_KINDS.forEach(function (entry) {
       rail.appendChild(railButton(entry.icon, entry.label, function () { addPlannerItem(entry.kind, plan.date, ''); }));
@@ -6652,7 +6733,7 @@ function richItemOf(box) {
       var ctx = canvas.getContext('2d');
       ctx.setTransform(k, 0, 0, k, 0, 0);
       ctx.clearRect(0, 0, w, h);
-      if (item.data && typeof item.data.ox === 'number') {
+    if (item.data && typeof item.data.ox === 'number' && !(wrap.closest && wrap.closest('.bd-cal'))) {
         ctx.setTransform(k, 0, 0, k, k * (item.data.ox - item.x - 1), k * (item.data.oy - item.y - 1 - INK_BAR));
       } else {
         var box = strokeBox(strokes);
