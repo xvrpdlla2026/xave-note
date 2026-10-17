@@ -253,6 +253,27 @@ window.NoteApp = window.NoteApp || {};
 
   var IMAGE_DATA_URL = /^data:image\/(png|jpeg|gif|webp|bmp|avif);base64,[A-Za-z0-9+/]+={0,2}$/i;
 
+  function normalizeCheckboxRows(root) {
+    if (!root || !root.querySelectorAll) return;
+    var rows = root.querySelectorAll('.task-row');
+    Array.prototype.forEach.call(rows, function (row) {
+      var box = row.querySelector ? row.querySelector('input[type="checkbox"]') : null;
+      if (!box) return;
+      var label = row.querySelector('span');
+      var line = document.createElement('div');
+      line.appendChild(box);
+      line.appendChild(document.createTextNode('\u00a0'));
+      if (label) {
+        while (label.firstChild) line.appendChild(label.firstChild);
+      } else {
+        Array.prototype.forEach.call(row.childNodes, function (node) {
+          if (node !== box) line.appendChild(node);
+        });
+      }
+      row.parentNode.replaceChild(line, row);
+    });
+  }
+
   function sanitizeRichHtml(html) {
     var s = String(html || '');
     var images = [];
@@ -415,6 +436,7 @@ window.NoteApp = window.NoteApp || {};
     extractWikiLinks: extractWikiLinks,
     noteToPlainText: noteToPlainText,
     sanitizeRichHtml: sanitizeRichHtml,
+    normalizeCheckboxRows: normalizeCheckboxRows,
     formatBytes: formatBytes,
     formatWhen: formatWhen,
     isImageMime: isImageMime,

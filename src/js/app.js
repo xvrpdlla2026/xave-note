@@ -536,27 +536,161 @@ window.NoteApp = window.NoteApp || {};
     readEditorBody();
   }
 
+  function isBlockEl(node) {
+    return !!node && node.nodeType === 1
+      && /^(DIV|P|LI|UL|OL|H1|H2|H3|H4|H5|H6|BLOCKQUOTE|PRE|SECTION|ARTICLE|TD|TH)$/.test(node.tagName);
+  }
+
+  function lineInsertPoint(node) {
+    var body = document.getElementById('note-body');
+    var el = node && node.nodeType === 3 ? node.parentNode : node;
+    if (!body || !el || !body.contains(el)) return null;
+    var child = el;
+    while (child.parentNode && child.parentNode !== body) child = child.parentNode;
+    if (child.parentNode !== body) return null;
+    if (isBlockEl(child)) return { parent: child, before: child.firstChild, line: child, brLine: false };
+    var start = child;
+    while (start.previousSibling) {
+      var prev = start.previousSibling;
+      if (prev.nodeType === 1 && (prev.tagName === 'BR' || isBlockEl(prev))) break;
+      start = prev;
+    }
+    return { parent: start.parentNode, before: start, line: child, brLine: true };
+  }
+
+  function leadingCheckbox(point) {
+    if (!point || !point.before || point.before.nodeType !== 1) return null;
+    return point.before.tagName === 'INPUT' && point.before.type === 'checkbox' ? point.before : null;
+  }
+
+  function newCheckbox() {
+    var box = document.createElement('input');
+    box.type = 'checkbox';
+    box.tabIndex = -1;
+    return box;
+  }
+
+  function checkboxHead() {
+    var head = document.createDocumentFragment();
+    head.appendChild(newCheckbox());
+    head.appendChild(document.createTextNode('\u00a0'));
+    return head;
+  }
+
+  function dropCheckbox(box) {
+    var host = box.parentNode;
+    var gap = box.nextSibling;
+    var caret = document.createRange();
+    caret.setStart(host, 0);
+    if (gap && gap.nodeType === 3) {
+      if (/^[\u00a0 ]/.test(gap.nodeValue)) gap.nodeValue = gap.nodeValue.slice(1);
+      if (gap.nodeValue) caret.setStart(gap, 0);
+      else if (gap.parentNode) gap.parentNode.removeChild(gap);
+    }
+    host.removeChild(box);
+    caret.collapse(true);
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(caret);
+  }
+
+  function lineIsEmpty(point, box) {
+    if (!point.brLine) {
+      return String(point.line.textContent || '').replace(/\u00a0/g, ' ').trim() === '';
+    }
+    var node = box;
+    while (node) {
+      if (node.nodeType === 3 && node.nodeValue.replace(/\u00a0/g, ' ').trim()) return false;
+      var next = node.nextSibling;
+      if (next && next.nodeType === 1 && (next.tagName === 'BR' || isBlockEl(next))) break;
+      node = next;
+    }
+    return true;
+  }
+
   function fmtCheckbox() {
     var body = document.getElementById('note-body');
     if (!state.currentNote || !body || !restoreSelection()) return;
     var sel = window.getSelection();
-    var box = document.createElement('input');
-    box.type = 'checkbox';
-    box.tabIndex = -1;
-    var range = sel.rangeCount ? sel.getRangeAt(0) : null;
-    if (range) {
-      range.collapse(true);
-      range.insertNode(box);
-    } else {
-      body.appendChild(box);
+    if (!sel.rangeCount) return;
+    var range = sel.getRangeAt(0);
+    var lines = [];
+    if (!range.collapsed) {
+      Array.prototype.forEach.call(body.children, function (child) {
+        try { if (range.intersectsNode(child)) lines.push(child); } catch (e) {  }
+      });
     }
-    var gap = document.createTextNode('\u00a0');
-    if (box.parentNode) box.parentNode.insertBefore(gap, box.nextSibling);
-    var caret = document.createRange();
-    caret.setStartAfter(gap);
-    caret.collapse(true);
-    sel.removeAllRanges();
-    sel.addRange(caret);
+    if (lines.length > 1) {
+      lines.forEach(function (line) {
+        if (line.firstChild && line.firstChild.nodeType === 1
+            && line.firstChild.tagName === 'INPUT' && line.firstChild.type === 'checkbox') return;
+        line.insertBefore(checkboxHead(), line.firstChild);
+      });
+      saveSelection();
+      readEditorBody();
+      return;
+    }
+    var point = lineInsertPoint(range.startContainer);
+    if (!point) return;
+    var existing = leadingCheckbox(point);
+    if (existing) {
+      dropCheckbox(existing);
+      saveSelection();
+      readEditorBody();
+      return;
+    }
+    var empty = String(point.line.textContent || '').replace(/\u00a0/g, ' ').trim() === '';
+    var head = checkboxHead();
+    var gap = head.lastChild;
+    point.parent.insertBefore(head, point.before);
+    if (empty) {
+      var caret = document.createRange();
+      caret.setStartAfter(gap);
+      caret.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(caret);
+    }
+    saveSelection();
+    readEditorBody();
+  }
+
+  function onEditorTaskKey(event) {
+    if (!state.currentNote) return;
+    if (event.key !== 'Enter' && event.key !== 'Backspace') return;
+    if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+    var body = document.getElementById('note-body');
+    if (!body || !event.target || !body.contains(event.target)) return;
+    var sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return;
+    var range = sel.getRangeAt(0);
+    var point = lineInsertPoint(range.startContainer);
+    if (!point) return;
+    var box = leadingCheckbox(point);
+    if (!box) return;
+    if (event.key === 'Backspace') {
+      if (!range.collapsed) return;
+      var gap = box.nextSibling;
+      if (range.startContainer !== gap || range.startOffset !== 0) return;
+      event.preventDefault();
+      dropCheckbox(box);
+      saveSelection();
+      readEditorBody();
+      return;
+    }
+    if (typeof document.execCommand !== 'function') return;
+    event.preventDefault();
+    if (lineIsEmpty(point, box)) {
+      dropCheckbox(box);
+      saveSelection();
+      readEditorBody();
+      return;
+    }
+    if (point.brLine) {
+      document.execCommand('insertHTML', false, '<br><input type="checkbox" tabindex="-1">\u00a0');
+    } else {
+      document.execCommand('insertParagraph');
+      document.execCommand('insertHTML', false, '<input type="checkbox" tabindex="-1">\u00a0');
+    }
     saveSelection();
     readEditorBody();
   }
@@ -5131,6 +5265,8 @@ window.NoteApp = window.NoteApp || {};
       saveSelection();
       readEditorBody();
     });
+
+    dom.main.addEventListener('keydown', onEditorTaskKey);
 
     dom.main.addEventListener('keydown', function (event) {
       if (!state.linkSuggest) return;

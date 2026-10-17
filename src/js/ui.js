@@ -1234,6 +1234,7 @@ window.NoteApp = window.NoteApp || {};
     body.innerHTML = util.isRichHtml(rawBody)
       ? util.sanitizeRichHtml(rawBody)
       : (rawBody ? util.escapeHtml(rawBody).replace(/\n/g, '<br>') : '');
+    util.normalizeCheckboxRows(body);
     util.linkifyWikiText(body);
     hydrateNoteImages(body);
     if (ctx.links && ctx.links.outgoing) {
