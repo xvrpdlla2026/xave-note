@@ -3955,13 +3955,18 @@ function richItemOf(box) {
     main.appendChild(top);
     var head = node('div', 'bd-cal__month');
     head.appendChild(calButton('\u2039', function () { shiftMonth(plan, -1); }, 'is-icon'));
-    head.appendChild(node('span', '', CAL_MONTHS[new Date(plan.month).getMonth()] + ' ' + new Date(plan.month).getFullYear()));
+    head.appendChild(node('span', 'bd-cal__mtitle', CAL_MONTHS[new Date(plan.month).getMonth()] + ' ' + new Date(plan.month).getFullYear()));
     head.appendChild(calButton('\u203a', function () { shiftMonth(plan, 1); }, 'is-icon'));
+    head.appendChild(node('div', 'bd-cal__spacer'));
+    var sum = node('span', 'bd-cal__msum', '');
+    head.appendChild(sum);
     main.appendChild(head);
     var dow = node('div', 'bd-cal__dow');
     CAL_DOW.forEach(function (day) { dow.appendChild(node('span', '', day)); });
     main.appendChild(dow);
     var grid = node('div', 'bd-cal__grid');
+    var monthTotal = 0;
+    var monthLate = 0;
     var first = new Date(plan.month);
     var start = new Date(plan.month);
     start.setDate(1 - first.getDay());
@@ -3977,12 +3982,14 @@ function richItemOf(box) {
       if (key === todayKey) cell.classList.add('is-today');
       if (key === plan.date) cell.classList.add('is-sel');
       var entries = planFiltered(planEntries(key));
+      monthTotal += entries.length;
       var num = node('span', 'bd-cal__n');
-      num.appendChild(node('span', '', String(day.getDate())));
+      num.appendChild(node('span', key === todayKey ? 'bd-cal__num is-today' : 'bd-cal__num', String(day.getDate())));
       if (key < todayKey) {
         var late = 0;
         entries.forEach(function (entry) { if (!planDoneOf(entry.item, entry.board)) late++; });
         if (late) num.appendChild(node('span', 'bd-cal__nlate', late + ' late'));
+        monthLate += late;
       }
       cell.appendChild(num);
       var groups = [];
@@ -4028,11 +4035,22 @@ function richItemOf(box) {
       grid.appendChild(cell);
     }
     main.appendChild(grid);
+    sum.textContent = monthTotal
+      ? monthTotal + (monthTotal === 1 ? ' block' : ' blocks') + (monthLate ? ' \u00b7 ' + monthLate + ' late' : '')
+      : 'Nothing planned this month';
     el.appendChild(main);
     var column = node('div', 'bd-cal__day');
     var ms = calMs(plan.date);
     var picked = new Date(ms === null ? Date.now() : ms);
-    column.appendChild(node('div', 'bd-cal__dayhead', CAL_DAYS[picked.getDay()] + ', ' + CAL_MONTHS[picked.getMonth()] + ' ' + picked.getDate()));
+    var dayTop = node('div', 'bd-cal__daytop');
+    var dayInfo = node('div', 'bd-cal__dayinfo');
+    dayInfo.appendChild(node('div', 'bd-cal__dayhead', CAL_DAYS[picked.getDay()] + ', ' + CAL_MONTHS[picked.getMonth()] + ' ' + picked.getDate()));
+    var dayCountNode = node('div', 'bd-cal__daycount', '');
+    dayInfo.appendChild(dayCountNode);
+    dayTop.appendChild(dayInfo);
+    var blockButton = calButton('+ Block', function () { kindMenu(blockButton, plan.date); }, 'is-quiet');
+    dayTop.appendChild(blockButton);
+    column.appendChild(dayTop);
     var week = node('div', 'bd-cal__week');
     var weekStart = new Date(ms === null ? Date.now() : ms);
     weekStart.setDate(weekStart.getDate() - weekStart.getDay());
@@ -4058,14 +4076,25 @@ function richItemOf(box) {
     }
     column.appendChild(week);
     if (plan.mode === 'browse') {
-      var add = node('div', 'bd-cal__add');
-      var addButton = calButton('+ Block', function () { kindMenu(addButton, plan.date); }, 'is-quiet');
-      add.appendChild(addButton);
-      column.appendChild(add);
+      var tools = node('div', 'bd-cal__tools');
+      var rail = node('div', 'bd-cal__rail');
+      BLOCK_KINDS.forEach(function (entry) {
+        var button = railButton(entry.icon, entry.label, function () { addPlannerItem(entry.kind, plan.date, ''); });
+        button.title = entry.label;
+        button.setAttribute('aria-label', entry.label);
+        rail.appendChild(button);
+      });
+      tools.appendChild(rail);
+      column.appendChild(tools);
     }
     if (plan.mode === 'book') column.appendChild(slotPanel(plan.date, plan));
     var list = node('div', 'bd-cal__list');
     var dayEntries = planSort(planFiltered(planEntries(plan.date)));
+    var dayDone = 0;
+    dayEntries.forEach(function (entry) { if (planDoneOf(entry.item, entry.board)) dayDone++; });
+    dayCountNode.textContent = dayEntries.length
+      ? dayEntries.length + (dayEntries.length === 1 ? ' block' : ' blocks') + (dayDone ? ' \u00b7 ' + dayDone + ' done' : '')
+      : 'Nothing planned';
     if (!dayEntries.length) {
       list.appendChild(node('div', 'bd-cal__empty', plan.query
         ? 'Nothing here matches the filter.'
@@ -4087,11 +4116,6 @@ function richItemOf(box) {
       var ink = card.querySelector('.bd-draw__canvas');
       if (ink && ink.inkPaint) requestAnimationFrame(function () { ink.inkPaint(); });
     });
-    var rail = node('div', 'bd-cal__rail');
-    BLOCK_KINDS.forEach(function (entry) {
-      rail.appendChild(railButton(entry.icon, entry.label, function () { addPlannerItem(entry.kind, plan.date, ''); }));
-    });
-    column.appendChild(rail);
     column.addEventListener('dragover', function (event) {
       if (!board.planDrag && !planDragHas(event)) return;
       event.preventDefault();
