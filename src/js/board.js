@@ -2430,8 +2430,8 @@ window.NoteApp = window.NoteApp || {};
       list.textContent = '';
       bar.hidden = empty;
       allBtn.hidden = empty;
-      restoreBtn.disabled = !count;
-      deleteBtn.disabled = !count;
+      restoreBtn.hidden = !count;
+      deleteBtn.hidden = !count;
       allBtn.textContent = !empty && count === board.bin.length ? 'Clear selection' : 'Select all';
       countLabel.textContent = count
         ? count + ' of ' + board.bin.length + ' selected'
