@@ -3598,9 +3598,11 @@ function richItemOf(box) {
       view.z = 1;
       applyView(true);
     }
+    var topBar = document.querySelector('.board__top');
+    var gap = (topBar ? topBar.getBoundingClientRect().bottom - rect.top : 48) + 24;
     glideViewTo(
       Math.round(rect.width / 2 - (item.x + item.w / 2) * view.z),
-      Math.round(rect.height / 2 - (item.y + item.h / 2) * view.z),
+      Math.round(gap - item.y * view.z),
       320
     );
     select(item);
