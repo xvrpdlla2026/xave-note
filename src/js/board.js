@@ -3646,170 +3646,134 @@ window.NoteApp = window.NoteApp || {};
     applyView();
   }
 
-  function planTextBody(item, body) {
-    var edit = node('div', 'bd-plan__text is-edit');
-    edit.contentEditable = 'true';
-    edit.innerHTML = String(item.data.text || '');
-    edit.addEventListener('input', function () { item.data.text = edit.innerHTML; queuePlanSave(item); });
-    edit.addEventListener('blur', function () { savePlanItem(item); });
-    edit.addEventListener('keydown', function (event) { if (event.key === 'Escape') edit.blur(); });
-    body.appendChild(edit);
+  function planDragHas(event) {
+    var types = event.dataTransfer && event.dataTransfer.types;
+    if (!types) return false;
+    var list = Array.prototype.slice.call(types);
+    return list.indexOf('Files') >= 0 || list.indexOf('text/plain') >= 0 || list.indexOf('text/uri-list') >= 0;
   }
 
-  function planTodoBody(item, body) {
-    var data = item.data;
-    if (!Array.isArray(data.items) || !data.items.length) data.items = [{ text: '', done: false }];
-    var list = node('div', 'bd-plan__items');
-    data.items.forEach(function (row, index) {
-      var line = node('div', 'bd-plan__item');
-      var box = node('input', 'bd-plan__check');
-      box.type = 'checkbox';
-      box.checked = !!row.done;
-      box.addEventListener('change', function () { row.done = box.checked; savePlanItem(item); paintPlanner(); });
-      line.appendChild(box);
-      var field = node('div', 'bd-plan__itemtext' + (row.done ? ' is-done' : ''));
-      field.contentEditable = 'true';
-      field.textContent = String(row.text || '');
-      field.addEventListener('input', function () { row.text = field.textContent; queuePlanSave(item); });
-      field.addEventListener('keydown', function (event) {
-        if (event.key === 'Enter') {
-          event.preventDefault();
-          data.items.splice(index + 1, 0, { text: '', done: false });
-          savePlanItem(item);
-          paintPlanner();
-        }
-        if (event.key === 'Backspace' && !field.textContent && data.items.length > 1) {
-          event.preventDefault();
-          data.items.splice(index, 1);
-          savePlanItem(item);
-          paintPlanner();
-        }
-      });
-      line.appendChild(field);
-      line.appendChild(calButton('\u00d7', function () {
-        data.items.splice(index, 1);
-        if (!data.items.length) data.items.push({ text: '', done: false });
-        savePlanItem(item);
-        paintPlanner();
-      }, 'is-icon'));
-      list.appendChild(line);
+  function planDropFiles(files, key) {
+    var list = Array.prototype.slice.call(files || []);
+    if (!list.length) return;
+    list.forEach(function (file) {
+      var item = addPlannerItem('image', key, '');
+      item.data.name = file.name || 'File';
+      item.data.filename = file.name || 'file';
+      item.data.mime = file.type || 'application/octet-stream';
+      item.data.size = file.size || 0;
+      savePlanItem(item);
+      try { storeBoardFile(item, file); } catch (e) { }
     });
-    body.appendChild(list);
-    body.appendChild(calButton('+ item', function () { data.items.push({ text: '', done: false }); savePlanItem(item); paintPlanner(); }, 'is-quiet'));
+    paintPlanner();
+    util.toast(list.length === 1 ? 'Added “' + (list[0].name || 'file') + '” to the planner' : 'Added ' + list.length + ' files to the planner');
   }
 
-  function planLinkBody(item, body) {
-    var title = node('input', 'bd-plan__title');
-    title.value = String(item.data.title || '');
-    title.placeholder = 'Title';
-    title.addEventListener('change', function () { item.data.title = title.value; savePlanItem(item); });
-    body.appendChild(title);
-    var url = node('input', 'bd-plan__title');
-    url.value = String(item.data.url || '');
-    url.placeholder = 'https://';
-    url.addEventListener('change', function () { item.data.url = url.value; savePlanItem(item); paintPlanner(); });
-    body.appendChild(url);
-    if (item.data.url) body.appendChild(calButton('Open', function () { window.open(item.data.url, '_blank', 'noopener'); }, 'is-quiet'));
-  }
-
-  function planTableBody(item, body) {
-    var data = item.data;
-    if (!Array.isArray(data.cells) || !data.cells.length) data.cells = [['', ''], ['', '']];
-    var grid = node('div', 'bd-plan__grid');
-    grid.style.gridTemplateColumns = 'repeat(' + Math.max(1, data.cells[0].length) + ', minmax(0, 1fr))';
-    data.cells.forEach(function (row, r) {
-      row.forEach(function (cell, c) {
-        var box = node('div', 'bd-plan__cell');
-        box.contentEditable = 'true';
-        box.textContent = String(cell || '');
-        box.addEventListener('input', function () { data.cells[r][c] = box.textContent; queuePlanSave(item); });
-        box.addEventListener('blur', function () { savePlanItem(item); });
-        grid.appendChild(box);
-      });
-    });
-    body.appendChild(grid);
-  }
-
-  function planImageBody(item, body) {
-    if (item.data.src) {
-      var img = node('img', 'bd-plan__img');
-      img.src = item.data.src;
-      img.alt = String(item.data.name || '');
-      body.appendChild(img);
+  function planDropText(text, key) {
+    var value = String(text || '').trim();
+    if (!value) return;
+    if (/^(https?:\/\/|www\.)\S+$/i.test(value)) {
+      var link = addPlannerItem('link', key, '');
+      link.data.url = value.replace(/^www\./i, 'https://www.');
+      var host = '';
+      try { host = new URL(link.data.url).hostname.replace(/^www\./, ''); } catch (e) { host = ''; }
+      link.data.title = host || 'Link';
+      savePlanItem(link);
+    } else {
+      var note = addPlannerItem('note', key, '');
+      note.data.text = util.escapeHtml ? util.escapeHtml(value) : value;
+      savePlanItem(note);
     }
-    var name = node('input', 'bd-plan__title');
-    name.value = String(item.data.name || '');
-    name.placeholder = 'Name, or drop an image here';
-    name.addEventListener('change', function () { item.data.name = name.value; savePlanItem(item); });
-    body.appendChild(name);
-    body.addEventListener('dragover', function (event) { event.preventDefault(); });
-    body.addEventListener('drop', function (event) {
-      event.preventDefault();
-      event.stopPropagation();
-      var file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
-      if (!file) return;
-      if (!/^image\//.test(file.type)) { util.toast('Only images can attach inside the planner'); return; }
-      var reader = new FileReader();
-      reader.onload = function () {
-        item.data.src = String(reader.result || '');
-        item.data.name = item.data.name || file.name;
-        savePlanItem(item);
-        paintPlanner();
-      };
-      reader.readAsDataURL(file);
-    });
+    paintPlanner();
+    util.toast(/^(https?:\/\/|www\.)\S+$/i.test(value) ? 'Added a link' : 'Added a note');
   }
 
-  function planBody(item, isBoard, body) {
-    if (isBoard) { body.appendChild(node('div', 'bd-plan__text', planTitle(item) || item.kind)); return; }
-    if (item.kind === 'todo') return planTodoBody(item, body);
-    if (item.kind === 'link') return planLinkBody(item, body);
-    if (item.kind === 'table') return planTableBody(item, body);
-    if (item.kind === 'image' || item.kind === 'file' || item.kind === 'ref') return planImageBody(item, body);
-    return planTextBody(item, body);
+  function planDropEvent(event, key) {
+    if (!planDragHas(event)) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    var dt = event.dataTransfer;
+    if (dt.files && dt.files.length) { planDropFiles(dt.files, key); return true; }
+    var text = '';
+    try { text = dt.getData('text/uri-list') || dt.getData('text/plain') || ''; } catch (e) { text = ''; }
+    if (!text.trim()) return false;
+    planDropText(text, key);
+    return true;
   }
 
-  function planBlock(entry) {
+  function planClone(item) {
+    var view = {};
+    for (var key in item) { if (Object.prototype.hasOwnProperty.call(item, key)) view[key] = item[key]; }
+    if (!view.data) { view.data = {}; item.data = view.data; }
+    return view;
+  }
+
+  function planCard(entry) {
     var item = entry.item;
     var isBoard = !!entry.board;
-    var done = planDoneOf(item, isBoard);
-    var card = node('div', 'bd-plan bd-plan--' + item.kind + (done ? ' is-done' : ''));
-    card.setAttribute('data-plan-id', item.id);
-    card.setAttribute('draggable', 'true');
-    card.addEventListener('dragstart', function (event) {
+    var view = planClone(item);
+    var box = node('div', 'bd-item bd-item--' + item.kind + ' bd-item--in-plan');
+    box.setAttribute('data-plan-id', item.id);
+    if (isBoard) box.classList.add('is-linked');
+    view.node = box;
+    var bar = node('div', 'bd-item__bar');
+    bar.setAttribute('draggable', 'true');
+    bar.title = 'Drag to another day';
+    bar.addEventListener('dragstart', function (event) {
       board.planDrag = { id: item.id, board: isBoard };
       if (event.dataTransfer) {
         event.dataTransfer.effectAllowed = 'move';
         try { event.dataTransfer.setData('text/plain', item.id); } catch (e) { }
       }
     });
-    card.addEventListener('dragend', function () { board.planDrag = null; });
-    var head = node('div', 'bd-plan__head');
-    var glyph = App.ui.icon(planIcon(item.kind), 13);
-    if (glyph) { var badge = node('span', 'bd-plan__kind'); badge.appendChild(glyph); head.appendChild(badge); }
-    if (isBoard) head.appendChild(node('span', 'bd-cal__tag', 'board'));
-    head.appendChild(planField(planTimeOf(item, isBoard), function (value) { setPlanTime(item, isBoard, value); }));
-    head.appendChild(node('div', 'bd-cal__spacer'));
-    if (!isBoard && (item.kind === 'todo' || item.kind === 'note' || item.kind === 'comment')) {
-      var toggle = node('button', 'bd-plan__btn' + (done ? ' is-on' : ''), '');
+    bar.addEventListener('dragend', function () { board.planDrag = null; });
+    var label = barLabel(view);
+    if (isBoard) label.appendChild(node('span', 'bd-item__plan', 'board'));
+    bar.appendChild(label);
+    var tools = node('div', 'bd-item__tools');
+    var time = node('input', 'bd-plan__time');
+    time.type = 'time';
+    time.value = planTimeOf(item, isBoard);
+    time.title = 'Time';
+    time.setAttribute('aria-label', 'Time');
+    time.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
+    time.addEventListener('change', function () { setPlanTime(item, isBoard, time.value); });
+    tools.appendChild(time);
+    if (!isBoard && (item.kind === 'todo' || item.kind === 'note')) {
+      var done = planDoneOf(item, false);
+      var toggle = node('button', 'bd-item__lock' + (done ? ' is-on' : ''), '');
       toggle.type = 'button';
       toggle.title = done ? 'Mark not done' : 'Mark done';
+      toggle.setAttribute('aria-label', toggle.title);
       toggle.appendChild(App.ui.icon('check', 12));
-      toggle.addEventListener('click', function () { planSetDone(item, !done); paintPlanner(); });
-      head.appendChild(toggle);
+      toggle.addEventListener('click', function (event) {
+        event.stopPropagation();
+        planSetDone(item, !planDoneOf(item, false));
+        paintPlanner();
+      });
+      tools.appendChild(toggle);
     }
-    if (isBoard) {
-      head.appendChild(calButton('Show', function () { focusBoardItem(item); }, 'is-quiet'));
-      head.appendChild(calButton('\u00d7', function () { setPlan(item, null); paintPlanner(); }, 'is-icon'));
-    } else {
-      head.appendChild(calButton('\u00d7', function () { removePlannerItem(item); }, 'is-icon'));
-    }
-    card.appendChild(head);
-    var body = node('div', 'bd-plan__body');
-    planBody(item, isBoard, body);
-    card.appendChild(body);
-    return card;
+    var kill = node('button', 'bd-item__x', '×');
+    kill.type = 'button';
+    kill.setAttribute('aria-label', isBoard ? 'Remove from planner' : 'Delete this block');
+    kill.title = isBoard ? 'Remove from planner' : 'Delete this block';
+    kill.addEventListener('click', function (event) {
+      event.stopPropagation();
+      if (isBoard) { setPlan(item, null); paintPlanner(); }
+      else removePlannerItem(item);
+    });
+    tools.appendChild(kill);
+    bar.appendChild(tools);
+    box.appendChild(bar);
+    var body = node('div', 'bd-item__body');
+    body.appendChild(bodyFor(view));
+    box.appendChild(body);
+    if (item.kind === 'link') { try { renderLinkCard(view); } catch (e) { } }
+    try { applyFont(view); } catch (e) { }
+    try { applyReadOnly(view); } catch (e) { }
+    return box;
   }
+
   function paintPlanner() {
     var plan = board.planner;
     if (!plan || !board.root) return;
@@ -3886,16 +3850,21 @@ window.NoteApp = window.NoteApp || {};
         return function () { onCell(useKey); };
       })(key));
       cell.addEventListener('dragover', function (event) {
-        if (!board.planDrag) return;
+        if (!board.planDrag && !planDragHas(event)) return;
         event.preventDefault();
         event.currentTarget.classList.add('is-over');
       });
       cell.addEventListener('dragleave', function (event) { event.currentTarget.classList.remove('is-over'); });
       cell.addEventListener('drop', function (event) {
-        if (!board.planDrag) return;
-        event.preventDefault();
+        var dropKey = event.currentTarget.getAttribute('data-key');
+        if (board.planDrag) {
+          event.preventDefault();
+          event.currentTarget.classList.remove('is-over');
+          dropPlanOn(dropKey);
+          return;
+        }
+        if (!planDropEvent(event, dropKey)) return;
         event.currentTarget.classList.remove('is-over');
-        dropPlanOn(event.currentTarget.getAttribute('data-key'));
       });
       grid.appendChild(cell);
     }
@@ -3919,7 +3888,15 @@ window.NoteApp = window.NoteApp || {};
         ? 'Nothing on this day yet'
         : 'Nothing planned. Add a block, or schedule one from the board.'));
     }
-    dayEntries.forEach(function (entry) { list.appendChild(planBlock(entry)); });
+    list.addEventListener('dragover', function (event) {
+      if (planDragHas(event)) { event.preventDefault(); list.classList.add('is-over'); }
+    });
+    list.addEventListener('dragleave', function () { list.classList.remove('is-over'); });
+    list.addEventListener('drop', function (event) {
+      if (!planDropEvent(event, plan.date)) return;
+      list.classList.remove('is-over');
+    });
+    dayEntries.forEach(function (entry) { list.appendChild(planCard(entry)); });
     column.appendChild(list);
     el.appendChild(column);
     if (keepScroll) {
