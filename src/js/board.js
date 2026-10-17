@@ -2631,6 +2631,13 @@ window.NoteApp = window.NoteApp || {};
       startPan(event, true);
       return;
     }
+    if (board.moving) {
+      var spot = canvasPoint(event.clientX, event.clientY);
+      dropMarkMove(spot.x, spot.y);
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (board.marking && !(target.closest && target.closest('.bd-mark'))) {
       var at = canvasPoint(event.clientX, event.clientY);
       var placed = addMark(at.x, at.y);
@@ -2867,6 +2874,7 @@ window.NoteApp = window.NoteApp || {};
     if (event.key === 'Escape') {
       if (board.picker) { closePicker(); return; }
       if (editing) { event.target.blur(); return; }
+      if (board.moving) { disarmMarkMove(); return; }
       if (board.marking) { setMarking(false); return; }
       if (board.railMarks) { openMarks(false); return; }
       if (board.selectedIds.length) { event.preventDefault(); setSelection([], null); return; }
@@ -3087,7 +3095,8 @@ window.NoteApp = window.NoteApp || {};
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       pin.classList.remove('is-dragging');
-      if (moved) saveMarks(true);
+      if (moved) { saveMarks(true); return; }
+      armMarkMove(mark);
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -3143,7 +3152,7 @@ window.NoteApp = window.NoteApp || {};
     if (board.markGhost) board.markGhost.style.opacity = '0';
   }
 
-  function markGhost(show) {
+  function markGhost(show, icon) {
     if (!board.canvas) return;
     if (board.stage) {
       board.stage.removeEventListener('pointermove', moveGhost);
@@ -3157,11 +3166,17 @@ window.NoteApp = window.NoteApp || {};
     if (!board.markGhost) {
       var pin = node('div', 'bd-mark is-ghost');
       var head = node('div', 'bd-mark__head');
-      head.appendChild(App.ui.icon('pin', 17));
+      head.appendChild(App.ui.icon(icon || 'pin', 17));
       pin.appendChild(head);
       pin.style.opacity = '0';
       board.canvas.appendChild(pin);
       board.markGhost = pin;
+      board.markGhostIcon = icon || 'pin';
+    } else if ((icon || 'pin') !== board.markGhostIcon) {
+      var liveHead = board.markGhost.firstChild;
+      liveHead.textContent = '';
+      liveHead.appendChild(App.ui.icon(icon || 'pin', 17));
+      board.markGhostIcon = icon || 'pin';
     }
     if (board.stage) {
       board.stage.addEventListener('pointermove', moveGhost);
@@ -3191,11 +3206,44 @@ window.NoteApp = window.NoteApp || {};
 
   function setMarking(on) {
     board.marking = !!on;
+    if (board.marking) disarmMarkMove();
     if (board.stage) board.stage.classList.toggle('is-marking', board.marking);
     if (board.root) board.root.classList.toggle('is-marking', board.marking);
     if (board.marksAdd) board.marksAdd.classList.toggle('is-on', board.marking);
-    markGhost(board.marking);
-    if (board.marking) util.toast('Click the board to drop a landmark');
+    markGhost(board.marking, 'pin');
+    if (board.marking) util.toast('Click the board to drop a landmark. Hold Space to pan');
+  }
+
+  function armMarkMove(mark) {
+    if (board.moving === mark) { disarmMarkMove(); return; }
+    setMarking(false);
+    board.moving = mark;
+    if (board.stage) board.stage.classList.add('is-moving');
+    if (board.root) board.root.classList.add('is-moving');
+    if (mark.node && mark.node.isConnected) mark.node.classList.add('is-armed');
+    markGhost(true, mark.icon || 'pin');
+    util.toast('Click where ' + mark.name + ' should go. Hold Space to pan, Esc to cancel');
+  }
+
+  function disarmMarkMove() {
+    var mark = board.moving;
+    board.moving = null;
+    if (mark && mark.node && mark.node.isConnected) mark.node.classList.remove('is-armed');
+    if (board.stage) board.stage.classList.remove('is-moving');
+    if (board.root) board.root.classList.remove('is-moving');
+    if (!board.marking) markGhost(false);
+  }
+
+  function dropMarkMove(x, y) {
+    var mark = board.moving;
+    if (!mark) return;
+    pushUndo('landmark');
+    mark.x = Math.round(x);
+    mark.y = Math.round(y);
+    disarmMarkMove();
+    paintMarks();
+    saveMarks(true);
+    util.toast('Landmark moved');
   }
 
   function openMarks(on) {
@@ -3323,6 +3371,12 @@ window.NoteApp = window.NoteApp || {};
       edit.setAttribute('aria-label', 'Rename');
       edit.appendChild(App.ui.icon('pencil', 14));
       edit.addEventListener('click', function (event) { event.stopPropagation(); editRow(row, mark); });
+      var place = node('button', 'board__mark-act');
+      place.type = 'button';
+      place.title = 'Move this landmark';
+      place.setAttribute('aria-label', 'Move this landmark');
+      place.appendChild(App.ui.icon('move', 14));
+      place.addEventListener('click', function (event) { event.stopPropagation(); armMarkMove(mark); });
       var drop = node('button', 'board__mark-act');
       drop.type = 'button';
       drop.title = 'Remove';
@@ -3330,6 +3384,7 @@ window.NoteApp = window.NoteApp || {};
       drop.appendChild(App.ui.icon('trash', 14));
       drop.addEventListener('click', function (event) { event.stopPropagation(); removeMark(mark); });
       tools.appendChild(edit);
+      tools.appendChild(place);
       tools.appendChild(drop);
       row.appendChild(pick);
       row.appendChild(name);
@@ -3361,7 +3416,7 @@ window.NoteApp = window.NoteApp || {};
     head.appendChild(back);
     head.appendChild(add);
     panel.appendChild(head);
-    panel.appendChild(node('p', 'board__marks-hint', 'Drop a pin on the board, then name it. Drag a pin to move it. Use the pencil to rename a pin or add a description.'));
+    panel.appendChild(node('p', 'board__marks-hint', 'Drop a pin on the board, then name it. Click a pin, then click again to move it, or drag it. Hold Space to pan while placing. Use the pencil to rename a pin or add a description.'));
     var list = node('div', 'board__marks-list');
     panel.appendChild(list);
     panel.addEventListener('wheel', function (event) {
@@ -6614,12 +6669,15 @@ window.NoteApp = window.NoteApp || {};
     board.open = true;
     try { App.prefs.set('board.open', true); } catch (e) { }
     board.marking = false;
+    board.moving = null;
     board.railMarks = false;
     board.editors = [];
     if (board.stage) board.stage.classList.remove('is-marking');
     if (board.rail) board.rail.classList.remove('is-marks');
     if (board.root) board.root.classList.remove('is-marks');
     if (board.root) board.root.classList.remove('is-marking');
+    if (board.stage) board.stage.classList.remove('is-moving');
+    if (board.root) board.root.classList.remove('is-moving');
     if (!board.root) document.body.appendChild(buildRoot());
     board.root.classList.add('is-open');
     board.root.classList.toggle('is-maphidden', !!board.mapHidden);
