@@ -540,27 +540,21 @@ window.NoteApp = window.NoteApp || {};
     var body = document.getElementById('note-body');
     if (!state.currentNote || !body || !restoreSelection()) return;
     var sel = window.getSelection();
-    var text = '';
-    try { text = sel.rangeCount ? String(sel.toString() || '') : ''; } catch (e) {  }
-    var row = document.createElement('div');
-    row.className = 'task-row';
     var box = document.createElement('input');
     box.type = 'checkbox';
     box.tabIndex = -1;
-    var label = document.createElement('span');
-    label.textContent = text || ' ';
-    row.appendChild(box);
-    row.appendChild(label);
     var range = sel.rangeCount ? sel.getRangeAt(0) : null;
     if (range) {
-      range.deleteContents();
-      range.insertNode(row);
+      range.collapse(true);
+      range.insertNode(box);
     } else {
-      body.appendChild(row);
+      body.appendChild(box);
     }
+    var gap = document.createTextNode('\u00a0');
+    if (box.parentNode) box.parentNode.insertBefore(gap, box.nextSibling);
     var caret = document.createRange();
-    caret.selectNodeContents(label);
-    caret.collapse(false);
+    caret.setStartAfter(gap);
+    caret.collapse(true);
     sel.removeAllRanges();
     sel.addRange(caret);
     saveSelection();
@@ -5007,7 +5001,9 @@ window.NoteApp = window.NoteApp || {};
 
     dom.main.addEventListener('change', function (event) {
       var box = event.target;
-      if (!box || box.type !== 'checkbox' || !box.closest || !box.closest('.task-row')) return;
+      if (!box || box.type !== 'checkbox' || !box.closest) return;
+      var host = document.getElementById('note-body');
+      if (!box.closest('.task-row') && !(host && host.contains(box))) return;
       if (!state.currentNote) return;
       if (box.checked) box.setAttribute('checked', '');
       else box.removeAttribute('checked');

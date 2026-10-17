@@ -1868,6 +1868,15 @@ mark {
   min-width: 0;
 }
 
+.editor__body :not(.task-row) > input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0 6px 0 0;
+  vertical-align: -2px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 .wikilink {
   display: inline-block;
   padding: 0 9px;
