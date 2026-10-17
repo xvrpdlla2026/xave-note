@@ -4116,7 +4116,8 @@ window.NoteApp = window.NoteApp || {};
   function onPaste(event) {
     if (!board.open || board.picker) return;
     var target = event.target;
-    if (target && target.closest && target.closest('input, textarea, [contenteditable="true"]') && !target.closest('.bd-table__cell')) return;
+    var inBoard = !!(target && board.root && board.root.contains(target));
+    if (inBoard && target.closest && target.closest('input, textarea, [contenteditable="true"]') && !target.closest('.bd-table__cell')) return;
     var data = event.clipboardData;
     if (!data) return;
     var at = board.menuAt || centerOfView(board.items.length);

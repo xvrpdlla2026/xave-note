@@ -5108,11 +5108,14 @@ window.NoteApp = window.NoteApp || {};
 
     document.addEventListener('paste', function (event) {
       if (!state.currentNote || App.ui.menuIsOpen() || document.querySelector('dialog[open]')) return;
+      if (App.board && App.board.isOpen()) return;
       var body = document.getElementById('note-body');
       if (!body) return;
+      var onNote = body.contains(event.target) || !!(dom.main && dom.main.contains(event.target));
       var pictures = clipboardImages(event.clipboardData);
       var inline = pictures.length ? null : markupImageUrl(event.clipboardData);
       if (pictures.length || inline) {
+        if (!onNote) return;
         event.preventDefault();
         restoreSelection();
         insertPastedImages(body, pictures.length ? pictures : [inline]);
