@@ -4206,9 +4206,38 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__t svg { flex: 0 0 auto; }
 .bd-cal__tlabel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bd-cal__nlate { padding: 0 5px; border-radius: 999px; background: var(--bg-hover); font-size: 10px; color: var(--danger); font-variant-numeric: tabular-nums; }
-.bd-cal__filter { width: 210px; height: 30px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-raised); color: var(--text); font: inherit; font-size: 12px; }
+.bd-cal__search { display: flex; align-items: center; gap: 7px; width: 264px; height: 32px; padding: 0 5px 0 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-raised); transition: border-color var(--fast), box-shadow var(--fast); }
+.bd-cal__search:hover { border-color: var(--border-strong); }
+.bd-cal__search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+.bd-cal__search > .icon { flex: none; color: var(--text-faint); }
+.bd-cal__search:focus-within > .icon { color: var(--accent); }
+.bd-cal__filter { flex: 1 1 auto; min-width: 0; height: 30px; padding: 0; border: 0; background: none; color: var(--text); font: inherit; font-size: 12.5px; }
 .bd-cal__filter::placeholder { color: var(--text-faint); }
-.bd-cal__filter:focus { outline: none; border-color: var(--accent); }
+.bd-cal__filter:focus { outline: none; }
+.bd-cal__filter::-webkit-search-cancel-button { display: none; }
+.bd-cal__searchx { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: var(--radius-sm); background: none; color: var(--text-faint); cursor: pointer; }
+.bd-cal__searchx:hover { background: var(--bg-hover); color: var(--text); }
+.bd-cal__filters { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.bd-cal__flabel { margin-right: 2px; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); }
+.bd-cal__chip { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-raised); color: var(--text-muted); font: inherit; font-size: 11.5px; cursor: pointer; }
+.bd-cal__chip .icon { flex: none; }
+.bd-cal__chip:hover { border-color: var(--border-strong); color: var(--text); }
+.bd-cal__chip.is-on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.bd-cal__chip.is-empty { opacity: 0.45; }
+.bd-cal__chip.is-clear { border-style: dashed; }
+.bd-cal__chipcount { font-size: 10.5px; color: var(--text-faint); }
+.bd-cal__chip.is-on .bd-cal__chipcount { color: inherit; }
+.bd-cal__results { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+.bd-cal__rgroup { display: flex; flex-direction: column; gap: 6px; }
+.bd-cal__rdate { padding-bottom: 6px; border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.bd-cal__row { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-raised); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.bd-cal__row:hover { border-color: var(--accent); }
+.bd-cal__ricon { display: inline-flex; flex: none; color: var(--text-faint); }
+.bd-cal__rkind { flex: none; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); }
+.bd-cal__rtitle { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+.bd-cal__rtime { flex: none; font-size: 11.5px; color: var(--text-muted); }
+.bd-cal__rboard { flex: none; padding: 1px 6px; border: 1px solid var(--border); border-radius: var(--radius-xs); font-size: 10.5px; color: var(--text-faint); }
+.bd-cal__row.is-done .bd-cal__rtitle { color: var(--text-faint); text-decoration: line-through; }
 .bd-cal__week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
 .bd-cal__wday { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 5px 0 4px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-raised); color: var(--text-muted); font: inherit; font-size: 10px; cursor: pointer; transition: border-color var(--fast), background var(--fast); }
 .bd-cal__wday:hover { border-color: var(--border-strong); background: var(--bg-hover); }

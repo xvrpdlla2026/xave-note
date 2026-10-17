@@ -3447,13 +3447,153 @@ function richItemOf(box) {
     return entries;
   }
 
-  function planFiltered(entries) {
-    var query = board.planner && board.planner.query ? String(board.planner.query).trim().toLowerCase() : '';
-    if (!query) return entries;
-    return entries.filter(function (entry) {
-      var hay = kindText(entry.item.kind).label + ' ' + planPlain(entry.title) + ' ' + (planTimeOf(entry.item, entry.board) || '');
-      return hay.toLowerCase().indexOf(query) >= 0;
+  function planAllEntries() {
+    var out = [];
+    var push = function (item, boardId, foreign) {
+      planKeysOf(item).forEach(function (key) {
+        if (!key) return;
+        out.push({ board: true, foreign: !!foreign, key: key, item: item, boardId: boardId, title: planTitle(item) || item.kind });
+      });
+    };
+    board.items.forEach(function (item) { push(item, BOARD_ID, false); });
+    planScope().forEach(function (item) { push(item, item.board_id, true); });
+    board.plans.forEach(function (item) {
+      var key = item.data ? item.data.planner : null;
+      if (key) out.push({ board: false, key: key, item: item, boardId: PLAN_BOARD, title: planLabelOf(item) });
     });
+    return out;
+  }
+
+  function planTypes(plan) {
+    if (!plan) return [];
+    if (Object.prototype.toString.call(plan.types) !== '[object Array]') plan.types = [];
+    return plan.types;
+  }
+
+  function planEntryFiltered(entry, query) {
+    var plan = board.planner;
+    var types = plan && plan.mode === 'browse' ? planTypes(plan) : [];
+    if (types.length && types.indexOf(entry.item.kind) < 0) return false;
+    if (!query) return true;
+    var hay = kindText(entry.item.kind).label + ' ' + planPlain(entry.title) + ' ' + (planTimeOf(entry.item, entry.board) || '');
+    return hay.toLowerCase().indexOf(query) >= 0;
+  }
+
+  function planFiltered(entries) {
+    var plan = board.planner;
+    var query = plan && plan.query ? String(plan.query).trim().toLowerCase() : '';
+    if (!query && !planTypes(plan).length) return entries;
+    return entries.filter(function (entry) { return planEntryFiltered(entry, query); });
+  }
+
+  function planMatches() {
+    var plan = board.planner;
+    var query = plan && plan.query ? String(plan.query).trim().toLowerCase() : '';
+    var found = planAllEntries().filter(function (entry) { return planEntryFiltered(entry, query); });
+    found.sort(function (a, b) {
+      if (a.key !== b.key) return a.key < b.key ? -1 : 1;
+      var at = planTimeOf(a.item, a.board);
+      var bt = planTimeOf(b.item, b.board);
+      if (at !== bt) return at < bt ? -1 : 1;
+      return String(a.title).localeCompare(String(b.title));
+    });
+    return found;
+  }
+
+  function goToPlanDate(key) {
+    var plan = board.planner;
+    if (!plan) return;
+    var ms = calMs(key);
+    plan.date = key;
+    if (ms !== null) plan.month = monthStart(ms);
+    plan.query = '';
+    paintPlanner();
+  }
+
+  function planResultRow(entry) {
+    var text = kindText(entry.item.kind);
+    var title = planPlain(entry.title) || text.label;
+    var row = node('button', 'bd-cal__row' + (planDoneOf(entry.item, entry.board) ? ' is-done' : ''));
+    row.type = 'button';
+    row.setAttribute('data-result-key', entry.key);
+    row.title = 'Open ' + entry.key;
+    var glyph = node('span', 'bd-cal__ricon');
+    var mark = App.ui.icon(text.icon, 13);
+    if (mark) glyph.appendChild(mark);
+    row.appendChild(glyph);
+    row.appendChild(node('span', 'bd-cal__rkind', text.label));
+    var label = node('span', 'bd-cal__rtitle', title);
+    label.title = title;
+    row.appendChild(label);
+    var time = planTimeOf(entry.item, entry.board);
+    if (time) row.appendChild(node('span', 'bd-cal__rtime', time));
+    if (entry.board) row.appendChild(node('span', 'bd-cal__rboard', entry.foreign ? boardName(entry.boardId) : 'board'));
+    row.addEventListener('click', function () { goToPlanDate(entry.key); });
+    return row;
+  }
+
+  function planResults(entries) {
+    var wrap = node('div', 'bd-cal__results');
+    if (!entries.length) {
+      wrap.appendChild(node('div', 'bd-cal__empty', 'No block matches. Try another word, or clear the type filters.'));
+      return wrap;
+    }
+    var at = null;
+    var group = null;
+    entries.forEach(function (entry) {
+      if (entry.key !== at) {
+        at = entry.key;
+        var ms = calMs(at);
+        var when = ms === null ? at : CAL_DAYS[new Date(ms).getDay()] + ', ' + CAL_MONTHS[new Date(ms).getMonth()] + ' ' + new Date(ms).getDate() + ', ' + new Date(ms).getFullYear();
+        group = node('div', 'bd-cal__rgroup');
+        group.appendChild(node('div', 'bd-cal__rdate', when));
+        wrap.appendChild(group);
+      }
+      group.appendChild(planResultRow(entry));
+    });
+    return wrap;
+  }
+
+  function planTypeBar() {
+    var plan = board.planner;
+    var on = planTypes(plan);
+    var counts = {};
+    planAllEntries().forEach(function (entry) {
+      var kind = entry.item.kind;
+      counts[kind] = (counts[kind] || 0) + 1;
+    });
+    var bar = node('div', 'bd-cal__filters');
+    bar.appendChild(node('span', 'bd-cal__flabel', 'Type'));
+    BLOCK_KINDS.forEach(function (entry) {
+      var total = counts[entry.kind] || 0;
+      var chip = node('button', 'bd-cal__chip' + (on.indexOf(entry.kind) >= 0 ? ' is-on' : '') + (total ? '' : ' is-empty'));
+      chip.type = 'button';
+      chip.setAttribute('data-type', entry.kind);
+      chip.setAttribute('aria-pressed', on.indexOf(entry.kind) >= 0 ? 'true' : 'false');
+      chip.title = total ? entry.label + ': ' + total + ' planned in every month' : entry.label + ': nothing planned yet';
+      var mark = App.ui.icon(entry.icon, 12);
+      if (mark) chip.appendChild(mark);
+      chip.appendChild(node('span', '', entry.label));
+      if (total) chip.appendChild(node('span', 'bd-cal__chipcount', String(total)));
+      chip.addEventListener('click', function () {
+        var list = planTypes(plan);
+        var found = list.indexOf(entry.kind);
+        if (found >= 0) list.splice(found, 1); else list.push(entry.kind);
+        paintPlanner();
+      });
+      bar.appendChild(chip);
+    });
+    if (on.length) {
+      var clear = node('button', 'bd-cal__chip is-clear');
+      clear.type = 'button';
+      clear.setAttribute('data-clear', '1');
+      var cross = App.ui.icon('close', 12);
+      if (cross) clear.appendChild(cross);
+      clear.appendChild(node('span', '', 'Clear'));
+      clear.addEventListener('click', function () { planTypes(plan).length = 0; paintPlanner(); });
+      bar.appendChild(clear);
+    }
+    return bar;
   }
 
   function paintPlan(item) {
@@ -3992,22 +4132,47 @@ function richItemOf(box) {
       assign: 'Choose a date for ' + plan.rows.length + (plan.rows.length === 1 ? ' block' : ' blocks'),
     };
     top.appendChild(node('div', 'bd-cal__label', titles[plan.mode] || 'Planner'));
+    var search = node('div', 'bd-cal__search');
+    var glyph = App.ui.icon('search', 14);
+    if (glyph) search.appendChild(glyph);
     var filter = node('input', 'bd-cal__filter');
     filter.type = 'search';
-    filter.placeholder = 'Filter blocks by type or text';
+    filter.placeholder = 'Search every month';
     filter.value = plan.query || '';
-    filter.setAttribute('aria-label', 'Filter planned blocks');
+    filter.setAttribute('aria-label', 'Search planned blocks in every month');
     filter.addEventListener('input', function () {
       plan.query = filter.value;
       board.plannerFilter = true;
       paintPlanner();
     });
+    filter.addEventListener('keydown', function (event) {
+      if (event.key !== 'Escape' || !filter.value) return;
+      event.stopPropagation();
+      filter.value = '';
+      plan.query = '';
+      paintPlanner();
+    });
+    search.appendChild(filter);
+    if (plan.query) {
+      var clearSearch = node('button', 'bd-cal__searchx');
+      clearSearch.type = 'button';
+      clearSearch.title = 'Clear the search';
+      clearSearch.setAttribute('aria-label', 'Clear the search');
+      var cross = App.ui.icon('close', 12);
+      if (cross) clearSearch.appendChild(cross);
+      clearSearch.addEventListener('click', function () {
+        plan.query = '';
+        board.plannerFilter = true;
+        paintPlanner();
+      });
+      search.appendChild(clearSearch);
+    }
     if (board.plannerFilter) {
       filter.focus();
       try { filter.setSelectionRange(filter.value.length, filter.value.length); } catch (e) { }
       board.plannerFilter = false;
     }
-    top.appendChild(filter);
+    top.appendChild(search);
     top.appendChild(node('div', 'bd-cal__spacer'));
     if (plan.mode === 'assign') {
       top.appendChild(calButton('Remove from planner', function () {
@@ -4026,6 +4191,7 @@ function richItemOf(box) {
     }, 'is-quiet'));
     top.appendChild(calButton('Close', function () { closePlanner(); }, 'is-quiet'));
     main.appendChild(top);
+    if (plan.mode === 'browse') main.appendChild(planTypeBar());
     var head = node('div', 'bd-cal__month');
     head.appendChild(calButton('\u2039', function () { shiftMonth(plan, -1); }, 'is-icon'));
     head.appendChild(node('span', 'bd-cal__mtitle', CAL_MONTHS[new Date(plan.month).getMonth()] + ' ' + new Date(plan.month).getFullYear()));
@@ -4112,6 +4278,17 @@ function richItemOf(box) {
     sum.textContent = monthTotal
       ? monthTotal + (monthTotal === 1 ? ' block' : ' blocks') + (monthLate ? ' \u00b7 ' + monthLate + ' late' : '')
       : 'Nothing planned this month';
+    if (plan.mode === 'browse' && plan.query && String(plan.query).trim()) {
+      // A query looks through every month, so the calendar gives way to what it found.
+      var matches = planMatches();
+      if (dow.parentNode) main.removeChild(dow);
+      if (grid.parentNode) main.removeChild(grid);
+      Array.prototype.forEach.call(head.querySelectorAll('button'), function (button) { button.remove(); });
+      main.appendChild(planResults(matches));
+      sum.textContent = matches.length
+        ? matches.length + (matches.length === 1 ? ' block' : ' blocks') + ' found in every month'
+        : 'No block matches';
+    }
     el.appendChild(main);
     var column = node('div', 'bd-cal__day');
     var ms = calMs(plan.date);
@@ -4169,7 +4346,7 @@ function richItemOf(box) {
       ? dayEntries.length + (dayEntries.length === 1 ? ' block' : ' blocks') + (dayDone ? ' \u00b7 ' + dayDone + ' done' : '')
       : 'Nothing planned';
     if (!dayEntries.length) {
-      list.appendChild(node('div', 'bd-cal__empty', plan.query
+      list.appendChild(node('div', 'bd-cal__empty', plan.query || planTypes(plan).length
         ? 'Nothing here matches the filter.'
         : (plan.mode === 'assign' ? 'Nothing on this day yet' : 'Nothing planned. Add a block, or schedule one from the board.')));
     }
