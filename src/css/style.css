@@ -4185,6 +4185,6 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-railbar__b:hover { background: var(--bg-hover); color: var(--text); }
 .bd-railbar__b.is-on { background: var(--accent); color: var(--text-inverse); }
 .bd-railbar__b.is-quiet { color: var(--text-faint); }
-.board__plan { display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 28px; padding: 0 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-raised); color: var(--text-muted); font: inherit; font-size: 12px; cursor: pointer; transition: background var(--fast), color var(--fast), border-color var(--fast); }
+.board__plan { display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 28px; padding: 0 9px; pointer-events: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-raised); color: var(--text-muted); font: inherit; font-size: 12px; cursor: pointer; transition: background var(--fast), color var(--fast), border-color var(--fast); }
 .board__plan:hover { background: var(--bg-hover); color: var(--text); }
 .board__plan.is-on { border-color: var(--accent); color: var(--accent); background: var(--accent-ring); }
