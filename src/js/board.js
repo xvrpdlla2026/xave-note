@@ -3382,7 +3382,7 @@ function richItemOf(box) {
     var from = -1;
     var rest = [];
     entries.forEach(function (entry, i) {
-      if (entry.item === item) { from = i; return; }
+      if (entry.item === item || (entry.item && entry.item.id === item.id)) { from = i; return; }
       rest.push(entry);
     });
     if (from < 0) return false;
@@ -3654,18 +3654,19 @@ function richItemOf(box) {
     if (!drag) return;
     var item = drag.board ? findItem(drag.id) : board.plans.filter(function (row) { return row.id === drag.id; })[0];
     if (!item) return;
+    var added = false;
     if (drag.board) {
-      var already = planKeysOf(item).indexOf(key) >= 0;
-      if (!already) planAdd(item, key, true);
-      if (typeof index === 'number') {
-        planReorder(planSort(planFiltered(planEntries(key)), key), item, key, index);
+      if (planKeysOf(item).indexOf(key) < 0) {
+        planAdd(item, key, true);
+        added = true;
       }
-      if (!already) util.toast('Planned for ' + calShort(key));
-    } else {
+    } else if (item.data.planner !== key) {
       item.data.planner = key;
       savePlanItem(item);
-      util.toast('Moved to ' + calShort(key));
+      added = true;
     }
+    if (typeof index === 'number') planReorder(planSort(planFiltered(planEntries(key)), key), item, key, index);
+    if (added) util.toast((drag.board ? 'Planned for ' : 'Moved to ') + calShort(key));
     if (board.planner) board.planner.date = key;
     paintPlanner();
   }
@@ -3886,9 +3887,23 @@ function richItemOf(box) {
       if (event.dataTransfer) {
         event.dataTransfer.effectAllowed = 'move';
         try { event.dataTransfer.setData('text/plain', item.id); } catch (e) { }
+        var ghost = node('div', 'bd-cal__ghost', item.kind || 'block');
+        document.body.appendChild(ghost);
+        if (event.dataTransfer.setDragImage) event.dataTransfer.setDragImage(ghost, 14, 16);
+        board.planGhost = ghost;
       }
     });
-    bar.addEventListener('dragend', function () { board.planDrag = null; board.planDropIndex = null; });
+    bar.addEventListener('dragend', function () {
+      board.planDrag = null;
+      board.planDropIndex = null;
+      if (board.planGhost) {
+        board.planGhost.remove();
+        board.planGhost = null;
+      }
+      Array.prototype.forEach.call(document.querySelectorAll('.bd-cal__dropmark'), function (mark) { mark.remove(); });
+      Array.prototype.forEach.call(document.querySelectorAll('.bd-cal__list.is-over'), function (over) { over.classList.remove('is-over'); });
+      Array.prototype.forEach.call(document.querySelectorAll('.bd-item.is-dragging'), function (card) { card.classList.remove('is-dragging'); });
+    });
     var label = barLabel(view);
     if (isBoard) label.appendChild(node('span', 'bd-item__plan', 'board'));
     bar.appendChild(label);
