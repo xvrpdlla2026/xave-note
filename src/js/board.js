@@ -3040,6 +3040,8 @@ window.NoteApp = window.NoteApp || {};
         head.type = 'button';
         head.setAttribute('aria-label', 'Landmark');
         head.addEventListener('pointerdown', markGrab);
+        head.addEventListener('dragstart', stopDrag);
+        pin.addEventListener('dragstart', stopDrag);
         head.addEventListener('dblclick', function (event) { event.preventDefault(); markEdit(mark); });
         var text = node('div', 'bd-mark__text');
         var label = node('span', 'bd-mark__name', mark.name);
@@ -3071,6 +3073,10 @@ window.NoteApp = window.NoteApp || {};
     renderMarkList();
   }
 
+  function stopDrag(event) {
+    event.preventDefault();
+  }
+
   function markGrab(event) {
     if (event.button !== 0) return;
     var pin = event.currentTarget.parentNode;
@@ -3084,7 +3090,7 @@ window.NoteApp = window.NoteApp || {};
     var move = function (e) {
       if (!moved && Math.abs(e.clientX - start.x) + Math.abs(e.clientY - start.y) < 4) return;
       if (!moved) pushUndo('landmark');
-      moved = true;
+      moved = true; disarmMarkMove();
       mark.x = Math.round(start.mx + (e.clientX - start.x) / unit);
       mark.y = Math.round(start.my + (e.clientY - start.y) / unit);
       pin.style.left = mark.x + 'px';
