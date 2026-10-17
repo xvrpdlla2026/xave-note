@@ -3320,13 +3320,35 @@ window.NoteApp = window.NoteApp || {};
     try { return barLabel(item).textContent; } catch (e) { return item.kind; }
   }
 
+  function planPlain(html) {
+    var text = String(html || '');
+    if (text.indexOf('<') >= 0) {
+      var holder = node('div', '', '');
+      holder.innerHTML = text;
+      text = holder.textContent || '';
+    }
+    return text.replace(/\s+/g, ' ').trim();
+  }
+
+  function planLabelOf(item) {
+    var data = item.data || {};
+    if (item.kind === 'todo') {
+      var first = (data.items || [])[0];
+      return String(data.title || '').trim() || String(first && first.text || '').trim() || 'To-do';
+    }
+    if (item.kind === 'link') return String(data.title || '').trim() || String(data.url || '').trim() || 'Link';
+    if (item.kind === 'image' || item.kind === 'file' || item.kind === 'ref') return String(data.name || '').trim() || (item.kind === 'image' ? 'Image' : 'File');
+    if (item.kind === 'table') return planPlain(data.text) || 'Table';
+    return planPlain(data.text) || 'Untitled';
+  }
+
   function planEntries(key) {
     var out = [];
     board.items.forEach(function (item) {
       if (planKeyOf(item) === key) out.push({ board: true, item: item, title: planTitle(item) || item.kind });
     });
     board.plans.forEach(function (item) {
-      if (item.data && item.data.planner === key) out.push({ board: false, item: item, title: String(item.data.text || '') || 'Untitled' });
+      if (item.data && item.data.planner === key) out.push({ board: false, item: item, title: planLabelOf(item) });
     });
     return out;
   }
@@ -3556,7 +3578,7 @@ window.NoteApp = window.NoteApp || {};
 
   function bookSlot(key, time) {
     var item = addPlannerItem('note', key, time);
-    item.data.text = 'Booked ' + time;
+    item.data.text = 'Booked';
     savePlanItem(item);
     paintPlanner();
     util.toast('Booked ' + calShort(key) + ' at ' + time);
