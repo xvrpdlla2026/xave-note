@@ -131,15 +131,6 @@ window.NoteApp = window.NoteApp || {};
         '  PRIMARY KEY (source_note_id, target_norm)' +
         ')',
       'CREATE INDEX IF NOT EXISTS idx_links_target ON note_links (workspace_id, target_norm)',
-      'CREATE TABLE IF NOT EXISTS note_versions (' +
-        '  id TEXT PRIMARY KEY,' +
-        '  note_id TEXT NOT NULL,' +
-        '  workspace_id TEXT,' +
-        '  title TEXT NOT NULL DEFAULT "",' +
-        '  content TEXT NOT NULL DEFAULT "",' +
-        '  created_at TEXT NOT NULL' +
-        ')',
-      'CREATE INDEX IF NOT EXISTS idx_versions_note ON note_versions (note_id, created_at)',
       'CREATE INDEX IF NOT EXISTS idx_links_source ON note_links (source_note_id)',
     ],
   ['CREATE TABLE IF NOT EXISTS templates (id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id INTEGER REFERENCES workspaces(id) ON DELETE CASCADE, name TEXT NOT NULL DEFAULT \'\', content TEXT NOT NULL DEFAULT \'\', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);', 'CREATE INDEX IF NOT EXISTS idx_templates_ws ON templates(workspace_id);'],
@@ -184,6 +175,17 @@ window.NoteApp = window.NoteApp || {};
     ],
     ['ALTER TABLE boards ADD COLUMN bg TEXT'],
     ['ALTER TABLE boards ADD COLUMN marks TEXT'],
+    [
+      'CREATE TABLE IF NOT EXISTS note_versions (' +
+        '  id TEXT PRIMARY KEY,' +
+        '  note_id TEXT NOT NULL,' +
+        '  workspace_id TEXT,' +
+        '  title TEXT NOT NULL DEFAULT "",' +
+        '  content TEXT NOT NULL DEFAULT "",' +
+        '  created_at TEXT NOT NULL' +
+        ')',
+      'CREATE INDEX IF NOT EXISTS idx_versions_note ON note_versions (note_id, created_at)',
+    ],
 ];
 
   var db = null;        
