@@ -2314,56 +2314,167 @@ window.NoteApp = window.NoteApp || {};
     board.binButton.setAttribute('aria-label', board.binButton.title);
   }
 
-  function restoreBin(index) {
-    var entry = board.bin[index];
-    if (!entry) return;
+  function restoreBinEntries(entries) {
+    var restore = entries.filter(function (entry) { return entry && board.bin.indexOf(entry) >= 0; });
+    if (!restore.length) return;
     pushUndo('restore');
-    entry.rows.forEach(function (row) {
-      var copy = cloneValue(row);
-      if (findItem(copy.id)) return;
-      board.items.push(copy);
-      paintItem(copy);
-      try { App.db.boardAddItem(copy); } catch (e) { }
+    var blocks = 0;
+    restore.forEach(function (entry) {
+      entry.rows.forEach(function (row) {
+        var copy = cloneValue(row);
+        if (findItem(copy.id)) return;
+        board.items.push(copy);
+        paintItem(copy);
+        try { App.db.boardAddItem(copy); } catch (e) { }
+      });
+      blocks += entry.rows.length;
+      var at = board.bin.indexOf(entry);
+      if (at >= 0) board.bin.splice(at, 1);
     });
-    board.bin.splice(index, 1);
     binSave();
     paintBin();
     paintLinks();
-    util.toast(entry.rows.length > 1 ? entry.rows.length + ' blocks restored' : 'Block restored');
+    util.toast(blocks > 1 ? blocks + ' blocks restored' : 'Block restored');
   }
 
-  function binRows(host) {
-    host.textContent = '';
-    if (!board.bin.length) {
-      host.appendChild(node('p', 'board__bin-empty', 'Nothing in the board trash.'));
-      return;
-    }
-    board.bin.forEach(function (entry, index) {
-      var row = node('div', 'board__bin-row');
-      row.appendChild(node('span', 'board__bin-name', entry.label || 'Block'));
-      row.appendChild(node('span', 'board__bin-meta', entry.rows.length > 1 ? entry.rows.length + ' blocks' : '1 block'));
-      var back = node('button', 'board__bin-back', 'Restore');
-      back.type = 'button';
-      back.addEventListener('click', function () {
-        restoreBin(index);
-        binRows(host);
-      });
-      row.appendChild(back);
-      host.appendChild(row);
+  function binBlocks(entries) {
+    var total = 0;
+    entries.forEach(function (entry) { total += entry.rows.length; });
+    return total;
+  }
+
+  function binPurge(entries, done) {
+    var keep = entries.filter(function (entry) { return entry && board.bin.indexOf(entry) >= 0; });
+    if (!keep.length) return;
+    var blocks = binBlocks(keep);
+    App.ui.confirm({
+      title: blocks > 1 ? 'Delete ' + blocks + ' blocks for good?' : 'Delete this block for good?',
+      message: 'Blocks deleted here leave the board trash for good and cannot be restored.',
+      confirmLabel: 'Delete permanently',
+      cancelLabel: 'Keep',
+      danger: true,
+    }).then(function (yes) {
+      if (!yes) return;
+      board.bin = board.bin.filter(function (entry) { return keep.indexOf(entry) < 0; });
+      binSave();
+      paintBin();
+      util.toast(blocks > 1 ? blocks + ' blocks deleted' : 'Block deleted');
+      if (done) done();
     });
   }
 
+  function binRow(entry, ctx) {
+    var on = ctx.picked.indexOf(entry) >= 0;
+    var row = node('div', 'board__bin-row' + (on ? ' is-picked' : ''));
+    var check = node('input', 'board__bin-check');
+    check.type = 'checkbox';
+    check.checked = on;
+    check.setAttribute('aria-label', 'Select ' + (entry.label || 'Block'));
+    check.addEventListener('click', function (event) { event.stopPropagation(); });
+    check.addEventListener('change', function () { ctx.toggle(entry, check.checked); });
+    row.appendChild(check);
+    row.appendChild(node('span', 'board__bin-name', entry.label || 'Block'));
+    row.appendChild(node('span', 'board__bin-meta', entry.rows.length > 1 ? entry.rows.length + ' blocks' : '1 block'));
+    var back = node('button', 'board__bin-back', 'Restore');
+    back.type = 'button';
+    back.addEventListener('click', function () {
+      restoreBinEntries([entry]);
+      ctx.render();
+    });
+    row.appendChild(back);
+    var drop = node('button', 'board__bin-del');
+    drop.type = 'button';
+    drop.title = 'Delete permanently';
+    drop.setAttribute('aria-label', 'Delete ' + (entry.label || 'Block') + ' permanently');
+    var glyph = App.ui.icon('trash', 14);
+    if (glyph) drop.appendChild(glyph);
+    drop.addEventListener('click', function () { binPurge([entry], ctx.render); });
+    row.appendChild(drop);
+    row.addEventListener('click', function (event) {
+      if (event.target && event.target.closest && event.target.closest('button, input')) return;
+      ctx.toggle(entry, ctx.picked.indexOf(entry) < 0);
+    });
+    return row;
+  }
+
   function openBin() {
-    var host = node('div', 'board__bin-list');
-    binRows(host);
+    var list = node('div', 'board__bin-list');
+    var bar = node('div', 'board__bin-bar');
+    var allBtn = node('button', 'board__bin-link', 'Select all');
+    allBtn.type = 'button';
+    var countLabel = node('span', 'board__bin-count-text');
+    bar.appendChild(allBtn);
+    bar.appendChild(countLabel);
+
+    var restoreBtn = node('button', 'btn btn--sm', 'Restore selected');
+    restoreBtn.type = 'button';
+    var deleteBtn = node('button', 'btn btn--sm btn--danger', 'Delete permanently\u2026');
+    deleteBtn.type = 'button';
+    var foot = node('div', 'board__bin-foot');
+    foot.appendChild(restoreBtn);
+    foot.appendChild(deleteBtn);
+
+    var ctx = { picked: [] };
+    ctx.toggle = function (entry, on) {
+      var at = ctx.picked.indexOf(entry);
+      if (on && at < 0) ctx.picked.push(entry);
+      else if (!on && at >= 0) ctx.picked.splice(at, 1);
+      paint();
+    };
+    ctx.render = function () { paint(); };
+
+    function paint() {
+      ctx.picked = ctx.picked.filter(function (entry) { return board.bin.indexOf(entry) >= 0; });
+      var empty = !board.bin.length;
+      var count = ctx.picked.length;
+      list.textContent = '';
+      bar.hidden = empty;
+      foot.hidden = empty || !count;
+      allBtn.textContent = !empty && count === board.bin.length ? 'Clear selection' : 'Select all';
+      countLabel.textContent = count
+        ? count + ' of ' + board.bin.length + ' selected'
+        : board.bin.length + ' in the trash';
+      restoreBtn.textContent = count > 1 ? 'Restore ' + count + ' selected' : 'Restore selected';
+      deleteBtn.textContent = count > 1 ? 'Delete ' + count + ' permanently\u2026' : 'Delete permanently\u2026';
+      if (empty) {
+        list.appendChild(node('p', 'board__bin-empty', 'Nothing in the board trash.'));
+        return;
+      }
+      board.bin.forEach(function (entry) { list.appendChild(binRow(entry, ctx)); });
+    }
+
+    allBtn.addEventListener('click', function () {
+      ctx.picked = ctx.picked.length === board.bin.length ? [] : board.bin.slice();
+      paint();
+    });
+    restoreBtn.addEventListener('click', function () {
+      var chosen = ctx.picked.slice();
+      ctx.picked = [];
+      restoreBinEntries(chosen);
+      paint();
+    });
+    deleteBtn.addEventListener('click', function () {
+      binPurge(ctx.picked.slice(), function () {
+        ctx.picked = [];
+        paint();
+      });
+    });
+
+    paint();
+
+    var host = node('div', 'board__bin-wrap');
+    host.appendChild(bar);
+    host.appendChild(list);
+
     var full = board.bin.length > 0;
     App.ui.dialog({
       title: 'Board trash',
       icon: 'trash',
       body: host,
+      footer: foot,
       wide: true,
       danger: full,
-      confirmLabel: full ? 'Delete permanently' : 'Close',
+      confirmLabel: full ? 'Empty trash\u2026' : 'Close',
       cancelLabel: 'Close',
     }).then(function (yes) {
       if (!yes || !board.bin.length) return;

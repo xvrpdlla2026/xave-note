@@ -3757,6 +3757,19 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .board__bin-back { padding: 3px 8px; border: none; border-radius: 6px; background: none; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; }
 .board__bin-back:hover { background: var(--bg-hover); }
 .board__bin-empty { margin: 0; color: var(--text-faint); font-size: 12.5px; }
+.board__bin-wrap { display: flex; flex-direction: column; gap: 8px; }
+.board__bin-bar { display: flex; align-items: center; gap: 8px; }
+.board__bin-bar[hidden] { display: none; }
+.board__bin-count-text { flex: 1; min-width: 0; color: var(--text-faint); font-size: 11.5px; }
+.board__bin-link { padding: 3px 6px; border: none; border-radius: 6px; background: none; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; }
+.board__bin-link:hover { background: var(--bg-hover); }
+.board__bin-foot { display: flex; gap: 8px; margin-right: auto; }
+.board__bin-foot[hidden] { display: none; }
+.board__bin-check { flex: 0 0 auto; width: 14px; height: 14px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.board__bin-row { cursor: pointer; }
+.board__bin-row.is-picked { border-color: var(--accent); background: var(--bg-active); }
+.board__bin-del { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: none; border-radius: 6px; background: none; color: var(--text-faint); cursor: pointer; }
+.board__bin-del:hover { color: var(--danger); background: var(--bg-hover); }
 .board__marquee { position: absolute; z-index: 4; border: 1px solid var(--accent); border-radius: 4px; background: var(--accent-ring); pointer-events: none; }
 .board__grid { position: absolute; inset: 0; background-image: radial-gradient(circle, var(--border-strong) 1px, transparent 1px); background-size: 26px 26px; pointer-events: none; }
 .board__canvas.is-gliding { will-change: transform; }
