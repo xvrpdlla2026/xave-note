@@ -4244,7 +4244,7 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-item__lock.is-on { color: var(--accent); }
 
 .bd-cal__rail { display: flex; flex: 1 1 auto; flex-wrap: wrap; justify-content: flex-end; gap: 3px; }
-.bd-cal__rail .board__tool { width: 30px; height: 30px; padding: 0; gap: 0; border: 1px solid var(--border); border-radius: 8px; }
+.bd-cal__rail .board__tool { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; gap: 0; border: 1px solid var(--border); border-radius: 8px; }
 .bd-cal__rail .board__tool-label { display: none; }
 .bd-cal__day.is-over { outline: 1px dashed var(--accent-ring); outline-offset: 2px; }
 .bd-cal__list .bd-item--draw .bd-item__body { height: 220px; }
