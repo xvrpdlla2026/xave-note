@@ -4232,8 +4232,6 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__check { accent-color: var(--accent); }
 .bd-plan__time { width: 82px; height: 20px; padding: 0 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text-muted); font: inherit; font-size: 11px; }
 .bd-plan__select { height: 24px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-raised); color: var(--text-muted); font: inherit; font-size: 11px; }
-.bd-plan__slotpanel { display: flex; flex-direction: column; gap: 8px; }
-.bd-cal__slots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
 .bd-cal__t.is-done { text-decoration: line-through; }
 .bd-cal__cell.is-over { border-color: var(--accent); background: var(--bg-hover); }
 .bd-cal__list.is-over { outline: 1px dashed var(--accent-ring); outline-offset: 2px; }

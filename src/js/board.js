@@ -3455,7 +3455,6 @@ function richItemOf(box) {
     });
   }
 
-
   function paintPlan(item) {
     if (!item.node) return;
     if (!item.node) return;
@@ -3616,7 +3615,6 @@ function richItemOf(box) {
     }, 400);
   }
 
-
   function planIcon(kind) {
     var map = { note: 'note', todo: 'check', link: 'external', comment: 'info', table: 'grid', image: 'upload', file: 'file', ref: 'file', column: 'panel', group: 'folder', draw: 'pencil' };
     return map[kind] || 'note';
@@ -3746,92 +3744,6 @@ function richItemOf(box) {
     paintPlanner();
   }
 
-  function minutesOf(text) {
-    var m = /^(\d{1,2}):(\d{2})$/.exec(String(text || ''));
-    return m ? Number(m[1]) * 60 + Number(m[2]) : null;
-  }
-
-  function clockOf(mins) { return calPad(Math.floor(mins / 60)) + ':' + calPad(mins % 60); }
-
-  function freeSlots(key) {
-    var win = (board.planner && board.planner.window) || { from: '09:00', to: '17:00', slot: 30 };
-    var from = minutesOf(win.from);
-    var to = minutesOf(win.to);
-    if (from === null || to === null || to <= from) return [];
-    var busy = [];
-    planEntries(key).forEach(function (entry) {
-      var at = minutesOf(planTimeOf(entry.item, entry.board));
-      if (at !== null) busy.push([at, at + 30]);
-    });
-    var out = [];
-    for (var t = from; t + win.slot <= to; t += win.slot) {
-      var clash = busy.some(function (span) { return t < span[1] && t + win.slot > span[0]; });
-      if (!clash) out.push(clockOf(t));
-    }
-    return out;
-  }
-
-  function bookSlot(key, time) {
-    var item = addPlannerItem('note', key, time);
-    item.data.text = 'Booked';
-    savePlanItem(item);
-    paintPlanner();
-    util.toast('Booked ' + calShort(key) + ' at ' + time);
-  }
-
-  function copyBookLink() {
-    var plan = board.planner;
-    if (!plan) return;
-    var url = location.href.split('#')[0] + '#book=' + plan.date;
-    plan.lastLink = url;
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(url).then(function () { util.toast('Booking link copied'); }, function () { util.toast(url); });
-    } else util.toast(url);
-  }
-
-  function bookFromHash() {
-    var m = /(?:^|[#&])book=(\d{4}-\d{2}-\d{2})/.exec(String(location.hash || ''));
-    if (!m) return;
-    if (!board.open) { try { App.board.open(); } catch (e) { } }
-    openPlanner('book', [], m[1]);
-  }
-
-  if (document.readyState === 'complete') setTimeout(bookFromHash, 900);
-  else window.addEventListener('load', function () { setTimeout(bookFromHash, 900); });
-  window.addEventListener('hashchange', bookFromHash);
-
-  function planField(value, onChange) {
-    var input = node('input', 'bd-plan__time');
-    input.type = 'time';
-    input.value = String(value || '');
-    input.addEventListener('change', function () { onChange(input.value); });
-    return input;
-  }
-
-  function slotPanel(day, plan) {
-    if (!plan.window) plan.window = { from: '09:00', to: '17:00', slot: 30 };
-    var win = plan.window;
-    var box = node('div', 'bd-plan__slotpanel');
-    var row = node('div', 'bd-cal__add');
-    row.appendChild(planField(win.from, function (value) { win.from = value; paintPlanner(); }));
-    row.appendChild(planField(win.to, function (value) { win.to = value; paintPlanner(); }));
-    var slot = node('select', 'bd-plan__select');
-    [15, 30, 45, 60, 90].forEach(function (n) {
-      var option = node('option', '', n + ' min');
-      option.value = String(n);
-      if (n === win.slot) option.selected = true;
-      slot.appendChild(option);
-    });
-    slot.addEventListener('change', function () { win.slot = Number(slot.value) || 30; paintPlanner(); });
-    row.appendChild(slot);
-    box.appendChild(row);
-    var grid = node('div', 'bd-cal__slots');
-    var slots = freeSlots(day);
-    if (!slots.length) grid.appendChild(node('div', 'bd-cal__empty', 'No free slot in that window.'));
-    slots.forEach(function (time) { grid.appendChild(calButton(time, function () { bookSlot(day, time); }, 'is-quiet')); });
-    box.appendChild(grid);
-    return box;
-  }
   function focusBoardItem(item) {
     closePlanner();
     select(item);
@@ -4067,7 +3979,6 @@ function richItemOf(box) {
   function paintPlanner() {
     var plan = board.planner;
     if (!plan || !board.root) return;
-    if (!plan.window) plan.window = { from: '09:00', to: '17:00', slot: 30 };
     var el = plannerEl();
     var keepScroll = 0;
     var before = el.querySelector('.bd-cal__list');
@@ -4078,7 +3989,6 @@ function richItemOf(box) {
     var titles = {
       browse: 'Planner',
       assign: 'Choose a date for ' + plan.rows.length + (plan.rows.length === 1 ? ' block' : ' blocks'),
-      book: 'Book a slot',
     };
     top.appendChild(node('div', 'bd-cal__label', titles[plan.mode] || 'Planner'));
     var filter = node('input', 'bd-cal__filter');
@@ -4107,11 +4017,6 @@ function richItemOf(box) {
     }
     if (plan.mode === 'browse') {
       top.appendChild(calButton('Move unfinished to today', function () { moveUnfinished(); }, 'is-quiet'));
-      top.appendChild(calButton('Booking', function () { plan.mode = 'book'; paintPlanner(); }, 'is-quiet'));
-    }
-    if (plan.mode === 'book') {
-      top.appendChild(calButton('Copy link', function () { copyBookLink(); }, 'is-quiet'));
-      top.appendChild(calButton('Back', function () { plan.mode = 'browse'; paintPlanner(); }, 'is-quiet'));
     }
     top.appendChild(calButton('Today', function () {
       plan.date = calKey(Date.now());
@@ -4255,7 +4160,6 @@ function richItemOf(box) {
       tools.appendChild(rail);
       column.appendChild(tools);
     }
-    if (plan.mode === 'book') column.appendChild(slotPanel(plan.date, plan));
     var list = node('div', 'bd-cal__list');
     var dayEntries = planSort(planFiltered(planEntries(plan.date)), plan.date);
     var dayDone = 0;
@@ -4864,7 +4768,6 @@ function richItemOf(box) {
     grid.style.height = Math.max(60, Math.round(bottom)) + 'px';
   }
 
-
   function showDropSlot(container, cell) {
     if (!container.grid || !cell) return;
     board.drop = { container: container, col: cell.col, row: cell.row, span: cell.span || 1, rows: cell.rows || 3 };
@@ -4942,7 +4845,6 @@ function richItemOf(box) {
     layoutContainer(container, null);
     return true;
   }
-
 
   function attachChild(item) {
     var parent = containerOf(item);
