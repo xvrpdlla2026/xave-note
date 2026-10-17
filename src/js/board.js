@@ -3693,6 +3693,7 @@ function richItemOf(box) {
       rows: rows || [],
       date: date || calKey(Date.now()),
       month: monthStart(ms === null ? Date.now() : ms),
+      dayOpen: false,
     };
     var el = plannerEl();
     el.hidden = false;
@@ -4139,6 +4140,7 @@ function richItemOf(box) {
     var before = el.querySelector('.bd-cal__list');
     if (before) keepScroll = before.scrollTop;
     el.textContent = '';
+    el.classList.toggle('is-day-open', !!plan.dayOpen);
     var main = node('div', 'bd-cal__main');
     var top = node('div', 'bd-cal__top');
     var titles = {
@@ -4203,6 +4205,10 @@ function richItemOf(box) {
       plan.month = monthStart(Date.now());
       paintPlanner();
     }, 'is-quiet'));
+    top.appendChild(calButton('Day', function () {
+      plan.dayOpen = !plan.dayOpen;
+      paintPlanner();
+    }, 'is-quiet bd-cal__sheetbtn'));
     top.appendChild(calButton('Close', function () { closePlanner(); }, 'is-quiet'));
     main.appendChild(top);
     if (plan.mode === 'browse') main.appendChild(planTypeBar());
@@ -4315,6 +4321,17 @@ function richItemOf(box) {
     dayTop.appendChild(dayInfo);
     var blockButton = calButton('+ Block', function () { kindMenu(blockButton, plan.date); }, 'is-quiet');
     dayTop.appendChild(blockButton);
+    var dayClose = node('button', 'bd-cal__dayclose');
+    dayClose.type = 'button';
+    dayClose.title = 'Hide the day panel';
+    dayClose.setAttribute('aria-label', 'Hide the day panel');
+    var dayCross = App.ui.icon('close', 14);
+    if (dayCross) dayClose.appendChild(dayCross);
+    dayClose.addEventListener('click', function () {
+      plan.dayOpen = false;
+      paintPlanner();
+    });
+    dayTop.appendChild(dayClose);
     column.appendChild(dayTop);
     var week = node('div', 'bd-cal__week');
     var weekStart = new Date(ms === null ? Date.now() : ms);
@@ -4466,6 +4483,7 @@ function richItemOf(box) {
       return;
     }
     plan.date = key;
+    plan.dayOpen = true;
     var ms = calMs(key);
     if (ms !== null && new Date(ms).getMonth() !== new Date(plan.month).getMonth()) plan.month = monthStart(ms);
     paintPlanner();
@@ -4654,6 +4672,7 @@ function richItemOf(box) {
   function railButton(icon, label, action) {
     var button = node('button', 'board__tool');
     button.type = 'button';
+    button.title = label;
     button.appendChild(App.ui.icon(icon, 17));
     button.appendChild(node('span', 'board__tool-label', label));
     button.addEventListener('click', action);
