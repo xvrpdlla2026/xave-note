@@ -3373,8 +3373,43 @@ function richItemOf(box) {
     return BLOCK_KINDS.length;
   }
 
-  function planSort(entries) {
+  function planSeqOf(item, key) {
+    var map = item && item.data ? item.data.planSeq : null;
+    return map && typeof map[key] === 'number' ? map[key] : null;
+  }
+
+  function planReorder(entries, item, key, index) {
+    var from = -1;
+    var rest = [];
+    entries.forEach(function (entry, i) {
+      if (entry.item === item) { from = i; return; }
+      rest.push(entry);
+    });
+    if (from < 0) return false;
+    var at = typeof index === 'number' ? index : rest.length;
+    if (from < at) at -= 1;
+    at = Math.max(0, Math.min(at, rest.length));
+    rest.splice(at, 0, entries[from]);
+    rest.forEach(function (entry, i) {
+      var row = entry.item;
+      if (!row.data) return;
+      if (!row.data.planSeq) row.data.planSeq = {};
+      row.data.planSeq[key] = i;
+      row.updated_at = util.nowIso();
+      try { App.db.boardAddItem(row); } catch (e) { }
+    });
+    return true;
+  }
+
+  function planSort(entries, date) {
     entries.sort(function (a, b) {
+      var as = date ? planSeqOf(a.item, date) : null;
+      var bs = date ? planSeqOf(b.item, date) : null;
+      if (as !== null || bs !== null) {
+        if (as === null) return 1;
+        if (bs === null) return -1;
+        if (as !== bs) return as - bs;
+      }
       var at = planTimeOf(a.item, a.board);
       var bt = planTimeOf(b.item, b.board);
       if (!at !== !bt) return at ? -1 : 1;
@@ -3613,15 +3648,19 @@ function richItemOf(box) {
     util.toast(moved ? 'Moved ' + moved + (moved === 1 ? ' block' : ' blocks') + ' to today' : 'Nothing overdue');
   }
 
-  function dropPlanOn(key) {
+  function dropPlanOn(key, index) {
     var drag = board.planDrag;
     board.planDrag = null;
     if (!drag) return;
     var item = drag.board ? findItem(drag.id) : board.plans.filter(function (row) { return row.id === drag.id; })[0];
     if (!item) return;
     if (drag.board) {
-      if (!planAdd(item, key)) return;
-      util.toast('Planned for ' + calShort(key));
+      var already = planKeysOf(item).indexOf(key) >= 0;
+      if (!already) planAdd(item, key, true);
+      if (typeof index === 'number') {
+        planReorder(planSort(planFiltered(planEntries(key)), key), item, key, index);
+      }
+      if (!already) util.toast('Planned for ' + calShort(key));
     } else {
       item.data.planner = key;
       savePlanItem(item);
@@ -3841,7 +3880,7 @@ function richItemOf(box) {
     box.__planView = view;
     var bar = node('div', 'bd-item__bar');
     bar.setAttribute('draggable', 'true');
-    bar.title = 'Drag to another day';
+    bar.title = 'Drag to reorder, or onto another day';
     bar.addEventListener('dragstart', function (event) {
       board.planDrag = { id: item.id, board: isBoard };
       if (event.dataTransfer) {
@@ -3849,7 +3888,7 @@ function richItemOf(box) {
         try { event.dataTransfer.setData('text/plain', item.id); } catch (e) { }
       }
     });
-    bar.addEventListener('dragend', function () { board.planDrag = null; });
+    bar.addEventListener('dragend', function () { board.planDrag = null; board.planDropIndex = null; });
     var label = barLabel(view);
     if (isBoard) label.appendChild(node('span', 'bd-item__plan', 'board'));
     bar.appendChild(label);
@@ -4089,7 +4128,7 @@ function richItemOf(box) {
     }
     if (plan.mode === 'book') column.appendChild(slotPanel(plan.date, plan));
     var list = node('div', 'bd-cal__list');
-    var dayEntries = planSort(planFiltered(planEntries(plan.date)));
+    var dayEntries = planSort(planFiltered(planEntries(plan.date)), plan.date);
     var dayDone = 0;
     dayEntries.forEach(function (entry) { if (planDoneOf(entry.item, entry.board)) dayDone++; });
     dayCountNode.textContent = dayEntries.length
@@ -4101,13 +4140,39 @@ function richItemOf(box) {
         : (plan.mode === 'assign' ? 'Nothing on this day yet' : 'Nothing planned. Add a block, or schedule one from the board.')));
     }
     list.addEventListener('dragover', function (event) {
-      if (planDragHas(event)) { event.preventDefault(); list.classList.add('is-over'); }
+      if (!planDragHas(event)) return;
+      event.preventDefault();
+      list.classList.add('is-over');
+      var cards = Array.prototype.slice.call(list.querySelectorAll('.bd-item[data-plan-id]'));
+      var index = cards.length;
+      for (var i = 0; i < cards.length; i++) {
+        var rect = cards[i].getBoundingClientRect();
+        if (event.clientY < rect.top + rect.height / 2) { index = i; break; }
+      }
+      board.planDropIndex = index;
+      var mark = list.querySelector('.bd-cal__dropmark');
+      if (!mark) {
+        mark = node('div', 'bd-cal__dropmark');
+        mark.setAttribute('aria-hidden', 'true');
+      }
+      if (index >= cards.length) list.appendChild(mark); else list.insertBefore(mark, cards[index]);
     });
-    list.addEventListener('dragleave', function () { list.classList.remove('is-over'); });
+    list.addEventListener('dragleave', function () {
+      list.classList.remove('is-over');
+      var mark = list.querySelector('.bd-cal__dropmark');
+      if (mark) mark.remove();
+    });
     list.addEventListener('drop', function (event) {
       event.stopPropagation();
       list.classList.remove('is-over');
-      if (board.planDrag) { dropPlanOn(plan.date); return; }
+      var mark = list.querySelector('.bd-cal__dropmark');
+      if (mark) mark.remove();
+      if (board.planDrag) {
+        var index = board.planDropIndex;
+        board.planDropIndex = null;
+        dropPlanOn(plan.date, index);
+        return;
+      }
       planDropEvent(event, plan.date);
     });
     dayEntries.forEach(function (entry) {

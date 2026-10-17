@@ -4232,6 +4232,7 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__t.is-done { text-decoration: line-through; }
 .bd-cal__cell.is-over { border-color: var(--accent); background: var(--bg-hover); }
 .bd-cal__list.is-over { outline: 1px dashed var(--accent-ring); outline-offset: 2px; }
+.bd-cal__dropmark { height: 2px; margin: 1px 0; border-radius: 2px; background: var(--accent); }
 .bd-cal__list .bd-item { position: relative; width: 100%; height: auto; min-height: 0; box-shadow: none; cursor: default; }
 .bd-cal__list .bd-item__bar { cursor: grab; }
 .bd-cal__list .bd-item__bar:active { cursor: grabbing; }
