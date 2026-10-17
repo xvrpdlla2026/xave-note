@@ -3933,13 +3933,25 @@ function richItemOf(box) {
       if (key === plan.date) cell.classList.add('is-sel');
       cell.appendChild(node('span', 'bd-cal__n', String(day.getDate())));
       var entries = planEntries(key);
-      entries.slice(0, 3).forEach(function (entry) {
-        var time = planTimeOf(entry.item, entry.board);
-        var tag = node('span', 'bd-cal__t' + (entry.board ? ' is-board' : '') + (planDoneOf(entry.item, entry.board) ? ' is-done' : ''));
-        tag.textContent = (time ? time + ' ' : '') + entry.title;
+      var groups = [];
+      entries.forEach(function (entry) {
+        var found = null;
+        groups.forEach(function (group) { if (group.kind === entry.item.kind) found = group; });
+        if (!found) {
+          var text = kindText(entry.item.kind);
+          found = { kind: entry.item.kind, label: text.label, icon: text.icon, n: 0, board: false };
+          groups.push(found);
+        }
+        found.n++;
+        if (entry.board) found.board = true;
+      });
+      groups.slice(0, 3).forEach(function (group) {
+        var tag = node('span', 'bd-cal__t' + (group.board ? ' is-board' : ''));
+        tag.appendChild(App.ui.icon(group.icon, 11));
+        tag.appendChild(node('span', 'bd-cal__tlabel', group.n > 1 ? group.label + ' \u00d7' + group.n : group.label));
         cell.appendChild(tag);
       });
-      if (entries.length > 3) cell.appendChild(node('span', 'bd-cal__t', '+' + (entries.length - 3) + ' more'));
+      if (groups.length > 3) cell.appendChild(node('span', 'bd-cal__t', '+' + (groups.length - 3) + ' more'));
       cell.addEventListener('click', (function (useKey) {
         return function () { onCell(useKey); };
       })(key));
@@ -4247,6 +4259,12 @@ function richItemOf(box) {
     { kind: 'table', label: 'Table', icon: 'grid' },
     { kind: 'draw', label: 'Draw', icon: 'pencil' },
   ];
+
+  function kindText(kind) {
+    var found = null;
+    BLOCK_KINDS.forEach(function (entry) { if (entry.kind === kind) found = entry; });
+    return found || { kind: kind, label: String(kind || 'Block'), icon: 'note' };
+  }
 
   function buildRail() {
     var rail = node('div', 'board__rail');
