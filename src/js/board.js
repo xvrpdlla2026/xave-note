@@ -2373,8 +2373,10 @@ window.NoteApp = window.NoteApp || {};
     check.addEventListener('click', function (event) { event.stopPropagation(); });
     check.addEventListener('change', function () { ctx.toggle(entry, check.checked); });
     row.appendChild(check);
-    row.appendChild(node('span', 'board__bin-name', entry.label || 'Block'));
-    row.appendChild(node('span', 'board__bin-meta', entry.rows.length > 1 ? entry.rows.length + ' blocks' : '1 block'));
+    var text = node('span', 'board__bin-text');
+    text.appendChild(node('span', 'board__bin-name', entry.label || 'Block'));
+    text.appendChild(node('span', 'board__bin-meta', entry.rows.length > 1 ? entry.rows.length + ' blocks' : '1 block'));
+    row.appendChild(text);
     var back = node('button', 'board__bin-back', 'Restore');
     back.type = 'button';
     back.addEventListener('click', function () {
@@ -2403,16 +2405,14 @@ window.NoteApp = window.NoteApp || {};
     var allBtn = node('button', 'board__bin-link', 'Select all');
     allBtn.type = 'button';
     var countLabel = node('span', 'board__bin-count-text');
-    bar.appendChild(allBtn);
-    bar.appendChild(countLabel);
-
     var restoreBtn = node('button', 'btn btn--sm', 'Restore selected');
     restoreBtn.type = 'button';
     var deleteBtn = node('button', 'btn btn--sm btn--danger', 'Delete permanently\u2026');
     deleteBtn.type = 'button';
-    var foot = node('div', 'board__bin-foot');
-    foot.appendChild(restoreBtn);
-    foot.appendChild(deleteBtn);
+    bar.appendChild(allBtn);
+    bar.appendChild(countLabel);
+    bar.appendChild(restoreBtn);
+    bar.appendChild(deleteBtn);
 
     var ctx = { picked: [] };
     ctx.toggle = function (entry, on) {
@@ -2429,7 +2429,9 @@ window.NoteApp = window.NoteApp || {};
       var count = ctx.picked.length;
       list.textContent = '';
       bar.hidden = empty;
-      foot.hidden = empty || !count;
+      allBtn.hidden = empty;
+      restoreBtn.disabled = !count;
+      deleteBtn.disabled = !count;
       allBtn.textContent = !empty && count === board.bin.length ? 'Clear selection' : 'Select all';
       countLabel.textContent = count
         ? count + ' of ' + board.bin.length + ' selected'
@@ -2471,7 +2473,6 @@ window.NoteApp = window.NoteApp || {};
       title: 'Board trash',
       icon: 'trash',
       body: host,
-      footer: foot,
       wide: true,
       danger: full,
       confirmLabel: full ? 'Empty trash\u2026' : 'Close',

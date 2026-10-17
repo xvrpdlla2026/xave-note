@@ -1868,14 +1868,6 @@ mark {
   min-width: 0;
 }
 
-.editor__body :not(.task-row) > input[type="checkbox"] {
-  width: 14px;
-  height: 14px;
-  margin: 0 6px 0 0;
-  vertical-align: -2px;
-  accent-color: var(--accent);
-  cursor: pointer;
-}
 
 .wikilink {
   display: inline-block;
@@ -3757,19 +3749,67 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .board__bin-back { padding: 3px 8px; border: none; border-radius: 6px; background: none; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; }
 .board__bin-back:hover { background: var(--bg-hover); }
 .board__bin-empty { margin: 0; color: var(--text-faint); font-size: 12.5px; }
-.board__bin-wrap { display: flex; flex-direction: column; gap: 8px; }
-.board__bin-bar { display: flex; align-items: center; gap: 8px; }
+.board__bin-wrap { display: flex; flex-direction: column; }
+.board__bin-bar { display: flex; align-items: center; gap: 8px; padding: 0 0 10px; margin-bottom: 10px; border-bottom: 1px solid var(--border); }
 .board__bin-bar[hidden] { display: none; }
 .board__bin-count-text { flex: 1; min-width: 0; color: var(--text-faint); font-size: 11.5px; }
-.board__bin-link { padding: 3px 6px; border: none; border-radius: 6px; background: none; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; }
+.board__bin-link { padding: 3px 7px; border: none; border-radius: 6px; background: none; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; }
 .board__bin-link:hover { background: var(--bg-hover); }
-.board__bin-foot { display: flex; gap: 8px; margin-right: auto; }
-.board__bin-foot[hidden] { display: none; }
-.board__bin-check { flex: 0 0 auto; width: 14px; height: 14px; margin: 0; accent-color: var(--accent); cursor: pointer; }
-.board__bin-row { cursor: pointer; }
+.board__bin-link[hidden] { display: none; }
+.board__bin-row { gap: 10px; padding: 8px 10px; border-radius: 9px; }
 .board__bin-row.is-picked { border-color: var(--accent); background: var(--bg-active); }
-.board__bin-del { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: none; border-radius: 6px; background: none; color: var(--text-faint); cursor: pointer; }
+.board__bin-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.board__bin-text .board__bin-name { flex: 0 0 auto; color: var(--text); }
+.board__bin-meta { margin-top: 0; }
+.board__bin-back { padding: 4px 10px; border-radius: 7px; font-size: 12px; }
+.board__bin-del { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; border: none; border-radius: 7px; background: none; color: var(--text-faint); cursor: pointer; transition: color 0.14s ease, background-color 0.14s ease; }
 .board__bin-del:hover { color: var(--danger); background: var(--bg-hover); }
+/* note and trash checkboxes wear the same box as the app checkbox component */
+.editor__body input[type="checkbox"],
+.board__bin-check {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin: 0 7px 0 0;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  background: var(--bg-raised);
+  cursor: pointer;
+  vertical-align: -3px;
+  transition: background var(--fast), border-color var(--fast);
+}
+.board__bin-check {
+  margin: 0;
+  align-self: center;
+}
+.editor__body input[type="checkbox"]:hover,
+.board__bin-check:hover { border-color: var(--accent); }
+.editor__body input[type="checkbox"]:focus-visible,
+.board__bin-check:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.editor__body input[type="checkbox"]:checked,
+.board__bin-check:checked { border-color: var(--accent); background: var(--accent); }
+.editor__body input[type="checkbox"]::after,
+.board__bin-check::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 4.6px;
+  width: 4.6px;
+  height: 9px;
+  border-style: solid;
+  border-color: var(--text-inverse);
+  border-width: 0 1.8px 1.8px 0;
+  opacity: 0;
+  transform: rotate(45deg);
+  transition: opacity var(--fast);
+}
+.editor__body input[type="checkbox"]:checked::after,
+.board__bin-check:checked::after { opacity: 1; }
 .board__marquee { position: absolute; z-index: 4; border: 1px solid var(--accent); border-radius: 4px; background: var(--accent-ring); pointer-events: none; }
 .board__grid { position: absolute; inset: 0; background-image: radial-gradient(circle, var(--border-strong) 1px, transparent 1px); background-size: 26px 26px; pointer-events: none; }
 .board__canvas.is-gliding { will-change: transform; }
