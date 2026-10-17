@@ -4218,7 +4218,7 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__dayhead { font-size: 15px; font-weight: 600; color: var(--text); }
 .bd-cal__daycount { font-size: 11.5px; color: var(--text-faint); }
 .bd-cal__tools { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.bd-cal__list { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.bd-cal__list { position: relative; flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; scrollbar-gutter: stable; }
 .bd-cal__row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-raised); }
 .bd-cal__text { flex: 1 1 auto; font-size: 12.5px; color: var(--text); outline: none; min-height: 16px; word-break: break-word; }
 .bd-cal__text.is-edit:empty:before { content: 'Untitled'; color: var(--text-faint); }
@@ -4232,7 +4232,19 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__t.is-done { text-decoration: line-through; }
 .bd-cal__cell.is-over { border-color: var(--accent); background: var(--bg-hover); }
 .bd-cal__list.is-over { outline: 1px dashed var(--accent-ring); outline-offset: 2px; }
-.bd-cal__dropmark { height: 2px; margin: 1px 0; border-radius: 2px; background: var(--accent); }
+.bd-cal__dropmark {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  pointer-events: none;
+}
+.bd-cal__list .bd-item.is-dragging {
+  opacity: 0.45;
+}
 .bd-cal__list .bd-item { position: relative; width: 100%; height: auto; min-height: 0; box-shadow: none; cursor: default; }
 .bd-cal__list .bd-item__bar { cursor: grab; }
 .bd-cal__list .bd-item__bar:active { cursor: grabbing; }

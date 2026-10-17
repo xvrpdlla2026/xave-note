@@ -4140,37 +4140,56 @@ function richItemOf(box) {
         : (plan.mode === 'assign' ? 'Nothing on this day yet' : 'Nothing planned. Add a block, or schedule one from the board.')));
     }
     list.addEventListener('dragover', function (event) {
-      if (!planDragHas(event)) return;
+      if (!board.planDrag && !planDragHas(event)) return;
       event.preventDefault();
       list.classList.add('is-over');
+      var frame = list.getBoundingClientRect();
+      var y = event.clientY - frame.top + list.scrollTop;
       var cards = Array.prototype.slice.call(list.querySelectorAll('.bd-item[data-plan-id]'));
-      var index = cards.length;
-      for (var i = 0; i < cards.length; i++) {
-        var rect = cards[i].getBoundingClientRect();
-        if (event.clientY < rect.top + rect.height / 2) { index = i; break; }
-      }
+      var spans = cards.map(function (card) {
+        var box = card.getBoundingClientRect();
+        return { top: box.top - frame.top + list.scrollTop, bottom: box.bottom - frame.top + list.scrollTop };
+      });
+      var index = 0;
+      spans.forEach(function (span) { if (y > (span.top + span.bottom) / 2) index++; });
       board.planDropIndex = index;
       var mark = list.querySelector('.bd-cal__dropmark');
       if (!mark) {
         mark = node('div', 'bd-cal__dropmark');
         mark.setAttribute('aria-hidden', 'true');
+        list.appendChild(mark);
       }
-      if (index >= cards.length) list.appendChild(mark); else list.insertBefore(mark, cards[index]);
+      var gap = 5;
+      var edge = !spans.length ? gap
+        : index <= 0 ? spans[0].top - gap
+        : index >= spans.length ? spans[spans.length - 1].bottom + gap
+        : (spans[index - 1].bottom + spans[index].top) / 2;
+      mark.style.top = Math.max(0, Math.round(edge) - 1) + 'px';
+      var held = list.querySelector('.bd-item.is-dragging');
+      if (!held && board.planDrag) {
+        held = list.querySelector('.bd-item[data-plan-id="' + board.planDrag.id + '"]');
+        if (held) held.classList.add('is-dragging');
+      }
     });
-    list.addEventListener('dragleave', function () {
+    var clearDropHint = function () {
       list.classList.remove('is-over');
       var mark = list.querySelector('.bd-cal__dropmark');
       if (mark) mark.remove();
+      Array.prototype.forEach.call(list.querySelectorAll('.bd-item.is-dragging'), function (card) {
+        card.classList.remove('is-dragging');
+      });
+    };
+    list.addEventListener('dragleave', function (event) {
+      if (event.relatedTarget && list.contains(event.relatedTarget)) return;
+      clearDropHint();
     });
     list.addEventListener('drop', function (event) {
       event.stopPropagation();
-      list.classList.remove('is-over');
-      var mark = list.querySelector('.bd-cal__dropmark');
-      if (mark) mark.remove();
+      var index = board.planDropIndex;
+      board.planDropIndex = null;
+      clearDropHint();
       if (board.planDrag) {
-        var index = board.planDropIndex;
-        board.planDropIndex = null;
-        dropPlanOn(plan.date, index);
+        dropPlanOn(plan.date, typeof index === 'number' ? index : undefined);
         return;
       }
       planDropEvent(event, plan.date);
