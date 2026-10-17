@@ -3945,6 +3945,31 @@ function richItemOf(box) {
     return view;
   }
 
+  function planDragPill(label, src) {
+    var style = src ? getComputedStyle(src) : null;
+    var fill = style ? style.backgroundColor : '';
+    if (!fill || /^rgba\(.*,\s*0(\.\d+)?\)$/.test(fill) || fill === 'transparent') fill = '#1b1e26';
+    var line = (style && style.borderTopColor) || '#3a4050';
+    var ink = (style && style.color) || '#e8eaf0';
+    var name = String(label || 'Block').replace(/\s+/g, ' ').trim();
+    if (name.length > 24) name = name.slice(0, 23) + '\u2026';
+    var c = document.createElement('canvas');
+    c.width = 168;
+    c.height = 32;
+    c.setAttribute('aria-hidden', 'true');
+    var g = c.getContext('2d');
+    g.fillStyle = fill;
+    g.fillRect(0, 0, c.width, c.height);
+    g.strokeStyle = line;
+    g.lineWidth = 2;
+    g.strokeRect(1, 1, c.width - 2, c.height - 2);
+    g.fillStyle = ink;
+    g.font = '12px system-ui, sans-serif';
+    g.textBaseline = 'middle';
+    g.fillText(name, 12, 17);
+    return c;
+  }
+
   function planCard(entry) {
     var item = entry.item;
     var isBoard = !!entry.board;
@@ -3962,6 +3987,12 @@ function richItemOf(box) {
       if (event.dataTransfer) {
         event.dataTransfer.effectAllowed = 'move';
         try { event.dataTransfer.setData('text/plain', item.id); } catch (e) { }
+        var pill = planDragPill(planLabelOf(item), bar);
+        pill.className = 'bd-plan__pill';
+        pill.style.cssText = 'position:fixed;left:0;top:0;z-index:-1;pointer-events:none;';
+        Array.prototype.forEach.call(document.querySelectorAll('.bd-plan__pill'), function (n) { n.remove(); });
+        document.body.appendChild(pill);
+        event.dataTransfer.setDragImage(pill, 14, 16);
       }
     });
     bar.addEventListener('dragend', function () {
@@ -3970,6 +4001,7 @@ function richItemOf(box) {
       Array.prototype.forEach.call(document.querySelectorAll('.bd-cal__dropmark'), function (mark) { mark.remove(); });
       Array.prototype.forEach.call(document.querySelectorAll('.bd-cal__list.is-over'), function (over) { over.classList.remove('is-over'); });
       Array.prototype.forEach.call(document.querySelectorAll('.bd-item.is-dragging'), function (card) { card.classList.remove('is-dragging'); });
+      Array.prototype.forEach.call(document.querySelectorAll('.bd-plan__pill'), function (n) { n.remove(); });
     });
     var label = barLabel(view);
     if (isBoard) {

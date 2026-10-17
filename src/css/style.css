@@ -4250,16 +4250,16 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__list .bd-item.is-dragging {
   opacity: 0.45;
 }
-.bd-cal__list .bd-item { position: relative; width: 100%; height: auto; min-height: 0; box-shadow: none; cursor: grab; }
-.bd-cal__list .bd-item__bar { cursor: grab; }
-.bd-cal__list .bd-item__bar:active { cursor: grabbing; }
+.bd-cal__list .bd-item { position: relative; width: 100%; height: auto; min-height: 0; box-shadow: none; cursor: move; }
+.bd-cal__list .bd-item__bar { cursor: move; }
+.bd-cal__list .bd-item__bar:active { cursor: move; }
 .bd-cal__list .bd-item.is-dragging,
 .bd-cal__list .bd-item.is-dragging * {
-  cursor: grabbing;
+  cursor: move;
 }
 .bd-cal__list .bd-item__body,
 .bd-cal__list .bd-item__body.is-readonly {
-  cursor: grab;
+  cursor: move;
 }
 .bd-cal__list .bd-item__body { overflow: visible; }
 .bd-cal__list .bd-item__resize { display: none; }
