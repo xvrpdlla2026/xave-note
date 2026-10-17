@@ -902,10 +902,12 @@ window.NoteApp = window.NoteApp || {};
     return null;
   }
 
-  function richItemOf(box) {
-    var host = box && box.closest ? box.closest('.bd-item') : null;
-    return host ? findItem(host.getAttribute('data-board-id')) : null;
-  }
+function richItemOf(box) {
+  var host = box && box.closest ? box.closest('.bd-item') : null;
+  if (!host) return null;
+  if (host.__planView) return host.__planView;
+  return findItem(host.getAttribute('data-board-id'));
+}
 
   function richSelection() {
     var sel = window.getSelection();
@@ -2112,6 +2114,7 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function paintItem(item) {
+    if (item.node && item.node.closest && item.node.closest('.bd-cal')) return;
     var box = node('div', 'bd-item bd-item--' + item.kind);
     box.setAttribute('data-board-id', item.id);
     var bar = node('div', 'bd-item__bar');
@@ -3511,14 +3514,9 @@ window.NoteApp = window.NoteApp || {};
       x: Math.round(rect.left),
       y: Math.round(rect.bottom + 4),
       title: 'Add a block',
-      items: [
-        { label: 'Note', icon: 'note', onclick: pick('note') },
-        { label: 'To-do', icon: 'check', onclick: pick('todo') },
-        { label: 'Link', icon: 'external', onclick: pick('link') },
-        { label: 'Comment', icon: 'info', onclick: pick('comment') },
-        { label: 'Table', icon: 'grid', onclick: pick('table') },
-        { label: 'Image or File', icon: 'upload', onclick: pick('image') },
-      ],
+      items: BLOCK_KINDS.map(function (entry) {
+        return { label: entry.label, icon: entry.icon, onclick: function () { addPlannerItem(entry.kind, key, ''); } };
+      }),
     });
   }
 
@@ -3669,6 +3667,28 @@ window.NoteApp = window.NoteApp || {};
     util.toast(list.length === 1 ? 'Added “' + (list[0].name || 'file') + '” to the planner' : 'Added ' + list.length + ' files to the planner');
   }
 
+  function planAddText(text, key) {
+    var body = String(text || '');
+    if (!body.trim()) return null;
+    var item = addPlannerItem('note', key, '');
+    item.data.text = util.escapeHtml(body).replace(/\n/g, '<br>');
+    savePlanItem(item);
+    paintPlanner();
+    return item;
+  }
+
+  function planAddPastedFile(file, key) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      var item = addPlannerItem('image', key, '');
+      item.data.name = file.name || 'Pasted image';
+      item.data.src = String(reader.result || '');
+      savePlanItem(item);
+      paintPlanner();
+    };
+    reader.readAsDataURL(file);
+  }
+
   function planDropText(text, key) {
     var value = String(text || '').trim();
     if (!value) return;
@@ -3680,9 +3700,7 @@ window.NoteApp = window.NoteApp || {};
       link.data.title = host || 'Link';
       savePlanItem(link);
     } else {
-      var note = addPlannerItem('note', key, '');
-      note.data.text = util.escapeHtml ? util.escapeHtml(value) : value;
-      savePlanItem(note);
+      planAddText(value, key);
     }
     paintPlanner();
     util.toast(/^(https?:\/\/|www\.)\S+$/i.test(value) ? 'Added a link' : 'Added a note');
@@ -3716,6 +3734,7 @@ window.NoteApp = window.NoteApp || {};
     box.setAttribute('data-plan-id', item.id);
     if (isBoard) box.classList.add('is-linked');
     view.node = box;
+    box.__planView = view;
     var bar = node('div', 'bd-item__bar');
     bar.setAttribute('draggable', 'true');
     bar.title = 'Drag to another day';
@@ -3858,6 +3877,7 @@ window.NoteApp = window.NoteApp || {};
       cell.addEventListener('drop', function (event) {
         var dropKey = event.currentTarget.getAttribute('data-key');
         if (board.planDrag) {
+          event.stopPropagation();
           event.preventDefault();
           event.currentTarget.classList.remove('is-over');
           dropPlanOn(dropKey);
@@ -3893,10 +3913,31 @@ window.NoteApp = window.NoteApp || {};
     });
     list.addEventListener('dragleave', function () { list.classList.remove('is-over'); });
     list.addEventListener('drop', function (event) {
+      event.stopPropagation();
       if (!planDropEvent(event, plan.date)) return;
       list.classList.remove('is-over');
     });
     dayEntries.forEach(function (entry) { list.appendChild(planCard(entry)); });
+    var rail = node('div', 'bd-cal__rail');
+    BLOCK_KINDS.forEach(function (entry) {
+      rail.appendChild(railButton(entry.icon, entry.label, function () { addPlannerItem(entry.kind, plan.date, ''); }));
+    });
+    column.appendChild(rail);
+    column.addEventListener('dragover', function (event) {
+      if (!board.planDrag && !planDragHas(event)) return;
+      event.preventDefault();
+      column.classList.add('is-over');
+    });
+    column.addEventListener('dragleave', function (event) {
+      if (event.relatedTarget && column.contains(event.relatedTarget)) return;
+      column.classList.remove('is-over');
+    });
+    column.addEventListener('drop', function (event) {
+      event.preventDefault();
+      column.classList.remove('is-over');
+      if (board.planDrag) { dropPlanOn(plan.date); return; }
+      planDropEvent(event, plan.date);
+    });
     column.appendChild(list);
     el.appendChild(column);
     if (keepScroll) {
@@ -4115,6 +4156,17 @@ window.NoteApp = window.NoteApp || {};
     return button;
   }
 
+  var BLOCK_KINDS = [
+    { kind: 'note', label: 'Note', icon: 'note' },
+    { kind: 'todo', label: 'To-do', icon: 'check' },
+    { kind: 'link', label: 'Link', icon: 'external' },
+    { kind: 'image', label: 'File', icon: 'file' },
+    { kind: 'comment', label: 'Comment', icon: 'info' },
+    { kind: 'column', label: 'Group', icon: 'panel' },
+    { kind: 'table', label: 'Table', icon: 'grid' },
+    { kind: 'draw', label: 'Draw', icon: 'pencil' },
+  ];
+
   function buildRail() {
     var rail = node('div', 'board__rail');
     board.rail = rail;
@@ -4129,15 +4181,14 @@ window.NoteApp = window.NoteApp || {};
     top.appendChild(railButton('pin', 'Landmarks', function () { openMarks(!board.railMarks); }));
     rail.appendChild(top);
     var group = node('div', 'board__rail-group');
-    group.appendChild(railButton('note', 'Note', function () { addItem('note'); }));
-    group.appendChild(railButton('check', 'To-do', function () { addItem('todo'); }));
-    group.appendChild(railButton('external', 'Link', function () { addItem('link'); }));
-    group.appendChild(railButton('file', 'File', function () { addItem('image'); }));
-    group.appendChild(railButton('info', 'Comment', function () { addItem('comment'); }));
-    group.appendChild(railButton('panel', 'Group', function () { addItem('column'); }));
-    group.appendChild(railButton('grid', 'Table', function () { addItem('table'); }));
-    group.appendChild(railButton('pencil', 'Draw', function () { setInkMode(!inkState.on); }));
-    board.inkButton = group.lastElementChild;
+    BLOCK_KINDS.forEach(function (entry) {
+      if (entry.kind === 'draw') {
+        group.appendChild(railButton(entry.icon, entry.label, function () { setInkMode(!inkState.on); }));
+        board.inkButton = group.lastElementChild;
+        return;
+      }
+      group.appendChild(railButton(entry.icon, entry.label, function () { addItem(entry.kind); }));
+    });
     rail.appendChild(group);
     var source = node('div', 'board__rail-group');
     source.appendChild(railButton('layers', 'From notes', openPicker));
@@ -4962,6 +5013,21 @@ window.NoteApp = window.NoteApp || {};
     var target = event.target;
     var inBoard = !!(target && board.root && board.root.contains(target));
     if (inBoard && target.closest && target.closest('input, textarea, [contenteditable="true"]') && !target.closest('.bd-table__cell')) return;
+    if (target && target.closest && target.closest('.bd-cal') && board.planner) {
+      var planData = event.clipboardData;
+      if (!planData) return;
+      var planFiles = planData.files && planData.files.length ? planData.files : null;
+      if (planFiles) {
+        event.preventDefault();
+        planAddPastedFile(planFiles[0], board.planner.date);
+        return;
+      }
+      var planText = planData.getData('text/plain');
+      if (!planText) return;
+      event.preventDefault();
+      planAddText(planText, board.planner.date);
+      return;
+    }
     var data = event.clipboardData;
     if (!data) return;
     var at = board.menuAt || centerOfView(board.items.length);
