@@ -3334,12 +3334,12 @@ window.NoteApp = window.NoteApp || {};
     var data = item.data || {};
     if (item.kind === 'todo') {
       var first = (data.items || [])[0];
-      return String(data.title || '').trim() || String(first && first.text || '').trim() || 'To-do';
+      return String(data.title || '').trim() || String(first && first.text || '').trim() || labelText(item);
     }
-    if (item.kind === 'link') return String(data.title || '').trim() || String(data.url || '').trim() || 'Link';
-    if (item.kind === 'image' || item.kind === 'file' || item.kind === 'ref') return String(data.name || '').trim() || (item.kind === 'image' ? 'Image' : 'File');
-    if (item.kind === 'table') return planPlain(data.text) || 'Table';
-    return planPlain(data.text) || 'Untitled';
+    if (item.kind === 'link') return String(data.title || '').trim() || String(data.url || '').trim() || labelText(item);
+    if (item.kind === 'image' || item.kind === 'file' || item.kind === 'ref') return String(data.name || '').trim() || labelText(item);
+    if (item.kind === 'table') return planPlain(data.text) || labelText(item);
+    return planPlain(data.text) || labelText(item);
   }
 
   function planEntries(key) {
