@@ -3358,13 +3358,36 @@ function richItemOf(box) {
     return planPlain(data.text) || labelText(item);
   }
 
+  function planScope() {
+    if (board.planForeign) return board.planForeign;
+    var rows = [];
+    var boards = [];
+    try { boards = App.db.listBoards() || []; } catch (e) { boards = []; }
+    boards.forEach(function (boardRow) {
+      var id = boardRow && boardRow.id;
+      if (!id || id === BOARD_ID || /:planner$/.test(String(id))) return;
+      var mine = [];
+      try { mine = App.db.boardItems(id) || []; } catch (e) { mine = []; }
+      mine.forEach(function (row) {
+        if (!row) return;
+        row.data = row.data || {};
+        rows.push(row);
+      });
+    });
+    board.planForeign = rows;
+    return rows;
+  }
+
   function planEntries(key) {
     var out = [];
     board.items.forEach(function (item) {
-      if (planKeysOf(item).indexOf(key) >= 0) out.push({ board: true, key: key, item: item, title: planTitle(item) || item.kind });
+      if (planKeysOf(item).indexOf(key) >= 0) out.push({ board: true, key: key, item: item, boardId: BOARD_ID, title: planTitle(item) || item.kind });
+    });
+    planScope().forEach(function (item) {
+      if (planKeysOf(item).indexOf(key) >= 0) out.push({ board: true, foreign: true, key: key, item: item, boardId: item.board_id, title: planTitle(item) || item.kind });
     });
     board.plans.forEach(function (item) {
-      if (item.data && item.data.planner === key) out.push({ board: false, key: key, item: item, title: planLabelOf(item) });
+      if (item.data && item.data.planner === key) out.push({ board: false, key: key, item: item, boardId: PLAN_BOARD, title: planLabelOf(item) });
     });
     return out;
   }
@@ -3434,6 +3457,7 @@ function richItemOf(box) {
 
 
   function paintPlan(item) {
+    if (!item.node) return;
     if (!item.node) return;
     var keys = planKeysOf(item);
     var label = keys.map(function (key) { return calShort(key); }).join(', ');
@@ -3541,10 +3565,32 @@ function richItemOf(box) {
   function closePlanner() {
     if (board.plannerEl) board.plannerEl.hidden = true;
     board.planner = null;
+    board.planForeign = null;
   }
 
-  function revealOnBoard(item) {
+  function consumeReveal() {
+    var id = null;
+    try { id = App.prefs.get('board.reveal', null); } catch (e) { id = null; }
+    if (!id) return;
+    try { App.prefs.set('board.reveal', null); } catch (e) { }
+    var item = findItem(id);
     if (!item) return;
+    if (item.node) revealOnBoard(item);
+    else setTimeout(function () { if (item.node) revealOnBoard(item); }, 700);
+  }
+
+  function revealOnBoard(entry) {
+    var item = entry && entry.item ? entry.item : entry;
+    if (!item) return;
+    var target = (entry && entry.boardId) || BOARD_ID;
+    if (target !== BOARD_ID) {
+      try { App.prefs.set('board.id', target); } catch (e) { }
+      try { App.prefs.set('board.reveal', item.id); } catch (e) { }
+      closePlanner();
+      util.toast('Opening ' + boardName(target) + '\u2026');
+      location.reload();
+      return;
+    }
     closePlanner();
     var view = board.view;
     var rect = board.stage.getBoundingClientRect();
@@ -3953,15 +3999,17 @@ function richItemOf(box) {
     });
     var label = barLabel(view);
     if (isBoard) {
+      if (entry.foreign) label.appendChild(node('span', 'bd-plan__board', boardName(entry.boardId)));
       var jump = node('button', 'bd-item__plan is-jump', 'board');
       jump.type = 'button';
       jump.setAttribute('data-plan-jump', item.id);
-      jump.title = 'Show this block on the board';
-      jump.setAttribute('aria-label', 'Show this block on the board');
+      jump.setAttribute('data-plan-board', entry.boardId || BOARD_ID);
+      jump.title = entry.foreign ? 'Show this block on ' + boardName(entry.boardId) : 'Show this block on the board';
+      jump.setAttribute('aria-label', jump.title);
       jump.appendChild(App.ui.icon('external', 11));
       jump.addEventListener('click', function (event) {
         event.stopPropagation();
-        revealOnBoard(item);
+        revealOnBoard(entry);
       });
       label.appendChild(jump);
     }
@@ -7813,6 +7861,7 @@ function richItemOf(box) {
     load();
     setMode(board.mode, true);
     applyBgFromDb();
+    consumeReveal();
     if (!board.bound) {
       board.bound = true;
       document.addEventListener('selectionchange', onSelectionChange);
