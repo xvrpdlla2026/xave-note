@@ -4223,8 +4223,8 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-item__lock.is-on { color: var(--accent); }
 
 .bd-cal__rail { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 2px; }
-.bd-cal__rail .board__tool { flex: 1 1 auto; width: auto; min-width: 0; height: 30px; padding: 0 7px; gap: 5px; }
-.bd-cal__rail .board__tool-label { font-size: 10px; letter-spacing: 0.02em; }
+.bd-cal__rail .board__tool { flex: 1 1 88px; width: auto; min-width: 0; height: 30px; padding: 0 7px; gap: 5px; }
+.bd-cal__rail .board__tool-label { font-size: 10px; letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bd-cal__day.is-over { outline: 1px dashed var(--accent-ring); outline-offset: 2px; }
 .bd-cal__list .bd-item--draw .bd-item__body { height: 220px; }
 .bd-cal__list .bd-item--column .bd-item__body { height: 220px; }
