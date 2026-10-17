@@ -4263,6 +4263,10 @@ html.is-board-boot body > *:not(.board) { display: none; }
 }
 .bd-cal__list .bd-item__body { overflow: visible; }
 .bd-cal__list .bd-item__resize { display: none; }
+.bd-cal__list .bd-item--note .bd-item__body,
+.bd-cal__list .bd-item--comment .bd-item__body,
+.bd-cal__list .bd-item--todo .bd-item__body { max-height: 132px; overflow: hidden; }
+.bd-cal__list .bd-item { max-height: 380px; }
 .bd-cal__list .bd-item--draw { background: var(--bg-raised); border-color: var(--border); }
 .bd-cal__list .bd-item--draw .bd-item__bar { opacity: 1; }
 .bd-cal__list .bd-item--column { height: auto; }
