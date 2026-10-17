@@ -1868,7 +1868,6 @@ mark {
   min-width: 0;
 }
 
-
 .wikilink {
   display: inline-block;
   padding: 0 9px;
@@ -2211,7 +2210,6 @@ body.is-dragging .dropzone { display: flex; }
   font-weight: 620;
   letter-spacing: -0.01em;
 }
-
 
 .icon {
   width: 1em;
@@ -3406,7 +3404,6 @@ dialog:not([open]) { display: none; }
   .menu { animation: none; }
 }
 
-
 .topbar__views {
   display: flex; align-items: center; gap: 6px;}
 
@@ -4256,35 +4253,12 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__list .bd-item__bar { cursor: grab; }
 .bd-cal__list .bd-item__bar:active { cursor: grabbing; }
 .bd-cal__list .bd-item.is-dragging,
-.bd-cal__list .bd-item.is-dragging .bd-item__bar {
+.bd-cal__list .bd-item.is-dragging * {
   cursor: grabbing;
 }
 .bd-cal__list .bd-item__body,
 .bd-cal__list .bd-item__body.is-readonly {
-  cursor: default;
-}
-.bd-cal__ghost {
-  position: absolute;
-  left: -4000px;
-  top: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 200px;
-  padding: 5px 11px;
-  border: 1px solid var(--accent);
-  border-radius: 999px;
-  background: var(--bg-raised);
-  color: var(--text);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  pointer-events: none;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  cursor: grab;
 }
 .bd-cal__list .bd-item__body { overflow: visible; }
 .bd-cal__list .bd-item__resize { display: none; }
