@@ -4098,11 +4098,6 @@ function richItemOf(box) {
     });
     var label = barLabel(view, true);
     if (isBoard) {
-      if (entry.foreign) {
-        var fromBoard = node('span', 'bd-plan__board', boardName(entry.boardId));
-        fromBoard.title = 'From the board ' + boardName(entry.boardId);
-        label.appendChild(fromBoard);
-      }
       var jump = node('button', 'bd-item__plan is-jump', 'board');
       jump.type = 'button';
       jump.setAttribute('data-plan-jump', item.id);
