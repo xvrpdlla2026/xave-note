@@ -3478,9 +3478,9 @@ function richItemOf(box) {
   function planEntryFiltered(entry, query) {
     var plan = board.planner;
     var types = plan && plan.mode === 'browse' ? planTypes(plan) : [];
-    if (types.length && types.indexOf(entry.item.kind) < 0) return false;
+    if (types.length && types.indexOf(planKindOf(entry.item)) < 0) return false;
     if (!query) return true;
-    var hay = kindText(entry.item.kind).label + ' ' + planPlain(entry.title) + ' ' + (planTimeOf(entry.item, entry.board) || '');
+    var hay = kindText(planKindOf(entry.item)).label + ' ' + planPlain(entry.title) + ' ' + (planTimeOf(entry.item, entry.board) || '');
     return hay.toLowerCase().indexOf(query) >= 0;
   }
 
@@ -3516,7 +3516,7 @@ function richItemOf(box) {
   }
 
   function planResultRow(entry) {
-    var text = kindText(entry.item.kind);
+    var text = kindText(planKindOf(entry.item));
     var title = planPlain(entry.title) || text.label;
     var row = node('button', 'bd-cal__row' + (planDoneOf(entry.item, entry.board) ? ' is-done' : ''));
     row.type = 'button';
@@ -3559,17 +3559,33 @@ function richItemOf(box) {
     return wrap;
   }
 
+  // A block that references another block is shown by the type it points at, the same way the card in the
+  // day panel labels it, so a reference to a note counts and filters as a note.
+  function planKindOf(item) {
+    if (item && item.kind === 'ref' && item.ref_kind) return item.ref_kind;
+    return item ? item.kind : '';
+  }
+
   function planTypeBar() {
     var plan = board.planner;
     var on = planTypes(plan);
     var counts = {};
+    var extra = [];
     planAllEntries().forEach(function (entry) {
-      var kind = entry.item.kind;
+      var kind = planKindOf(entry.item);
       counts[kind] = (counts[kind] || 0) + 1;
+      var known = false;
+      BLOCK_KINDS.forEach(function (row) { if (row.kind === kind) known = true; });
+      if (!known && extra.indexOf(kind) < 0) extra.push(kind);
+    });
+    var kinds = BLOCK_KINDS.slice();
+    extra.forEach(function (kind) {
+      var text = kindText(kind);
+      kinds.push({ kind: kind, label: text.label, icon: text.icon });
     });
     var bar = node('div', 'bd-cal__filters');
     bar.appendChild(node('span', 'bd-cal__flabel', 'Type'));
-    BLOCK_KINDS.forEach(function (entry) {
+    kinds.forEach(function (entry) {
       var total = counts[entry.kind] || 0;
       var chip = node('button', 'bd-cal__chip' + (on.indexOf(entry.kind) >= 0 ? ' is-on' : '') + (total ? '' : ' is-empty'));
       chip.type = 'button';
@@ -4283,10 +4299,11 @@ function richItemOf(box) {
       var groups = [];
       entries.forEach(function (entry) {
         var found = null;
-        groups.forEach(function (group) { if (group.kind === entry.item.kind) found = group; });
+        var entryKind = planKindOf(entry.item);
+        groups.forEach(function (group) { if (group.kind === entryKind) found = group; });
         if (!found) {
-          var text = kindText(entry.item.kind);
-          found = { kind: entry.item.kind, label: text.label, icon: text.icon, n: 0, board: false, entries: [] };
+          var text = kindText(entryKind);
+          found = { kind: entryKind, label: text.label, icon: text.icon, n: 0, board: false, entries: [] };
           groups.push(found);
         }
         found.n++;
