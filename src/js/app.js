@@ -5832,6 +5832,15 @@ window.NoteApp = window.NoteApp || {};
   function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) return;
     if (window.location.protocol === 'file:') return;
+    // A new worker claims this page the moment it activates, but the document keeps running the
+    // shell it was loaded with, so take the one reload that puts the new build on screen.
+    var controlled = !!navigator.serviceWorker.controller;
+    var reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (!controlled || reloaded) return;
+      reloaded = true;
+      window.location.reload();
+    });
     try {
       navigator.serviceWorker.register('sw.js').catch(function () {
       });
