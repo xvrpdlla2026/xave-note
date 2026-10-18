@@ -4248,11 +4248,11 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__day.is-full { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; width: auto; height: auto; max-height: none; border: 0; border-radius: 0; background: var(--bg); }
 .bd-cal__canvas { position: absolute; left: 0; top: 0; width: 6000px; height: 4800px; pointer-events: none; }
 .bd-cal__list.is-canvas { position: relative; display: block; flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0; background-image: radial-gradient(circle, var(--border) 1px, transparent 1px); background-size: 24px 24px; }
-.bd-cal__list.is-canvas.is-grabbing { cursor: grabbing; }
+.bd-cal__list.is-canvas.is-grabbing { cursor: move; }
 .bd-cal__list.is-canvas .bd-item { position: absolute; margin: 0; z-index: 1; box-shadow: 0 10px 30px var(--shadow-color, rgba(0, 0, 0, 0.35)); }
 .bd-cal__list.is-canvas .bd-item__body { flex: 1 1 auto; min-height: 0; overflow: auto; }
-.bd-cal__list.is-canvas .bd-item__bar { cursor: grab; }
-.bd-cal__list.is-canvas .bd-item.is-moving { z-index: 9; cursor: grabbing; }
+.bd-cal__list.is-canvas .bd-item__bar { cursor: move; }
+.bd-cal__list.is-canvas .bd-item.is-moving { z-index: 9; cursor: move; }
 .bd-cal__list.is-canvas .bd-item__resize { display: block; }
 
 .bd-cal__results { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
@@ -4443,7 +4443,7 @@ html.is-board-boot body > *:not(.board) { display: none; }
   .bd-cal__rtime, .bd-cal__rboard { display: none; }
 }
 .bd-cal__t { user-select: none; }
-.bd-cal__t[draggable="true"] { cursor: grab; }
+.bd-cal__t[draggable="true"] { cursor: move; }
 
 .bd-cal__search { max-width: 420px; }
 
@@ -4506,7 +4506,7 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__list.is-canvas .bd-cal__grip { cursor: move; }
 .bd-cal__list.is-canvas .bd-item.is-dragging,
 .bd-cal__list.is-canvas .bd-item.is-dragging * { cursor: move; }
-.bd-cal__list.is-canvas.is-grabbing { cursor: grabbing; }
+.bd-cal__list.is-canvas.is-grabbing { cursor: move; }
 
 /* Marquee selection over the day canvas. */
 .bd-cal__marbox { position: absolute; z-index: 6; border: 1px solid var(--accent); border-radius: 4px; background: var(--accent-ring); pointer-events: none; }
@@ -4612,11 +4612,11 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__day:not(.is-full) .bd-cal__dayacts { justify-content: flex-end; margin-left: 0; }
 .bd-cal__day.is-full .bd-cal__daytop { flex-wrap: wrap; row-gap: 8px; }
 .bd-cal__list.is-canvas.is-select-mode { cursor: crosshair; }
-.bd-cal__list.is-canvas:not(.is-select-mode):not(.is-grabbing) { cursor: grab; }
+.bd-cal__list.is-canvas:not(.is-select-mode):not(.is-grabbing) { cursor: move; }
 /* A drag owns the pointer, so the cursor does not fall back to an arrow over the blocks it crosses. */
 .bd-cal__list.is-canvas.is-grabbing,
 .bd-cal__list.is-canvas.is-grabbing .bd-item,
-.bd-cal__list.is-canvas.is-grabbing .bd-item * { cursor: grabbing; }
+.bd-cal__list.is-canvas.is-grabbing .bd-item * { cursor: move; }
 .bd-cal__list.is-canvas.is-select-mode,
 .bd-cal__list.is-canvas.is-select-mode .bd-item,
 .bd-cal__list.is-canvas.is-select-mode .bd-item * { cursor: crosshair; }

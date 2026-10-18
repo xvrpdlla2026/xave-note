@@ -4497,10 +4497,12 @@ function richItemOf(box) {
       list.classList.remove('is-grabbing');
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
     };
     list.classList.add('is-grabbing');
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
     event.preventDefault();
   }
   function planDayNav(plan, todayKey) {
