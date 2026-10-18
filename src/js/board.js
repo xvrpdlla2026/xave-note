@@ -3934,11 +3934,8 @@ function richItemOf(box) {
 
   function addPlannerItem(kind, key, time) {
     if (kind === 'draw' && !board.planDrawAdd) {
-      if (board.planner && board.planner.full) planInkOpen(key);
-      else {
-        board.planPadDate = key;
-        openDrawPad(null);
-      }
+      board.planPadDate = key;
+      openDrawPad(null);
       return null;
     }
     var now = util.nowIso();
@@ -4423,7 +4420,7 @@ function richItemOf(box) {
     card.__planItem = entry.item;
   card.__planKey = key;
   card.addEventListener('pointerdown', function (event) {
-    if (event.target.closest && (event.target.closest('.bd-item__bar') || event.target.closest('.bd-item__resize') || event.target.closest('.bd-cal__inkbar') || event.target.closest('.bd-draw'))) return;
+    if (event.target.closest && (event.target.closest('.bd-item__bar') || event.target.closest('.bd-item__resize') || event.target.closest('.bd-draw'))) return;
     planSelectPaint(card.parentNode, [card]);
   });
     var bar = card.querySelector('.bd-item__bar');
@@ -4478,7 +4475,6 @@ function richItemOf(box) {
   function planCanvasGrab(event) {
     var plan = board.planner;
     if (!plan || !plan.full || event.button !== 0) return;
-    if (board.planInk) return;
     if (event.target && event.target.closest && event.target.closest('.bd-item')) return;
     if (board.space || plan.tool !== 'select') planCanvasPan(event, event.currentTarget);
     else planMarqueeStart(event, event.currentTarget);
@@ -4561,14 +4557,6 @@ function richItemOf(box) {
 
   // The day canvas doubles as the drawing surface: in fullscreen a draw block is sketched anywhere on
   // the infinite board and lands where it was drawn, which is closer to the board than a dialog is.
-  function planInkOpen(key) {
-    var plan = board.planner;
-    if (!plan || !key) return;
-    board.planInk = { key: key, strokes: [], drawing: null, tool: 'pen', color: '#111827', width: DRAW_WIDTHS[1] };
-    plan.full = true;
-    paintPlanner();
-  }
-
   function planInkPlace(item, key, local, base, box) {
     if (!item.data) item.data = {};
     item.data.strokes = local;
@@ -4585,171 +4573,6 @@ function richItemOf(box) {
     }
     savePlanItem(item);
     board.planFresh = { id: item.id, until: Date.now() + 4000 };
-  }
-
-  function planInkDone(save) {
-    var ink = board.planInk;
-    if (!ink) return;
-    board.planInk = null;
-    if (save && ink.strokes.length) {
-      var box = strokeBox(ink.strokes);
-      var local = ink.strokes.map(function (stroke) { return inkShift(stroke, -box.x, -box.y); });
-      board.planDrawAdd = true;
-      var made = addPlannerItem('draw', ink.key, '');
-      board.planDrawAdd = false;
-      if (made) planInkPlace(made, ink.key, local, box, box);
-    }
-    paintPlanner();
-  }
-
-  function planInkPaint(plan) {
-    var ink = board.planInk;
-    var layer = plannerEl().querySelector('.bd-cal__inklayer');
-    if (!ink || !layer || !plan) return;
-    var view = planView(plan);
-    var dpr = window.devicePixelRatio || 1;
-    var ctx = layer.getContext('2d');
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, layer.width, layer.height);
-    ctx.setTransform(dpr * view.z, 0, 0, dpr * view.z, dpr * view.x, dpr * view.y);
-    ink.strokes.forEach(function (stroke) { paintStroke(ctx, stroke); });
-    if (ink.drawing) paintStroke(ctx, ink.drawing);
-  }
-
-  function planInkUndo() {
-    var ink = board.planInk;
-    if (!ink || !ink.strokes.length) return;
-    ink.strokes.pop();
-    planInkPaint(board.planner);
-  }
-
-  function planInkTools(plan) {
-    var ink = board.planInk;
-    var bar = plannerEl().querySelector('.bd-cal__inkbar');
-    if (!ink || !bar) return;
-    Array.prototype.forEach.call(bar.querySelectorAll('[data-ink-tool]'), function (button) {
-      button.classList.toggle('is-active', button.getAttribute('data-ink-tool') === ink.tool);
-    });
-    Array.prototype.forEach.call(bar.querySelectorAll('[data-ink-width]'), function (button) {
-      button.classList.toggle('is-active', Number(button.getAttribute('data-ink-width')) === ink.width);
-    });
-    Array.prototype.forEach.call(bar.querySelectorAll('[data-ink-color]'), function (button) {
-      button.classList.toggle('is-active', button.getAttribute('data-ink-color') === ink.color);
-    });
-  }
-
-  function planInkBar(plan) {
-    var ink = board.planInk;
-    var bar = node('div', 'bd-cal__inkbar');
-    var button = function (label, className) {
-      var el = node('button', 'bd-cal__inkbtn' + (className ? ' ' + className : ''), label);
-      el.type = 'button';
-      return el;
-    };
-    var pen = button('Pen');
-    pen.setAttribute('data-ink-tool', 'pen');
-    pen.addEventListener('click', function () { ink.tool = 'pen'; planInkTools(plan); });
-    var eraser = button('Eraser');
-    eraser.setAttribute('data-ink-tool', 'eraser');
-    eraser.addEventListener('click', function () { ink.tool = 'eraser'; planInkTools(plan); });
-    bar.appendChild(pen);
-    bar.appendChild(eraser);
-    bar.appendChild(node('span', 'bd-cal__inksep'));
-    DRAW_WIDTHS.forEach(function (width) {
-      var dot = node('button', 'bd-cal__inkbtn');
-      dot.type = 'button';
-      dot.setAttribute('data-ink-width', String(width));
-      dot.setAttribute('aria-label', width + ' pixel pen');
-      dot.textContent = width + 'px';
-      dot.addEventListener('click', function () { ink.width = width; planInkTools(plan); });
-      bar.appendChild(dot);
-    });
-    bar.appendChild(node('span', 'bd-cal__inksep'));
-    ['#111827', '#e5484d', '#f5a524', '#30a46c', '#3b82f6', '#8b5cf6'].forEach(function (color) {
-      var swatch = node('button', 'bd-cal__inkdot');
-      swatch.type = 'button';
-      swatch.setAttribute('data-ink-color', color);
-      swatch.setAttribute('aria-label', 'Colour ' + color);
-      swatch.style.background = color;
-      swatch.addEventListener('click', function () { ink.color = color; ink.tool = 'pen'; planInkTools(plan); });
-      bar.appendChild(swatch);
-    });
-    bar.appendChild(node('span', 'bd-cal__inksep'));
-    var undo = button('Undo');
-    undo.addEventListener('click', planInkUndo);
-    var clear = button('Clear');
-    clear.addEventListener('click', function () { ink.strokes = []; planInkPaint(plan); });
-    var done = button('Done', 'bd-cal__inkgo');
-    done.addEventListener('click', function () { planInkDone(true); });
-    var cancel = button('Cancel');
-    cancel.addEventListener('click', function () { planInkDone(false); });
-    bar.appendChild(undo);
-    bar.appendChild(clear);
-    bar.appendChild(cancel);
-    bar.appendChild(done);
-    planInkTools(plan);
-    return bar;
-  }
-
-  function planInkLayer(plan) {
-    var ink = board.planInk;
-    var list = plannerEl().querySelector('.bd-cal__list');
-    if (!ink || !list) return;
-    var rect = list.getBoundingClientRect();
-    var dpr = window.devicePixelRatio || 1;
-    var layer = node('canvas', 'bd-cal__inklayer');
-    layer.width = Math.max(1, Math.round(rect.width * dpr));
-    layer.height = Math.max(1, Math.round(rect.height * dpr));
-    var point = function (event) {
-      var view = planView(plan);
-      return [(event.clientX - rect.left - view.x) / view.z, (event.clientY - rect.top - view.y) / view.z];
-    };
-    layer.addEventListener('pointerdown', function (event) {
-      if (event.button !== 0) return;
-      var start = point(event);
-      ink.drawing = ink.tool === 'eraser' ? null : { c: ink.color, e: 0, w: ink.width, p: [start] };
-      ink.path = ink.tool === 'eraser' ? [start] : null;
-      if (layer.setPointerCapture) layer.setPointerCapture(event.pointerId);
-      planInkPaint(plan);
-      event.preventDefault();
-    });
-    layer.addEventListener('pointermove', function (event) {
-      if (!ink.drawing && !ink.path) return;
-      var next = point(event);
-      if (ink.drawing) ink.drawing.p.push(next);
-      else ink.path.push(next);
-      planInkPaint(plan);
-    });
-    layer.addEventListener('pointerup', function (event) {
-      if (ink.path) {
-        var radius = Math.max(8, ink.width * 2);
-        var path = ink.path;
-        ink.path = null;
-        ink.strokes = ink.strokes.filter(function (stroke) {
-          return !stroke.p.some(function (dot) {
-            return path.some(function (step) { return (dot[0] - step[0]) * (dot[0] - step[0]) + (dot[1] - step[1]) * (dot[1] - step[1]) <= radius * radius; });
-          });
-        });
-      }
-      if (ink.drawing) {
-        ink.strokes.push(ink.drawing);
-        ink.drawing = null;
-      }
-      planInkPaint(plan);
-      planInkTools(plan);
-      event.preventDefault();
-    });
-    list.appendChild(layer);
-    list.appendChild(planInkBar(plan));
-    if (!board.planInkKeys) {
-      board.planInkKeys = true;
-      window.addEventListener('keydown', function (event) {
-        if (!board.planInk) return;
-        if (event.key === 'Escape') { event.preventDefault(); planInkDone(false); return; }
-        if ((event.ctrlKey || event.metaKey) && (event.key === 'z' || event.key === 'Z')) { event.preventDefault(); planInkUndo(); }
-      });
-    }
-    planInkPaint(plan);
   }
 
   function planSel() {
@@ -4828,7 +4651,6 @@ function richItemOf(box) {
     });
     var label = plannerEl().querySelector('.bd-cal__zoomlabel');
     if (label) label.textContent = Math.round(view.z * 100) + '%';
-  if (board.planInk) planInkPaint(plan);
   }
 
   function planPaintInk() {
@@ -5722,7 +5544,6 @@ function richItemOf(box) {
     }
     dayActs.appendChild(calButton(plan.full ? 'Exit fullscreen' : 'Fullscreen', function () {
       plan.full = !plan.full;
-      if (!board.planner.full) board.planInk = null;
       plan.calMonth = null;
       plan.view = null;
       board.plannerView = plan.full ? 'day' : planViewMode(plan);
@@ -5895,7 +5716,6 @@ column.addEventListener('dragover', function (event) {
     planSheetZoomPaint(plan);
     if (plan.full) planPaintView(plan);
 planRevealFresh(plan);
-    if (plan.full && board.planInk) planInkLayer(plan);
     if (keepScroll) {
       var after = el.querySelector('.bd-cal__list');
       if (after) after.scrollTop = keepScroll;
