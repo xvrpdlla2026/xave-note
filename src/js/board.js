@@ -4161,6 +4161,7 @@ function richItemOf(box) {
     return box;
   }
 
+  var PLAN_GRIPS = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
   var PLAN_ORIGIN = { x: 3000, y: 2400 };
   var PLAN_PAD = { w: 6000, h: 4800 };
 
@@ -4194,7 +4195,7 @@ function richItemOf(box) {
 
   // The canvas moves a card with the pointer instead of the list's drag and drop, so the block keeps a
   // place of its own on the day and the day can be laid out like a board.
-  function planCanvasPull(event, entry, key, resize) {
+  function planCanvasPull(event, entry, key, dir) {
     if (event.button !== 0) return;
     var card = event.currentTarget && event.currentTarget.closest ? event.currentTarget.closest('.bd-item') : null;
     if (!card) return;
@@ -4205,14 +4206,24 @@ function richItemOf(box) {
     var move = function (event) {
       var dx = (event.clientX - start.x) / zoom;
       var dy = (event.clientY - start.y) / zoom;
-      if (resize) {
-        box.w = Math.max(230, Math.round(start.box.w + dx));
-        box.h = Math.max(150, Math.round(start.box.h + dy));
+      if (dir) {
+        var w = start.box.w;
+        var h = start.box.h;
+        var x = start.box.x;
+        var y = start.box.y;
+        if (dir.indexOf('e') >= 0) w = Math.max(230, Math.round(start.box.w + dx));
+        if (dir.indexOf('s') >= 0) h = Math.max(150, Math.round(start.box.h + dy));
+        if (dir.indexOf('w') >= 0) { w = Math.max(230, Math.round(start.box.w - dx)); x = Math.round(start.box.x + start.box.w - w); }
+        if (dir.indexOf('n') >= 0) { h = Math.max(150, Math.round(start.box.h - dy)); y = Math.round(start.box.y + start.box.h - h); }
+        box.x = x;
+        box.y = y;
+        box.w = w;
+        box.h = h;
       } else {
         box.x = Math.round(start.box.x + dx);
         box.y = Math.round(start.box.y + dy);
       }
-      if (!resize) {
+      if (!dir) {
         mateStart.forEach(function (row) {
           if (!row.card) return;
           row.card.__planCanvas.x = Math.round(row.x + dx);
@@ -4266,11 +4277,13 @@ function richItemOf(box) {
       bar.title = 'Drag to move the block, or drag its corner to resize';
       bar.addEventListener('pointerdown', function (event) { planCanvasPull(event, entry, key, false); });
     }
-    var grip = node('div', 'bd-cal__grip');
-    grip.title = 'Resize';
-    grip.setAttribute('aria-hidden', 'true');
-    grip.addEventListener('pointerdown', function (event) { planCanvasPull(event, entry, key, true); });
-    card.appendChild(grip);
+    PLAN_GRIPS.forEach(function (dir) {
+      var grip = node('div', 'bd-cal__grip bd-cal__grip--' + dir);
+      grip.title = 'Resize';
+      grip.setAttribute('aria-hidden', 'true');
+      grip.addEventListener('pointerdown', function (event) { planCanvasPull(event, entry, key, dir); });
+      card.appendChild(grip);
+    });
     planCanvasApply(card, box);
   }
 
