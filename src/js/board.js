@@ -4153,7 +4153,7 @@ function richItemOf(box) {
     bar.appendChild(tools);
     box.appendChild(bar);
     var body = node('div', 'bd-item__body');
-    if (isBoard && PLAN_ADD_KINDS.indexOf(item.kind) < 0) {
+    if (isBoard && !(board.planner && board.planner.full) && PLAN_ADD_KINDS.indexOf(item.kind) < 0) {
       box.classList.add('is-plain');
       body.classList.add('bd-cal__plain');
       body.appendChild(node('span', 'bd-cal__plainkind', kindText(item.kind).label));
@@ -4163,6 +4163,7 @@ function richItemOf(box) {
       body.appendChild(open);
     } else {
       body.appendChild(bodyFor(view));
+      if (isBoard && board.planner && board.planner.full && item.kind === 'column') planGroupInside(body, item);
     }
     box.appendChild(body);
     if (item.kind === 'link') { try { renderLinkCard(view); } catch (e) { } }
@@ -4173,12 +4174,45 @@ function richItemOf(box) {
 
   var PLAN_ORIGIN = { x: 3000, y: 2400 };
   var PLAN_PAD = { w: 6000, h: 4800 };
+  var planCanvasZ = 1;
+
+  function planGroupInside(body, item) {
+    var grid = body.querySelector('.bd-container__grid');
+    if (!grid) return;
+    var scale = (board.view && board.view.z) || 1;
+    var outer = item.node ? item.node.getBoundingClientRect() : null;
+    var inner = item.grid ? item.grid.getBoundingClientRect() : null;
+    var offX = outer && inner ? (inner.left - outer.left) / scale : 0;
+    var offY = outer && inner ? (inner.top - outer.top) / scale : 0;
+    var bottom = 0;
+    childEntries(item).forEach(function (entry) {
+      var kid = entry.item;
+      if (!kid) return;
+      var kidBox = node('div', 'bd-item bd-item--' + kid.kind + ' bd-item--in-group');
+      var left = Math.round(kid.x - item.x - offX);
+      var top = Math.round(kid.y - item.y - offY);
+      kidBox.style.left = left + 'px';
+      kidBox.style.top = top + 'px';
+      kidBox.style.width = Math.round(kid.w) + 'px';
+      kidBox.style.height = Math.round(kid.h) + 'px';
+      var kidBar = node('div', 'bd-item__bar');
+      kidBar.appendChild(node('span', 'bd-item__kind', kindText(kid.kind).label));
+      kidBar.appendChild(node('span', 'bd-item__title', (kid.data && kid.data.title) || kindText(kid.kind).label));
+      kidBox.appendChild(kidBar);
+      var kidBody = node('div', 'bd-item__body');
+      kidBody.appendChild(bodyFor(kid));
+      kidBox.appendChild(kidBody);
+      grid.appendChild(kidBox);
+      bottom = Math.max(bottom, top + kid.h);
+    });
+    if (bottom) grid.style.height = Math.max(60, Math.round(bottom)) + 'px';
+  }
 
   function planCanvasBox(item, key, index) {
     var saved = item.data && item.data.planCanvas ? item.data.planCanvas[key] : null;
     if (saved && typeof saved.x === 'number') return { x: saved.x, y: saved.y, w: saved.w, h: saved.h };
-    var w = Math.max(250, Math.min(470, Math.round(item.w || 300)));
-    var h = Math.max(190, Math.min(430, Math.round(item.h || 230)));
+    var w = Math.max(230, Math.round(item.w || 268));
+    var h = Math.max(150, Math.round(item.h || 176));
     return { x: 30 + (index % 3) * 330, y: 30 + Math.floor(index / 3) * 310, w: w, h: h };
   }
 
@@ -4208,6 +4242,7 @@ function richItemOf(box) {
     if (event.button !== 0) return;
     var card = event.currentTarget && event.currentTarget.closest ? event.currentTarget.closest('.bd-item') : null;
     if (!card) return;
+    card.style.zIndex = ++planCanvasZ;
     var box = card.__planCanvas || planCanvasBox(entry.item, key, 0);
     card.__planCanvas = box;
     var zoom = planView(board.planner).z;

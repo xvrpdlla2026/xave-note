@@ -4590,3 +4590,18 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__list.is-canvas .bd-item.is-plain { box-shadow: 0 10px 30px var(--shadow-color); }
 .bd-cal__list.is-canvas .bd-item__resize--se { background: linear-gradient(135deg, transparent 50%, var(--border-strong) 50%); }
 .bd-cal__list.is-canvas .bd-item__resize:hover { border-color: var(--accent); }
+.bd-cal__list.is-canvas .bd-item { max-height: none; width: auto; height: auto; }
+.bd-cal__list.is-canvas .bd-item__body,
+.bd-cal__list.is-canvas .bd-item--note .bd-item__body,
+.bd-cal__list.is-canvas .bd-item--comment .bd-item__body,
+.bd-cal__list.is-canvas .bd-item--todo .bd-item__body,
+.bd-cal__list.is-canvas .bd-item--table .bd-item__body,
+.bd-cal__list.is-canvas .bd-item--column .bd-item__body,
+.bd-cal__list.is-canvas .bd-item--image .bd-item__body {
+  flex: 1 1 auto; height: auto; max-height: none; overflow: auto;
+}
+.bd-cal__list.is-canvas .bd-item--draw .bd-item__body,
+.bd-cal__list.is-canvas .bd-item--draw .bd-draw { height: auto; }
+.bd-cal__list.is-canvas .bd-item .bd-item { position: absolute; width: auto; height: auto; max-height: none; margin: 0; z-index: 1; }
+.bd-cal__list.is-canvas .bd-item .bd-item__body { height: auto; max-height: none; }
+.bd-cal__list.is-canvas .bd-item--in-group { cursor: default; }
