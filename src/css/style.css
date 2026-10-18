@@ -4605,3 +4605,9 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__list.is-canvas .bd-item .bd-item { position: absolute; width: auto; height: auto; max-height: none; margin: 0; z-index: 1; }
 .bd-cal__list.is-canvas .bd-item .bd-item__body { height: auto; max-height: none; }
 .bd-cal__list.is-canvas .bd-item--in-group { cursor: default; }
+.bd-cal__dayacts .bd-cal__btn { flex: none; white-space: nowrap; }
+.bd-cal__dayhead { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.bd-cal__dayacts { flex: none; }
+.bd-cal__day:not(.is-full) .bd-cal__daytop { flex-direction: column; align-items: stretch; gap: 10px; }
+.bd-cal__day:not(.is-full) .bd-cal__dayacts { justify-content: flex-end; margin-left: 0; }
+.bd-cal__day.is-full .bd-cal__daytop { flex-wrap: wrap; row-gap: 8px; }
