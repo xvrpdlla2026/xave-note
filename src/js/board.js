@@ -4139,6 +4139,11 @@ function richItemOf(box) {
     var keepScroll = 0;
     var before = el.querySelector('.bd-cal__list');
     if (before) keepScroll = before.scrollTop;
+    var active = document.activeElement;
+    // Every keystroke rebuilds this view, so the search box has to be handed back its caret by hand.
+    var caret = active && active.classList && active.classList.contains('bd-cal__filter')
+      ? [active.selectionStart, active.selectionEnd]
+      : null;
     el.textContent = '';
     el.classList.toggle('is-day-open', !!plan.dayOpen);
     var main = node('div', 'bd-cal__main');
@@ -4464,6 +4469,10 @@ function richItemOf(box) {
     if (keepScroll) {
       var after = el.querySelector('.bd-cal__list');
       if (after) after.scrollTop = keepScroll;
+    }
+    if (caret) {
+      filter.focus();
+      try { filter.setSelectionRange(caret[0], caret[1]); } catch (e) { }
     }
   }
   function shiftMonth(plan, delta) {
