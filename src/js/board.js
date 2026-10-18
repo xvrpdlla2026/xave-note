@@ -3648,6 +3648,8 @@ function richItemOf(box) {
     }
     keys.push(key);
     keys.sort();
+    delete item.data.spanFrom;
+    delete item.data.spanTo;
     item.data.plans = keys;
     item.data.plan = keys[0];
     item.updated_at = util.nowIso();
@@ -3667,10 +3669,17 @@ function richItemOf(box) {
   function planRemove(item, key) {
     if (!item || !item.data) return;
     planSync(item, planKeysOf(item).filter(function (other) { return other !== key; }));
+    var left = planKeysOf(item);
+    var dirty = false;
+    if (item.data.spanFrom && left.indexOf(item.data.spanFrom) < 0) { delete item.data.spanFrom; dirty = true; }
+    if (item.data.spanTo && left.indexOf(item.data.spanTo) < 0) { delete item.data.spanTo; dirty = true; }
+    if (dirty) savePlanItem(item);
   }
 
   function planClear(item) {
     if (!item || !item.data) return;
+    delete item.data.spanFrom;
+    delete item.data.spanTo;
     planSync(item, []);
   }
 
@@ -3680,6 +3689,104 @@ function richItemOf(box) {
     planAdd(item, key);
   }
 
+  function planRangeKeys(from, to) {
+    var a = calMs(from);
+    var b = calMs(to);
+    if (a === null || b === null) return null;
+    if (b < a) { var swap = a; a = b; b = swap; }
+    var first = new Date(a);
+    var last = new Date(b);
+    var cursor = new Date(first.getFullYear(), first.getMonth(), first.getDate());
+    var stop = new Date(last.getFullYear(), last.getMonth(), last.getDate());
+    var keys = [];
+    while (cursor.getTime() <= stop.getTime() && keys.length < 366) {
+      keys.push(calKey(cursor.getTime()));
+      cursor = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() + 1);
+    }
+    return keys.length ? keys : null;
+  }
+
+  function planSetRange(item, from, to) {
+    var keys = planRangeKeys(from, to);
+    if (!item || !item.data || !keys) return false;
+    planSync(item, keys);
+    item.data.spanFrom = keys[0];
+    item.data.spanTo = keys[keys.length - 1];
+    savePlanItem(item);
+    return true;
+  }
+
+  function planClearRange(item) {
+    if (!item || !item.data) return;
+    var keys = planKeysOf(item);
+    delete item.data.spanFrom;
+    delete item.data.spanTo;
+    if (keys.length > 1) planSync(item, [keys[0]]);
+    else savePlanItem(item);
+  }
+
+  function calRangeLabel(from, to) {
+    if (!from) return 'Range';
+    if (!to || to === from) return calShort(from);
+    return calShort(from) + ' - ' + calShort(to);
+  }
+
+  function planRangeForm(item, from, to) {
+    var form = node('div', 'bd-plan__rangeform');
+    var start = node('input', 'bd-plan__rangedate');
+    start.type = 'date';
+    start.value = from;
+    start.title = 'First day';
+    start.setAttribute('aria-label', 'First day of the range');
+    var end = node('input', 'bd-plan__rangedate');
+    end.type = 'date';
+    end.value = to || from;
+    end.title = 'Last day';
+    end.setAttribute('aria-label', 'Last day of the range');
+    [start, end].forEach(function (input) {
+      input.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
+    });
+    var apply = node('button', 'bd-plan__rangego', 'Apply');
+    apply.type = 'button';
+    apply.addEventListener('click', function (event) {
+      event.stopPropagation();
+      if (planSetRange(item, start.value, end.value)) paintPlanner();
+      else util.toast('Pick a first and a last day');
+    });
+    var clear = node('button', 'bd-plan__rangego is-quiet', 'Clear');
+    clear.type = 'button';
+    clear.title = 'Keep the first day only';
+    clear.addEventListener('click', function (event) {
+      event.stopPropagation();
+      planClearRange(item);
+      paintPlanner();
+    });
+    form.appendChild(start);
+    form.appendChild(node('span', 'bd-plan__rangedash', 'to'));
+    form.appendChild(end);
+    form.appendChild(apply);
+    form.appendChild(clear);
+    return form;
+  }
+
+  function planRangeTools(item, isBoard) {
+    var wrap = node('div', 'bd-plan__range');
+    var from = item.data && item.data.spanFrom ? item.data.spanFrom : '';
+    var to = item.data && item.data.spanTo ? item.data.spanTo : '';
+    var button = node('button', 'bd-plan__rangebtn' + (from ? ' is-on' : ''), from ? calRangeLabel(from, to) : 'Range');
+    button.type = 'button';
+    button.title = from ? 'Change or clear the date range' : 'Give this block a date range';
+    button.setAttribute('aria-label', button.title);
+    button.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
+    button.addEventListener('click', function (event) {
+      event.stopPropagation();
+      var open = wrap.querySelector('.bd-plan__rangeform');
+      if (open) { open.parentNode.removeChild(open); return; }
+      wrap.appendChild(planRangeForm(item, from || planKeyOf(item) || calKey(Date.now()), to || ''));
+    });
+    wrap.appendChild(button);
+    return wrap;
+  }
   function savePlanItem(item) {
     item.updated_at = util.nowIso();
     try { App.db.boardAddItem(item); } catch (e) { }
@@ -4133,6 +4240,7 @@ function richItemOf(box) {
     time.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
     time.addEventListener('change', function () { setPlanTime(item, isBoard, time.value); });
     tools.appendChild(time);
+    tools.appendChild(planRangeTools(item, isBoard));
     if (!isBoard && (item.kind === 'todo' || item.kind === 'note')) {
       var done = planDoneOf(item, false);
       var toggle = node('button', 'bd-item__lock' + (done ? ' is-on' : ''), '');
@@ -5432,9 +5540,17 @@ function richItemOf(box) {
         found.n++;
         found.entries.push(entry);
         if (entry.board) found.board = true;
+        if (entry.item && entry.item.data) {
+          if (entry.item.data.spanFrom === key) found.spanStart = true;
+          if (entry.item.data.spanTo === key) found.spanEnd = true;
+          if (entry.item.data.spanFrom && entry.item.data.spanTo && entry.item.data.spanFrom < key && key < entry.item.data.spanTo) found.spanMid = true;
+        }
       });
       groups.slice(0, 3).forEach(function (group) {
-        var tag = node('span', 'bd-cal__t' + (group.board ? ' is-board' : ''));
+        var tag = node('span', 'bd-cal__t' + (group.board ? ' is-board' : '')
+          + (group.spanStart ? ' is-span-start' : '')
+          + (group.spanEnd ? ' is-span-end' : '')
+          + (!group.spanStart && !group.spanEnd && group.spanMid ? ' is-span-mid' : ''));
         tag.appendChild(App.ui.icon(group.icon, 11));
         tag.appendChild(node('span', 'bd-cal__tlabel', group.n > 1 ? group.label + ' \u00d7' + group.n : group.label));
         tag.setAttribute('draggable', 'true');
