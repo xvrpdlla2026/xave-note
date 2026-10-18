@@ -4199,10 +4199,6 @@ function richItemOf(box) {
 
       var kidBody = node('div', 'bd-item__body');
       kidBody.appendChild(bodyFor(kid));
-      var kidBar = node('div', 'bd-item__bar');
-      kidBar.appendChild(node('span', 'bd-item__kind', kindText(kid.kind).label));
-      kidBar.appendChild(node('span', 'bd-item__title', (kid.data && kid.data.title) || kindText(kid.kind).label));
-      kidBox.appendChild(kidBar);
       kidBox.appendChild(kidBody);
       grid.appendChild(kidBox);
       bottom = Math.max(bottom, top + kid.h);
