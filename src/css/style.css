@@ -4625,3 +4625,39 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__list.is-canvas.is-select-mode .bd-item textarea { cursor: text; }
 .bd-cal__list.is-canvas .bd-item.is-resizing,
 .bd-cal__list.is-canvas .bd-item.is-resizing * { cursor: inherit; }
+/* Ctrl + wheel zooms the sheet, so the browser must not zoom the page instead. */
+.bd-cal { --cal-zoom: 1; }
+.bd-cal__grid, .bd-cal__weekview, .bd-cal__yearview { zoom: var(--cal-zoom, 1); }
+.bd-cal__views { display: inline-flex; align-items: center; gap: 2px; height: 30px; padding: 0 3px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-raised); }
+.bd-cal__views .bd-cal__btn { height: 24px; padding: 0 10px; border: 0; border-radius: 6px; background: none; color: var(--text-faint); font-size: 12px; }
+.bd-cal__views .bd-cal__btn:hover { background: var(--bg-hover); color: var(--text); }
+.bd-cal__views .bd-cal__btn.is-on { background: var(--accent-soft); color: var(--accent); }
+.bd-cal__main.is-weekview .bd-cal__dow, .bd-cal__main.is-weekview .bd-cal__grid { display: none; }
+.bd-cal__main.is-yearview .bd-cal__dow, .bd-cal__main.is-yearview .bd-cal__grid { display: none; }
+.bd-cal__main:not(.is-weekview) .bd-cal__weekview, .bd-cal__main:not(.is-yearview) .bd-cal__yearview { display: none; }
+.bd-cal__weekview { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; padding: 0 2px 14px; }
+.bd-cal__wcol { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-sunken); }
+.bd-cal__wcol.is-today { border-color: var(--accent); }
+.bd-cal__wcol.is-sel { border-color: var(--border-strong); }
+.bd-cal__wcol.is-over { outline: 1px dashed var(--accent-ring); outline-offset: 2px; }
+.bd-cal__whead { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; width: 100%; height: 26px; padding: 0 6px; border: 0; border-radius: 6px; background: none; color: var(--text-faint); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; cursor: pointer; }
+.bd-cal__whead:hover { background: var(--bg-hover); color: var(--text); }
+.bd-cal__wcol.is-today .bd-cal__whead, .bd-cal__wcol.is-sel .bd-cal__whead { color: var(--accent); }
+.bd-cal__wlist { display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; min-height: 44px; }
+.bd-cal__wempty { padding: 6px; font-size: 11px; color: var(--text-faint); }
+.bd-cal__yearview { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(216px, 1fr)); gap: 14px; padding: 0 2px 16px; }
+.bd-cal__ymonth { padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-sunken); }
+.bd-cal__ytitle { width: 100%; height: 26px; border: 0; border-radius: 6px; background: none; color: var(--text); font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.bd-cal__ytitle:hover { background: var(--bg-hover); color: var(--accent); }
+.bd-cal__ygrid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; margin-top: 6px; }
+.bd-cal__ydow, .bd-cal__yday { display: flex; align-items: center; justify-content: center; height: 22px; border: 0; background: none; font-size: 11px; color: var(--text-faint); }
+.bd-cal__ydow { font-size: 9.5px; }
+.bd-cal__yday { position: relative; border-radius: 5px; cursor: pointer; }
+.bd-cal__yday:hover { background: var(--bg-hover); color: var(--text); }
+.bd-cal__yday.is-out { opacity: .35; }
+.bd-cal__yday.is-today { background: var(--accent); color: #ffffff; }
+.bd-cal__yday.is-sel { box-shadow: inset 0 0 0 1.5px var(--accent); color: var(--accent); }
+.bd-cal__yday.has-plan { color: var(--text); font-weight: 600; }
+.bd-cal__ydot { position: absolute; bottom: 2px; left: 50%; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); transform: translateX(-50%); }
+.bd-cal__yday.is-today .bd-cal__ydot { background: #ffffff; }
+@media (max-width: 1080px) { .bd-cal__weekview { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

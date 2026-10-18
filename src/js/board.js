@@ -3703,12 +3703,18 @@ function richItemOf(box) {
 
   function openPlanner(mode, rows, date) {
     var ms = date ? calMs(date) : null;
+    var saved = 'month';
+    try { saved = App.prefs.get('board.planView', 'month') || 'month'; } catch (e) { saved = 'month'; }
+    var dayFirst = saved === 'day' && mode !== 'assign';
     board.planner = {
       mode: mode,
       rows: rows || [],
       date: date || calKey(Date.now()),
       month: monthStart(ms === null ? Date.now() : ms),
-      dayOpen: false,
+      dayOpen: dayFirst,
+      full: dayFirst,
+      viewMode: saved === 'day' ? 'month' : saved,
+      sheetZoom: 1,
       tool: board.mode === 'select' ? 'select' : 'grab',
     };
     var el = plannerEl();
@@ -4722,6 +4728,256 @@ function richItemOf(box) {
     });
   }
 
+  function planViewMode(plan) {
+    if (plan && plan.full) return 'day';
+    return (plan && plan.viewMode) || 'month';
+  }
+
+  function planSetView(plan, mode) {
+    if (!plan || !mode) return;
+    if (mode === 'day') {
+      plan.dayOpen = true;
+      plan.full = true;
+      plan.view = null;
+      plan.calMonth = null;
+    } else {
+      plan.full = false;
+      plan.dayOpen = mode === 'month';
+      plan.viewMode = mode;
+      if (mode === 'month') plan.calMonth = null;
+    }
+    board.plannerView = mode;
+    try { App.prefs.set('board.planView', mode); } catch (e) { }
+    paintPlanner();
+  }
+
+  function planViewSwitch(plan) {
+    var wrap = node('div', 'bd-cal__views');
+    var mode = planViewMode(plan);
+    [['day', 'Day', 'Day view (D)'], ['week', 'Week', 'Week view (W)'], ['month', 'Month', 'Month view (M)'], ['year', 'Year', 'Year view (Y)']].forEach(function (def) {
+      var button = calButton(def[1], function () { planSetView(plan, def[0]); }, 'is-quiet' + (def[0] === mode ? ' is-on' : ''));
+      button.title = def[2];
+      button.setAttribute('aria-pressed', def[0] === mode ? 'true' : 'false');
+      wrap.appendChild(button);
+    });
+    return wrap;
+  }
+
+  function planNavLabel(plan) {
+    var mode = planViewMode(plan);
+    var ms = calMs(plan.date);
+    var day = new Date(ms === null ? Date.now() : ms);
+    if (mode === 'year') return String(new Date(plan.month).getFullYear());
+    if (mode === 'week') {
+      var start = new Date(day.getTime());
+      start.setDate(start.getDate() - start.getDay());
+      var end = new Date(start.getTime());
+      end.setDate(start.getDate() + 6);
+      var left = CAL_MONTHS[start.getMonth()].slice(0, 3) + ' ' + start.getDate();
+      var right = (start.getMonth() === end.getMonth() ? '' : CAL_MONTHS[end.getMonth()].slice(0, 3) + ' ') + end.getDate();
+      return left + ' - ' + right + ', ' + end.getFullYear();
+    }
+    return CAL_MONTHS[new Date(plan.month).getMonth()] + ' ' + new Date(plan.month).getFullYear();
+  }
+
+  function planShift(plan, dir) {
+    if (!plan) return;
+    var mode = planViewMode(plan);
+    var ms = calMs(plan.date);
+    if (mode === 'week') {
+      plan.date = calKey((ms === null ? Date.now() : ms) + dir * 7 * 86400000);
+      plan.month = monthStart(calMs(plan.date));
+      plan.calMonth = plan.month;
+    } else if (mode === 'year') {
+      plan.month = calShift(plan.month, dir * 12);
+      plan.calMonth = plan.month;
+      plan.date = calKey(plan.month);
+    } else if (mode === 'day') {
+      plan.date = calKey((ms === null ? Date.now() : ms) + dir * 86400000);
+      plan.month = monthStart(calMs(plan.date));
+      plan.calMonth = plan.month;
+    } else {
+      shiftMonth(plan, dir);
+      return;
+    }
+    paintPlanner();
+  }
+
+  function planZoomLabel(plan) {
+    var z = plan && plan.full ? planView(plan).z : ((plan && plan.sheetZoom) || 1);
+    return Math.round(z * 100) + '%';
+  }
+
+  function planSheetZoomPaint(plan) {
+    var el = plannerEl();
+    el.style.setProperty('--cal-zoom', String((plan && plan.sheetZoom) || 1));
+    var label = el.querySelector('.bd-cal__zoomlabel');
+    if (label) label.textContent = planZoomLabel(plan);
+  }
+
+  function planSheetZoom(plan, factor) {
+    if (!plan) return;
+    var now = plan.sheetZoom || 1;
+    var next = Math.min(1.6, Math.max(0.6, now * factor));
+    if (Math.abs(next - now) < 0.001) return;
+    plan.sheetZoom = next;
+    planSheetZoomPaint(plan);
+  }
+
+  function planZoomStep(plan, factor) {
+    var open = board.planner || plan;
+    if (!open) return;
+    if (open.full) planZoomBy(open, factor);
+    else planSheetZoom(open, factor);
+  }
+
+  function planZoomReset(plan) {
+    var open = board.planner || plan;
+    if (!open) return;
+    if (open.full) {
+      open.view = null;
+      planPaintView(open);
+      planPaintInk();
+    } else {
+      open.sheetZoom = 1;
+    }
+    planSheetZoomPaint(open);
+  }
+
+  function planCountIndex(plan) {
+    var query = plan && plan.query ? String(plan.query).trim().toLowerCase() : '';
+    var typed = planTypes(plan).length > 0;
+    var map = {};
+    planAllEntries().forEach(function (entry) {
+      if ((query || typed) && !planEntryFiltered(entry, query)) return;
+      map[entry.key] = (map[entry.key] || 0) + 1;
+    });
+    return map;
+  }
+
+  function planSumLabel(plan, mode, monthTotal, monthLate) {
+    if (mode !== 'week' && mode !== 'year') {
+      return monthTotal
+        ? monthTotal + (monthTotal === 1 ? ' block' : ' blocks') + (monthLate ? ' \u00b7 ' + monthLate + ' late' : '')
+        : 'Nothing planned this month';
+    }
+    var counts = planCountIndex(plan);
+    var ms = calMs(plan.date);
+    var day = new Date(ms === null ? Date.now() : ms);
+    if (mode === 'week') {
+      var start = new Date(day.getTime());
+      start.setDate(start.getDate() - start.getDay());
+      start.setHours(0, 0, 0, 0);
+      var total = 0;
+      for (var i = 0; i < 7; i++) total += counts[calKey(start.getTime() + i * 86400000)] || 0;
+      return total ? total + (total === 1 ? ' block' : ' blocks') + ' this week' : 'Nothing planned this week';
+    }
+    var year = String(day.getFullYear());
+    var all = 0;
+    Object.keys(counts).forEach(function (key) { if (key.slice(0, 4) === year) all += counts[key]; });
+    return all ? all + (all === 1 ? ' block' : ' blocks') + ' in ' + year : 'Nothing planned in ' + year;
+  }
+
+  function planWeekView(plan, todayKey) {
+    var wrap = node('div', 'bd-cal__weekview');
+    var ms = calMs(plan.date);
+    var start = new Date(ms === null ? Date.now() : ms);
+    start.setDate(start.getDate() - start.getDay());
+    start.setHours(0, 0, 0, 0);
+    for (var i = 0; i < 7; i++) {
+      var dayMs = start.getTime() + i * 86400000;
+      var key = calKey(dayMs);
+      var day = new Date(dayMs);
+      var col = node('div', 'bd-cal__wcol' + (key === todayKey ? ' is-today' : '') + (key === plan.date ? ' is-sel' : ''));
+      var head = node('button', 'bd-cal__whead');
+      head.type = 'button';
+      head.title = CAL_DAYS[day.getDay()] + ', ' + CAL_MONTHS[day.getMonth()] + ' ' + day.getDate();
+      head.appendChild(node('span', '', CAL_DOW[day.getDay()]));
+      head.appendChild(node('span', '', String(day.getDate())));
+      head.addEventListener('click', (function (useKey) {
+        return function () {
+          plan.date = useKey;
+          plan.month = monthStart(calMs(useKey));
+          plan.dayOpen = true;
+          paintPlanner();
+        };
+      })(key));
+      col.appendChild(head);
+      var list = node('div', 'bd-cal__wlist');
+      var entries = planSort(planFiltered(planEntries(key)), key);
+      entries.forEach(function (entry) { list.appendChild(planCard(entry)); });
+      if (!entries.length) list.appendChild(node('div', 'bd-cal__wempty', 'Nothing planned'));
+      col.appendChild(list);
+      col.addEventListener('dragover', function (event) {
+        if (!board.planDrag && !planDragHas(event)) return;
+        event.preventDefault();
+        col.classList.add('is-over');
+      });
+      col.addEventListener('dragleave', function () { col.classList.remove('is-over'); });
+      col.addEventListener('drop', (function (useKey) {
+        return function (event) {
+          col.classList.remove('is-over');
+          if (board.planDrag) { event.preventDefault(); dropPlanOn(useKey); return; }
+          if (planDropEvent(event, useKey)) event.preventDefault();
+        };
+      })(key));
+      wrap.appendChild(col);
+    }
+    return wrap;
+  }
+
+  function planYearView(plan, todayKey) {
+    var counts = planCountIndex(plan);
+    var wrap = node('div', 'bd-cal__yearview');
+    var ms = calMs(plan.date);
+    var base = new Date(ms === null ? Date.now() : ms);
+    var year = base.getFullYear();
+    for (var m = 0; m < 12; m++) {
+      var card = node('div', 'bd-cal__ymonth');
+      var title = node('button', 'bd-cal__ytitle', CAL_MONTHS[m] + ' ' + year);
+      title.type = 'button';
+      title.title = 'Open ' + CAL_MONTHS[m] + ' ' + year;
+      title.addEventListener('click', (function (useMonth) {
+        return function () {
+          plan.month = new Date(year, useMonth, 1).getTime();
+          plan.date = calKey(plan.month);
+          planSetView(plan, 'month');
+        };
+      })(m));
+      card.appendChild(title);
+      var grid = node('div', 'bd-cal__ygrid');
+      CAL_DOW.forEach(function (text) { grid.appendChild(node('span', 'bd-cal__ydow', text)); });
+      var first = new Date(year, m, 1);
+      var cursor = new Date(year, m, 1 - first.getDay());
+      for (var i = 0; i < 42; i++) {
+        var day = new Date(cursor.getTime());
+        day.setDate(cursor.getDate() + i);
+        var key = calKey(day.getTime());
+        var count = counts[key] || 0;
+        var cell = node('button', 'bd-cal__yday'
+          + (day.getMonth() === m ? '' : ' is-out')
+          + (key === todayKey ? ' is-today' : '')
+          + (key === plan.date ? ' is-sel' : '')
+          + (count ? ' has-plan' : ''));
+        cell.type = 'button';
+        cell.title = CAL_DAYS[day.getDay()] + ', ' + CAL_MONTHS[day.getMonth()] + ' ' + day.getDate() + (count ? ', ' + count + (count === 1 ? ' block' : ' blocks') : '');
+        cell.appendChild(node('span', '', String(day.getDate())));
+        if (count) cell.appendChild(node('span', 'bd-cal__ydot'));
+        cell.setAttribute('data-year-key', key);
+        cell.addEventListener('click', function () {
+          var use = this.getAttribute('data-year-key');
+          plan.date = use;
+          plan.month = monthStart(calMs(use));
+          plan.dayOpen = true;
+          paintPlanner();
+        });
+        grid.appendChild(cell);
+      }
+      card.appendChild(grid);
+      wrap.appendChild(card);
+    }
+    return wrap;
+  }
   function planZoomBy(plan, factor, px, py) {
     var view = planView(plan);
     var next = Math.min(2.5, Math.max(0.15, view.z * factor));
@@ -4735,51 +4991,72 @@ function richItemOf(box) {
     view.z = next;
     planPaintView(plan);
     planPaintInk();
+    var zoomLabel = plannerEl().querySelector('.bd-cal__zoomlabel');
+    if (zoomLabel) zoomLabel.textContent = planZoomLabel(plan);
   }
 
   function planChrome(plan) {
-    if (!plan || !plan.full) return;
-    var day = plannerEl().querySelector('.bd-cal__day');
-    var list = plannerEl().querySelector('.bd-cal__list');
-    if (!day || !list) return;
-    if (!list.__planWheel) {
-      list.__planWheel = true;
-      list.addEventListener('wheel', function (event) {
-        var view = planView(plan);
-        if (event.ctrlKey || event.metaKey) {
+    if (!plan) return;
+    var el = plannerEl();
+    var day = el.querySelector('.bd-cal__day');
+    if (!el.__planWheel) {
+      el.__planWheel = true;
+      el.addEventListener('wheel', function (event) {
+        var open = board.planner;
+        if (!open) return;
+        var canvas = event.target && event.target.closest ? event.target.closest('.bd-cal__list.is-canvas') : null;
+        if (!event.ctrlKey && !event.metaKey) {
+          if (!canvas || !open.full) return;
           event.preventDefault();
-          var rect = list.getBoundingClientRect();
-          planZoomBy(plan, Math.pow(1.0018, -event.deltaY), event.clientX - rect.left, event.clientY - rect.top);
+          var view = planView(open);
+          view.x -= event.deltaX;
+          view.y -= event.deltaY;
+          planPaintView(open);
           return;
         }
         event.preventDefault();
-        view.x -= event.deltaX;
-        view.y -= event.deltaY;
-        planPaintView(plan);
+        if (open.full && canvas) {
+          var rect = canvas.getBoundingClientRect();
+          planZoomBy(open, Math.pow(1.0018, -event.deltaY), event.clientX - rect.left, event.clientY - rect.top);
+          return;
+        }
+        planSheetZoom(open, Math.pow(1.0009, -event.deltaY));
       }, { passive: false });
     }
-    if (plannerEl().querySelector('.bd-cal__zoom')) return;
+    if (!window.__planKeys) {
+      window.__planKeys = true;
+      window.addEventListener('keydown', function (event) {
+        var open = board.planner;
+        if (!open || event.ctrlKey || event.metaKey || event.altKey) return;
+        var target = event.target;
+        if (target && target.closest && target.closest('input, textarea, select, [contenteditable="true"]')) return;
+        var want = { d: 'day', w: 'week', m: 'month', y: 'year' }[String(event.key || '').toLowerCase()];
+        if (!want) return;
+        event.preventDefault();
+        planSetView(open, want);
+      });
+    }
+    if (el.querySelector('.bd-cal__zoom')) return;
     var zoom = node('div', 'bd-cal__zoom');
     var minus = node('button', 'bd-cal__zoom-btn', '\u2212');
     minus.type = 'button';
     minus.title = 'Zoom out';
     minus.setAttribute('aria-label', 'Zoom out');
-    minus.addEventListener('click', function () { planZoomBy(plan, 1 / 1.15); });
-    var label = node('div', 'bd-cal__zoomlabel', Math.round(planView(plan).z * 100) + '%');
-    label.title = 'Reset the view';
-    label.addEventListener('click', function () { plan.view = null; planPaintView(plan); planPaintInk(); });
+    minus.addEventListener('click', function () { planZoomStep(plan, 1 / 1.15); });
+    var label = node('div', 'bd-cal__zoomlabel', planZoomLabel(plan));
+    label.title = 'Reset the zoom';
+    label.addEventListener('click', function () { planZoomReset(plan); });
     var plus = node('button', 'bd-cal__zoom-btn', '+');
     plus.type = 'button';
     plus.title = 'Zoom in';
     plus.setAttribute('aria-label', 'Zoom in');
-    plus.addEventListener('click', function () { planZoomBy(plan, 1.15); });
+    plus.addEventListener('click', function () { planZoomStep(plan, 1.15); });
     zoom.appendChild(minus);
     zoom.appendChild(label);
     zoom.appendChild(plus);
-    var slot = plannerEl().querySelector('.bd-cal__zoomslot');
-    (slot || day).appendChild(zoom);
+    var slot = el.querySelector('.bd-cal__zoomslot');
+    (slot || day || el).appendChild(zoom);
   }
-
   function planInkZoom(wrap) {
     var plan = board.planner;
     if (!plan || !plan.full || !plan.view || plan.view.z === 1) return 1;
@@ -5016,8 +5293,8 @@ function richItemOf(box) {
     };
     top.appendChild(node('div', 'bd-cal__label', titles[plan.mode] || 'Planner'));
     var nav = node('div', 'bd-cal__nav');
-    nav.appendChild(calButton('\u2039', function () { shiftMonth(plan, -1); }, 'is-icon'));
-    var monthTitle = calButton(CAL_MONTHS[new Date(plan.month).getMonth()] + ' ' + new Date(plan.month).getFullYear(), function () {
+    nav.appendChild(calButton('\u2039', function () { planShift(plan, -1); }, 'is-icon'));
+    var monthTitle = calButton(planNavLabel(plan), function () {
       plan.jump = plan.jump ? 0 : 'month';
       paintPlanner();
     }, 'is-quiet bd-cal__mtitle');
@@ -5026,8 +5303,9 @@ function richItemOf(box) {
     monthTitle.setAttribute('aria-expanded', plan.jump ? 'true' : 'false');
     monthTitle.classList.toggle('is-open', !!plan.jump);
     nav.appendChild(monthTitle);
-    nav.appendChild(calButton('\u203a', function () { shiftMonth(plan, 1); }, 'is-icon'));
+    nav.appendChild(calButton('\u203a', function () { planShift(plan, 1); }, 'is-icon'));
     top.appendChild(nav);
+    top.appendChild(planViewSwitch(plan));
     var sum = node('span', 'bd-cal__msum', '');
     top.appendChild(sum);
     var search = node('div', 'bd-cal__search');
@@ -5104,6 +5382,11 @@ function richItemOf(box) {
       if (types) rail.appendChild(types);
     }
     main.appendChild(rail);
+    var viewMode = planViewMode(plan);
+    main.classList.toggle('is-weekview', viewMode === 'week');
+    main.classList.toggle('is-yearview', viewMode === 'year');
+    if (viewMode === 'week') main.appendChild(planWeekView(plan, calKey(Date.now())));
+    if (viewMode === 'year') main.appendChild(planYearView(plan, calKey(Date.now())));
     var dow = node('div', 'bd-cal__dow');
     CAL_DOW.forEach(function (day) { dow.appendChild(node('span', '', day)); });
     if (plan.jump) main.appendChild(planJumpPanel(plan, calKey(Date.now()), true));
@@ -5194,9 +5477,7 @@ function richItemOf(box) {
       grid.appendChild(cell);
     }
     main.appendChild(grid);
-    sum.textContent = monthTotal
-      ? monthTotal + (monthTotal === 1 ? ' block' : ' blocks') + (monthLate ? ' \u00b7 ' + monthLate + ' late' : '')
-      : 'Nothing planned this month';
+    sum.textContent = planSumLabel(plan, viewMode, monthTotal, monthLate);
     if (plan.mode === 'browse' && plan.query && String(plan.query).trim()) {
       // A query looks through every month, so the calendar gives way to what it found.
       var matches = planMatches();
@@ -5243,6 +5524,8 @@ function richItemOf(box) {
       if (!board.planner.full) board.planInk = null;
       plan.calMonth = null;
       plan.view = null;
+      board.plannerView = plan.full ? 'day' : planViewMode(plan);
+      try { App.prefs.set('board.planView', board.plannerView); } catch (e) { }
       paintPlanner();
     }, 'is-quiet'));
     dayActs.appendChild(dayClose);
@@ -5395,10 +5678,9 @@ column.addEventListener('dragover', function (event) {
     }
     column.appendChild(list);
     el.appendChild(column);
-    if (plan.full) {
-      planChrome(plan);
-      planPaintView(plan);
-    }
+    planChrome(plan);
+    planSheetZoomPaint(plan);
+    if (plan.full) planPaintView(plan);
 planRevealFresh(plan);
     if (plan.full && board.planInk) planInkLayer(plan);
     if (keepScroll) {
