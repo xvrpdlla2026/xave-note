@@ -3583,8 +3583,9 @@ function richItemOf(box) {
       var text = kindText(kind);
       kinds.push({ kind: kind, label: text.label, icon: text.icon });
     });
+    var row = node('div', 'bd-cal__frow');
+    row.appendChild(node('span', 'bd-cal__label', 'Types'));
     var bar = node('div', 'bd-cal__filters');
-    bar.appendChild(node('span', 'bd-cal__flabel', 'Type'));
     kinds.forEach(function (entry) {
       var total = counts[entry.kind] || 0;
       var chip = node('button', 'bd-cal__chip' + (on.indexOf(entry.kind) >= 0 ? ' is-on' : '') + (total ? '' : ' is-empty'));
@@ -3604,6 +3605,7 @@ function richItemOf(box) {
       });
       bar.appendChild(chip);
     });
+    row.appendChild(bar);
     if (on.length) {
       var clear = node('button', 'bd-cal__chip is-clear');
       clear.type = 'button';
@@ -3612,9 +3614,9 @@ function richItemOf(box) {
       if (cross) clear.appendChild(cross);
       clear.appendChild(node('span', '', 'Clear'));
       clear.addEventListener('click', function () { planTypes(plan).length = 0; paintPlanner(); });
-      bar.appendChild(clear);
+      row.appendChild(clear);
     }
-    return bar;
+    return row;
   }
 
   function paintPlan(item) {
