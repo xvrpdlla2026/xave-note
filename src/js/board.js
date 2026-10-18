@@ -4196,12 +4196,13 @@ function richItemOf(box) {
       kidBox.style.top = top + 'px';
       kidBox.style.width = Math.round(kid.w) + 'px';
       kidBox.style.height = Math.round(kid.h) + 'px';
+
+      var kidBody = node('div', 'bd-item__body');
+      kidBody.appendChild(bodyFor(kid));
       var kidBar = node('div', 'bd-item__bar');
       kidBar.appendChild(node('span', 'bd-item__kind', kindText(kid.kind).label));
       kidBar.appendChild(node('span', 'bd-item__title', (kid.data && kid.data.title) || kindText(kid.kind).label));
       kidBox.appendChild(kidBar);
-      var kidBody = node('div', 'bd-item__body');
-      kidBody.appendChild(bodyFor(kid));
       kidBox.appendChild(kidBody);
       grid.appendChild(kidBox);
       bottom = Math.max(bottom, top + kid.h);
@@ -4273,12 +4274,16 @@ function richItemOf(box) {
         });
       }
       planCanvasApply(card, box);
-      if (dir) card.style.cursor = RESIZE_CURSOR[dir] || 'nwse-resize';
+      if (dir) {
+        card.classList.add('is-resizing');
+        card.style.cursor = RESIZE_CURSOR[dir] || 'nwse-resize';
+      }
     };
     var up = function () {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       card.classList.remove('is-moving');
+      card.classList.remove('is-resizing');
       card.style.cursor = '';
       planCanvasKeep(entry.item, key, box);
       mateStart.forEach(function (row) {

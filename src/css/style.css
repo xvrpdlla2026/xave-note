@@ -4613,3 +4613,15 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__day.is-full .bd-cal__daytop { flex-wrap: wrap; row-gap: 8px; }
 .bd-cal__list.is-canvas.is-select-mode { cursor: crosshair; }
 .bd-cal__list.is-canvas:not(.is-select-mode):not(.is-grabbing) { cursor: grab; }
+/* A drag owns the pointer, so the cursor does not fall back to an arrow over the blocks it crosses. */
+.bd-cal__list.is-canvas.is-grabbing,
+.bd-cal__list.is-canvas.is-grabbing .bd-item,
+.bd-cal__list.is-canvas.is-grabbing .bd-item * { cursor: grabbing; }
+.bd-cal__list.is-canvas.is-select-mode,
+.bd-cal__list.is-canvas.is-select-mode .bd-item,
+.bd-cal__list.is-canvas.is-select-mode .bd-item * { cursor: crosshair; }
+.bd-cal__list.is-canvas.is-select-mode .bd-item [contenteditable="true"],
+.bd-cal__list.is-canvas.is-select-mode .bd-item input,
+.bd-cal__list.is-canvas.is-select-mode .bd-item textarea { cursor: text; }
+.bd-cal__list.is-canvas .bd-item.is-resizing,
+.bd-cal__list.is-canvas .bd-item.is-resizing * { cursor: inherit; }
