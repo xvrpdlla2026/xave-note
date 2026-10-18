@@ -3873,25 +3873,6 @@ function richItemOf(box) {
     });
   }
 
-  function moveUnfinished() {
-    var today = calKey(Date.now());
-    var moved = 0;
-    board.items.forEach(function (item) {
-      var stale = planKeysOf(item).filter(function (key) { return key < today; });
-      if (!stale.length) return;
-      planSync(item, planKeysOf(item).filter(function (key) { return key >= today; }));
-      planAdd(item, today, true);
-      moved++;
-    });
-    board.plans.forEach(function (item) {
-      var key = item.data && item.data.planner;
-      if (key && key < today && !planDoneOf(item, false)) { item.data.planner = today; savePlanItem(item); moved++; }
-    });
-    if (board.planner) board.planner.date = today;
-    paintPlanner();
-    util.toast(moved ? 'Moved ' + moved + (moved === 1 ? ' block' : ' blocks') + ' to today' : 'Nothing overdue');
-  }
-
   // A planner drag names its blocks by id, and a planned block can belong to any board, so the id
   // resolves against the board you are on and then against every other board in the planner.
   function planRow(id) {
@@ -5002,9 +4983,6 @@ function planCanvasGrab(event) {
         closePlanner();
         util.toast('Removed from the planner');
       }, 'is-quiet'));
-    }
-    if (plan.mode === 'browse') {
-      top.appendChild(calButton('Move unfinished to today', function () { moveUnfinished(); }, 'is-quiet'));
     }
     top.appendChild(calButton('Today', function () {
       plan.date = calKey(Date.now());
