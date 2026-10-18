@@ -3583,8 +3583,6 @@ function richItemOf(box) {
     extra.forEach(function (kind) { if (counts[kind] && present.indexOf(kind) < 0) present.push(kind); });
     if (!present.length) return null;
     if (on.length > 1) on.length = 0;
-    var row = node('div', 'bd-cal__frow');
-    row.appendChild(node('span', 'bd-cal__label', 'Types'));
     var button = node('button', 'bd-cal__type' + (on.length ? ' is-on' : ''));
     button.type = 'button';
     button.setAttribute('aria-haspopup', 'menu');
@@ -3615,8 +3613,7 @@ function richItemOf(box) {
       });
       App.ui.openMenu({ x: Math.round(at.left), y: Math.round(at.bottom + 6), items: items });
     });
-    row.appendChild(button);
-    return row;
+    return button;
   }
 
   function paintPlan(item) {
@@ -4294,6 +4291,13 @@ function richItemOf(box) {
       assign: 'Choose a date for ' + plan.rows.length + (plan.rows.length === 1 ? ' block' : ' blocks'),
     };
     top.appendChild(node('div', 'bd-cal__label', titles[plan.mode] || 'Planner'));
+    var nav = node('div', 'bd-cal__nav');
+    nav.appendChild(calButton('\u2039', function () { shiftMonth(plan, -1); }, 'is-icon'));
+    nav.appendChild(node('span', 'bd-cal__mtitle', CAL_MONTHS[new Date(plan.month).getMonth()] + ' ' + new Date(plan.month).getFullYear()));
+    nav.appendChild(calButton('\u203a', function () { shiftMonth(plan, 1); }, 'is-icon'));
+    top.appendChild(nav);
+    var sum = node('span', 'bd-cal__msum', '');
+    top.appendChild(sum);
     var search = node('div', 'bd-cal__search');
     var glyph = App.ui.icon('search', 14);
     if (glyph) search.appendChild(glyph);
@@ -4334,7 +4338,6 @@ function richItemOf(box) {
       try { filter.setSelectionRange(filter.value.length, filter.value.length); } catch (e) { }
       board.plannerFilter = false;
     }
-    top.appendChild(search);
     top.appendChild(node('div', 'bd-cal__spacer'));
     if (plan.mode === 'assign') {
       top.appendChild(calButton('Remove from planner', function () {
@@ -4356,20 +4359,22 @@ function richItemOf(box) {
       if (!plan.dayOpen) plan.full = false;
       paintPlanner();
     }, 'is-quiet bd-cal__sheetbtn'));
-    top.appendChild(calButton('Close', function () { closePlanner(); }, 'is-quiet'));
+    var shut = node('button', 'bd-cal__btn bd-cal__close');
+    shut.type = 'button';
+    shut.title = 'Close the planner';
+    shut.setAttribute('aria-label', 'Close the planner');
+    var shutmark = App.ui.icon('close', 14);
+    if (shutmark) shut.appendChild(shutmark);
+    shut.addEventListener('click', function () { closePlanner(); });
+    top.appendChild(shut);
     main.appendChild(top);
+    var rail = node('div', 'bd-cal__find');
+    rail.appendChild(search);
     if (plan.mode === 'browse') {
       var types = planTypeBar();
-      if (types) main.appendChild(types);
+      if (types) rail.appendChild(types);
     }
-    var head = node('div', 'bd-cal__month');
-    head.appendChild(calButton('\u2039', function () { shiftMonth(plan, -1); }, 'is-icon'));
-    head.appendChild(node('span', 'bd-cal__mtitle', CAL_MONTHS[new Date(plan.month).getMonth()] + ' ' + new Date(plan.month).getFullYear()));
-    head.appendChild(calButton('\u203a', function () { shiftMonth(plan, 1); }, 'is-icon'));
-    head.appendChild(node('div', 'bd-cal__spacer'));
-    var sum = node('span', 'bd-cal__msum', '');
-    head.appendChild(sum);
-    main.appendChild(head);
+    main.appendChild(rail);
     var dow = node('div', 'bd-cal__dow');
     CAL_DOW.forEach(function (day) { dow.appendChild(node('span', '', day)); });
     main.appendChild(dow);
