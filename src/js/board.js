@@ -3868,6 +3868,18 @@ function richItemOf(box) {
     util.toast(moved ? 'Moved ' + moved + (moved === 1 ? ' block' : ' blocks') + ' to today' : 'Nothing overdue');
   }
 
+  // A planner drag names its blocks by id, and a planned block can belong to any board, so the id
+  // resolves against the board you are on and then against every other board in the planner.
+  function planRow(id) {
+    var hit = findItem(id);
+    if (hit) return hit;
+    var rows = planScope();
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i] && String(rows[i].id) === String(id)) return rows[i];
+    }
+    return null;
+  }
+
   function dropPlanOn(key, index) {
     var drag = board.planDrag;
     var sources = board.planDragSources;
@@ -3881,7 +3893,7 @@ function richItemOf(box) {
     var count = 0;
     var last = null;
     sources.forEach(function (source) {
-      var item = source.board ? findItem(source.id) : board.plans.filter(function (row) { return row.id === source.id; })[0];
+      var item = source.board ? planRow(source.id) : board.plans.filter(function (row) { return row.id === source.id; })[0];
       if (!item) return;
       last = item;
       var keys = planKeysOf(item);
@@ -4086,7 +4098,11 @@ function richItemOf(box) {
     });
     var label = barLabel(view, true);
     if (isBoard) {
-      if (entry.foreign) label.appendChild(node('span', 'bd-plan__board', boardName(entry.boardId)));
+      if (entry.foreign) {
+        var fromBoard = node('span', 'bd-plan__board', boardName(entry.boardId));
+        fromBoard.title = 'From the board ' + boardName(entry.boardId);
+        label.appendChild(fromBoard);
+      }
       var jump = node('button', 'bd-item__plan is-jump', 'board');
       jump.type = 'button';
       jump.setAttribute('data-plan-jump', item.id);
