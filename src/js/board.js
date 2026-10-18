@@ -3839,6 +3839,7 @@ function richItemOf(box) {
       created_at: now,
       updated_at: now,
     };
+    board.planFresh = { id: item.id, until: Date.now() + 4000 };
     board.plans.push(item);
     savePlanItem(item);
     paintPlanner();
@@ -4277,6 +4278,60 @@ function richItemOf(box) {
     window.addEventListener('pointerup', up);
     event.preventDefault();
   }
+  function planDayNav(plan, todayKey) {
+    var nav = node('div', 'bd-cal__daynav');
+    var jump = function (key) {
+      plan.date = key;
+      plan.month = monthStart(calMs(key));
+      plan.calMonth = plan.month;
+      paintPlanner();
+    };
+    var stepDay = function (delta) {
+      var ms = calMs(plan.date);
+      if (ms === null) return;
+      plan.date = calKey(ms + delta * 86400000);
+      plan.month = monthStart(calMs(plan.date));
+      plan.calMonth = plan.month;
+      paintPlanner();
+    };
+    var back = calButton('\u2039', function () { stepDay(-1); }, 'is-icon');
+    back.title = 'Previous day';
+    back.setAttribute('aria-label', 'Previous day');
+    var today = calButton('Today', function () { jump(todayKey); }, 'is-quiet');
+    today.title = 'Go to today';
+    var next = calButton('\u203a', function () { stepDay(1); }, 'is-icon');
+    next.title = 'Next day';
+    next.setAttribute('aria-label', 'Next day');
+    nav.appendChild(back);
+    nav.appendChild(today);
+    nav.appendChild(next);
+    return nav;
+  }
+
+  function planRevealFresh(plan) {
+    var fresh = board.planFresh;
+    if (!fresh || Date.now() > fresh.until) return;
+    board.planFresh = null;
+    var list = plannerEl().querySelector('.bd-cal__list');
+    var card = list ? list.querySelector('[data-plan-id="' + fresh.id + '"]') : null;
+    if (!list || !card) return;
+    if (plan.full && card.__planCanvas) {
+      var box = card.__planCanvas;
+      var view = planView(plan);
+      view.x = Math.round(list.clientWidth / 2 - (box.x + box.w / 2) * view.z);
+      view.y = Math.round(list.clientHeight / 2 - (box.y + box.h / 2) * view.z);
+      planPaintView(plan);
+    } else {
+      card.scrollIntoView({ block: 'nearest' });
+    }
+    var edit = card.querySelector('[contenteditable="true"]')
+      || card.querySelector('input:not([type="checkbox"]):not([type="radio"])')
+      || card.querySelector('textarea');
+    if (edit) {
+      try { edit.focus({ preventScroll: true }); } catch (e) { edit.focus(); }
+    }
+  }
+
   function planView(plan) {
     if (!plan) return { x: 48, y: 28, z: 1 };
     if (!plan.view) plan.view = { x: 48, y: 28, z: 1 };
@@ -4359,7 +4414,8 @@ function richItemOf(box) {
     zoom.appendChild(minus);
     zoom.appendChild(label);
     zoom.appendChild(plus);
-    day.appendChild(zoom);
+    var slot = plannerEl().querySelector('.bd-cal__zoomslot');
+    (slot || day).appendChild(zoom);
   }
 
   function planInkZoom(wrap) {
@@ -4649,8 +4705,10 @@ function richItemOf(box) {
     var dayCountNode = node('div', 'bd-cal__daycount', '');
     dayInfo.appendChild(dayCountNode);
     dayTop.appendChild(dayInfo);
+    var dayActs = node('div', 'bd-cal__dayacts');
     var blockButton = calButton('+ Block', function () { kindMenu(blockButton, plan.date); }, 'is-quiet');
-    dayTop.appendChild(blockButton);
+    dayActs.appendChild(blockButton);
+    dayActs.appendChild(node('div', 'bd-cal__zoomslot'));
     var dayClose = node('button', 'bd-cal__dayclose');
     dayClose.type = 'button';
     dayClose.title = 'Hide the day panel';
@@ -4661,15 +4719,20 @@ function richItemOf(box) {
       plan.dayOpen = false;
       paintPlanner();
     });
-    dayTop.appendChild(calButton(plan.full ? 'Exit fullscreen' : 'Fullscreen', function () {
+    dayActs.appendChild(calButton(plan.full ? 'Exit fullscreen' : 'Fullscreen', function () {
       plan.full = !plan.full;
       plan.calMonth = null;
       plan.view = null;
       paintPlanner();
     }, 'is-quiet'));
-    dayTop.appendChild(dayClose);
+    dayActs.appendChild(dayClose);
+    dayTop.appendChild(dayActs);
+    if (plan.full) dayTop.insertBefore(planDayNav(plan, todayKey), dayActs);
     column.appendChild(dayTop);
-    if (plan.full) column.appendChild(planMiniCal(plan, todayKey));
+    if (plan.full) {
+      column.appendChild(node('div', 'bd-cal__railpanel'));
+      column.appendChild(planMiniCal(plan, todayKey));
+    }
     var week = node('div', 'bd-cal__week');
     var weekStart = new Date(ms === null ? Date.now() : ms);
     weekStart.setDate(weekStart.getDate() - weekStart.getDay());
@@ -4696,6 +4759,7 @@ function richItemOf(box) {
     column.appendChild(week);
     if (plan.mode === 'browse') {
       var tools = node('div', 'bd-cal__tools');
+      if (plan.full) tools.appendChild(node('div', 'bd-cal__railtitle', 'Add a block'));
       var rail = node('div', 'bd-cal__rail');
       BLOCK_KINDS.forEach(function (entry) {
         var button = railButton(entry.icon, entry.label, function () { addPlannerItem(entry.kind, plan.date, ''); });
@@ -4777,11 +4841,12 @@ function richItemOf(box) {
     dayEntries.forEach(function (entry, index) {
       var card = planCard(entry);
       if (plan.full) planCanvasCard(card, entry, plan.date, index);
+      if (board.planFresh && board.planFresh.id === entry.item.id) card.classList.add('is-fresh', 'is-selected');
       list.appendChild(card);
       var ink = card.querySelector('.bd-draw__canvas');
       if (ink && ink.inkPaint) requestAnimationFrame(function () { ink.inkPaint(); });
     });
-    column.addEventListener('dragover', function (event) {
+column.addEventListener('dragover', function (event) {
       if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
       if (!board.planDrag && !planDragHas(event)) return;
       event.preventDefault();
@@ -4813,6 +4878,7 @@ function richItemOf(box) {
       planChrome(plan);
       planPaintView(plan);
     }
+    planRevealFresh(plan);
     if (keepScroll) {
       var after = el.querySelector('.bd-cal__list');
       if (after) after.scrollTop = keepScroll;
