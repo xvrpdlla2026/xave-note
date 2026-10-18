@@ -3578,44 +3578,33 @@ function richItemOf(box) {
       BLOCK_KINDS.forEach(function (row) { if (row.kind === kind) known = true; });
       if (!known && extra.indexOf(kind) < 0) extra.push(kind);
     });
-    var kinds = BLOCK_KINDS.slice();
-    extra.forEach(function (kind) {
-      var text = kindText(kind);
-      kinds.push({ kind: kind, label: text.label, icon: text.icon });
-    });
+    var present = [];
+    BLOCK_KINDS.forEach(function (entry) { if (counts[entry.kind]) present.push(entry.kind); });
+    extra.forEach(function (kind) { if (counts[kind] && present.indexOf(kind) < 0) present.push(kind); });
+    if (!present.length) return null;
+    if (on.length > 1) on.length = 0;
     var row = node('div', 'bd-cal__frow');
     row.appendChild(node('span', 'bd-cal__label', 'Types'));
-    var bar = node('div', 'bd-cal__filters');
-    kinds.forEach(function (entry) {
-      var total = counts[entry.kind] || 0;
-      var chip = node('button', 'bd-cal__chip' + (on.indexOf(entry.kind) >= 0 ? ' is-on' : '') + (total ? '' : ' is-empty'));
-      chip.type = 'button';
-      chip.setAttribute('data-type', entry.kind);
-      chip.setAttribute('aria-pressed', on.indexOf(entry.kind) >= 0 ? 'true' : 'false');
-      chip.title = total ? entry.label + ': ' + total + ' planned in every month' : entry.label + ': nothing planned yet';
-      var mark = App.ui.icon(entry.icon, 12);
-      if (mark) chip.appendChild(mark);
-      chip.appendChild(node('span', '', entry.label));
-      if (total) chip.appendChild(node('span', 'bd-cal__chipcount', String(total)));
-      chip.addEventListener('click', function () {
-        var list = planTypes(plan);
-        var found = list.indexOf(entry.kind);
-        if (found >= 0) list.splice(found, 1); else list.push(entry.kind);
-        paintPlanner();
-      });
-      bar.appendChild(chip);
+    var pick = node('select', 'bd-cal__type');
+    pick.setAttribute('aria-label', 'Show only these types of block');
+    var all = node('option', '', 'All types');
+    all.value = '';
+    pick.appendChild(all);
+    present.forEach(function (kind) {
+      var text = kindText(kind);
+      var opt = node('option', '', text.label + ' (' + counts[kind] + ')');
+      opt.value = kind;
+      opt.title = text.label + ': ' + counts[kind] + ' planned in every month';
+      pick.appendChild(opt);
     });
-    row.appendChild(bar);
-    if (on.length) {
-      var clear = node('button', 'bd-cal__chip is-clear');
-      clear.type = 'button';
-      clear.setAttribute('data-clear', '1');
-      var cross = App.ui.icon('close', 12);
-      if (cross) clear.appendChild(cross);
-      clear.appendChild(node('span', '', 'Clear'));
-      clear.addEventListener('click', function () { planTypes(plan).length = 0; paintPlanner(); });
-      row.appendChild(clear);
-    }
+    pick.value = on.length === 1 && present.indexOf(on[0]) >= 0 ? on[0] : '';
+    pick.addEventListener('change', function () {
+      var list = planTypes(plan);
+      list.length = 0;
+      if (pick.value) list.push(pick.value);
+      paintPlanner();
+    });
+    row.appendChild(pick);
     return row;
   }
 
@@ -4358,7 +4347,10 @@ function richItemOf(box) {
     }, 'is-quiet bd-cal__sheetbtn'));
     top.appendChild(calButton('Close', function () { closePlanner(); }, 'is-quiet'));
     main.appendChild(top);
-    if (plan.mode === 'browse') main.appendChild(planTypeBar());
+    if (plan.mode === 'browse') {
+      var types = planTypeBar();
+      if (types) main.appendChild(types);
+    }
     var head = node('div', 'bd-cal__month');
     head.appendChild(calButton('\u2039', function () { shiftMonth(plan, -1); }, 'is-icon'));
     head.appendChild(node('span', 'bd-cal__mtitle', CAL_MONTHS[new Date(plan.month).getMonth()] + ' ' + new Date(plan.month).getFullYear()));
