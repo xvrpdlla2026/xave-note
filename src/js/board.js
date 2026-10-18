@@ -7377,11 +7377,12 @@ function richItemOf(box) {
       if (item.data && typeof item.data.ox === 'number' && !(wrap.closest && wrap.closest('.bd-cal'))) {
         ctx.setTransform(k, 0, 0, k, k * (item.data.ox - item.x - 1), k * (item.data.oy - item.y - 1 - INK_BAR));
       } else if (item.data && typeof item.data.ox === 'number') {
-        var bw = Number(item.w) > 4 ? item.w - 2 : w;
-        var bh = Number(item.h) > INK_BAR + 4 ? item.h - 2 - INK_BAR : h;
-        var fit = Math.min(w / bw, h / bh);
+        // Stored strokes are local to the ink's own box, so a planned card fits that box, not the block. Fitting the block put the
+        // ink outside the card, because the block keeps its board coordinates and the strokes do not.
+        var inkBox = strokeBox(strokes);
+        var fit = Math.min(w / Math.max(1, inkBox.w), h / Math.max(1, inkBox.h));
         var s = k * fit;
-        ctx.setTransform(s, 0, 0, s, k * ((w - bw * fit) / 2) - s * (item.x + 1), k * ((h - bh * fit) / 2) - s * (item.y + 1 + INK_BAR));
+        ctx.setTransform(s, 0, 0, s, k * ((w - inkBox.w * fit) / 2) - s * inkBox.x, k * ((h - inkBox.h * fit) / 2) - s * inkBox.y);
       } else {
         var box = strokeBox(strokes);
         ctx.setTransform(k, 0, 0, k, k * ((w - box.w) / 2 - box.x), k * ((h - box.h) / 2 - box.y));
