@@ -4183,10 +4183,14 @@ function richItemOf(box) {
   }
 
   function planCanvasApply(card, box) {
-    card.style.left = (PLAN_ORIGIN.x + box.x) + 'px';
-    card.style.top = (PLAN_ORIGIN.y + box.y) + 'px';
+    var view = planView(board.planner);
+    card.style.left = '0px';
+    card.style.top = '0px';
     card.style.width = Math.round(box.w) + 'px';
     card.style.height = Math.round(box.h) + 'px';
+    card.style.transformOrigin = '0 0';
+    card.style.transform = 'translate(' + Math.round(view.x + box.x * view.z) + 'px, ' + Math.round(view.y + box.y * view.z) + 'px) scale(' + view.z + ')';
+    card.__planCanvas = box;
     var ink = card.querySelector('.bd-draw__canvas');
     if (ink && ink.inkPaint) requestAnimationFrame(function () { ink.inkPaint(); });
   }
@@ -4206,10 +4210,11 @@ function richItemOf(box) {
     if (!card) return;
     var box = card.__planCanvas || planCanvasBox(entry.item, key, 0);
     card.__planCanvas = box;
+    var zoom = planView(board.planner).z;
     var start = { x: event.clientX, y: event.clientY, box: { x: box.x, y: box.y, w: box.w, h: box.h } };
     var move = function (event) {
-      var dx = event.clientX - start.x;
-      var dy = event.clientY - start.y;
+      var dx = (event.clientX - start.x) / zoom;
+      var dy = (event.clientY - start.y) / zoom;
       if (resize) {
         box.w = Math.max(230, Math.round(start.box.w + dx));
         box.h = Math.max(150, Math.round(start.box.h + dy));
@@ -4255,10 +4260,12 @@ function richItemOf(box) {
     if (!plan || !plan.full || event.button !== 0) return;
     if (event.target && event.target.closest && event.target.closest('.bd-item')) return;
     var list = event.currentTarget;
-    var start = { x: event.clientX, y: event.clientY, left: list.scrollLeft, top: list.scrollTop };
+    var view = planView(plan);
+    var start = { x: event.clientX, y: event.clientY, vx: view.x, vy: view.y };
     var move = function (event) {
-      list.scrollLeft = start.left - (event.clientX - start.x);
-      list.scrollTop = start.top - (event.clientY - start.y);
+      view.x = start.vx + (event.clientX - start.x);
+      view.y = start.vy + (event.clientY - start.y);
+      planPaintView(plan);
     };
     var up = function () {
       list.classList.remove('is-grabbing');
@@ -4270,6 +4277,160 @@ function richItemOf(box) {
     window.addEventListener('pointerup', up);
     event.preventDefault();
   }
+  function planView(plan) {
+    if (!plan) return { x: 48, y: 28, z: 1 };
+    if (!plan.view) plan.view = { x: 48, y: 28, z: 1 };
+    return plan.view;
+  }
+
+  function planPaintView(plan) {
+    if (!plan) return;
+    var list = plannerEl().querySelector('.bd-cal__list');
+    if (!list) return;
+    var view = planView(plan);
+    var dot = Math.max(8, 24 * view.z);
+    list.style.backgroundSize = dot + 'px ' + dot + 'px';
+    list.style.backgroundPosition = (((view.x % dot) + dot) % dot) + 'px ' + (((view.y % dot) + dot) % dot) + 'px';
+    Array.prototype.forEach.call(list.querySelectorAll('.bd-item'), function (card) {
+      if (card.__planCanvas) planCanvasApply(card, card.__planCanvas);
+    });
+    var label = plannerEl().querySelector('.bd-cal__zoomlabel');
+    if (label) label.textContent = Math.round(view.z * 100) + '%';
+  }
+
+  function planPaintInk() {
+    Array.prototype.forEach.call(document.querySelectorAll('.bd-cal__list .bd-draw__canvas'), function (ink) {
+      ink.inkScale = 0;
+      if (ink.inkPaint) ink.inkPaint();
+    });
+  }
+
+  function planZoomBy(plan, factor, px, py) {
+    var view = planView(plan);
+    var next = Math.min(2.5, Math.max(0.15, view.z * factor));
+    if (Math.abs(next - view.z) < 0.001) return;
+    var list = plannerEl().querySelector('.bd-cal__list');
+    var rect = list ? list.getBoundingClientRect() : null;
+    var cx = typeof px === 'number' ? px : (rect ? rect.width / 2 : 0);
+    var cy = typeof py === 'number' ? py : (rect ? rect.height / 2 : 0);
+    view.x = cx - (cx - view.x) * (next / view.z);
+    view.y = cy - (cy - view.y) * (next / view.z);
+    view.z = next;
+    planPaintView(plan);
+    planPaintInk();
+  }
+
+  function planChrome(plan) {
+    if (!plan || !plan.full) return;
+    var day = plannerEl().querySelector('.bd-cal__day');
+    var list = plannerEl().querySelector('.bd-cal__list');
+    if (!day || !list) return;
+    if (!list.__planWheel) {
+      list.__planWheel = true;
+      list.addEventListener('wheel', function (event) {
+        var view = planView(plan);
+        if (event.ctrlKey || event.metaKey) {
+          event.preventDefault();
+          var rect = list.getBoundingClientRect();
+          planZoomBy(plan, Math.pow(1.0018, -event.deltaY), event.clientX - rect.left, event.clientY - rect.top);
+          return;
+        }
+        event.preventDefault();
+        view.x -= event.deltaX;
+        view.y -= event.deltaY;
+        planPaintView(plan);
+      }, { passive: false });
+    }
+    if (plannerEl().querySelector('.bd-cal__zoom')) return;
+    var zoom = node('div', 'bd-cal__zoom');
+    var minus = node('button', 'bd-cal__zoom-btn', '\u2212');
+    minus.type = 'button';
+    minus.title = 'Zoom out';
+    minus.setAttribute('aria-label', 'Zoom out');
+    minus.addEventListener('click', function () { planZoomBy(plan, 1 / 1.15); });
+    var label = node('div', 'bd-cal__zoomlabel', Math.round(planView(plan).z * 100) + '%');
+    label.title = 'Reset the view';
+    label.addEventListener('click', function () { plan.view = null; planPaintView(plan); planPaintInk(); });
+    var plus = node('button', 'bd-cal__zoom-btn', '+');
+    plus.type = 'button';
+    plus.title = 'Zoom in';
+    plus.setAttribute('aria-label', 'Zoom in');
+    plus.addEventListener('click', function () { planZoomBy(plan, 1.15); });
+    zoom.appendChild(minus);
+    zoom.appendChild(label);
+    zoom.appendChild(plus);
+    day.appendChild(zoom);
+  }
+
+  function planInkZoom(wrap) {
+    var plan = board.planner;
+    if (!plan || !plan.full || !plan.view || plan.view.z === 1) return 1;
+    return wrap && wrap.closest && wrap.closest('.bd-cal') ? plan.view.z : 1;
+  }
+
+  function calShift(ts, months) {
+    var d = new Date(ts);
+    d.setDate(1);
+    d.setMonth(d.getMonth() + months);
+    return monthStart(d.getTime());
+  }
+
+  function planMiniCal(plan, todayKey) {
+    var wrap = node('div', 'bd-cal__mini');
+    var head = node('div', 'bd-cal__minihead');
+    var shift = function (months) {
+      plan.calMonth = calShift(plan.calMonth || plan.month, months);
+      paintPlanner();
+    };
+    var step = function (label, tip, months) {
+      var button = calButton(label, function () { shift(months); }, 'is-icon');
+      button.title = tip;
+      button.setAttribute('aria-label', tip);
+      head.appendChild(button);
+    };
+    var shown = new Date(plan.calMonth || plan.month);
+    var first = new Date(shown.getTime());
+    first.setDate(1);
+    step('\u00ab', 'Previous year', -12);
+    step('\u2039', 'Previous month', -1);
+    head.appendChild(node('span', 'bd-cal__minititle', CAL_MONTHS[first.getMonth()] + ' ' + first.getFullYear()));
+    step('\u203a', 'Next month', 1);
+    step('\u00bb', 'Next year', 12);
+    wrap.appendChild(head);
+    var dow = node('div', 'bd-cal__minidow');
+    CAL_DOW.forEach(function (text) { dow.appendChild(node('span', '', text)); });
+    wrap.appendChild(dow);
+    var grid = node('div', 'bd-cal__minigrid');
+    var start = new Date(first.getTime());
+    start.setDate(1 - first.getDay());
+    for (var i = 0; i < 42; i++) {
+      var day = new Date(start.getTime());
+      day.setDate(start.getDate() + i);
+      var key = calKey(day.getTime());
+      var count = planFiltered(planEntries(key)).length;
+      var cell = node('button', 'bd-cal__mday'
+        + (day.getMonth() === first.getMonth() ? '' : ' is-out')
+        + (key === todayKey ? ' is-today' : '')
+        + (key === plan.date ? ' is-sel' : '')
+        + (count ? ' has-plan' : ''));
+      cell.type = 'button';
+      cell.title = CAL_DAYS[day.getDay()] + ', ' + CAL_MONTHS[day.getMonth()] + ' ' + day.getDate() + (count ? ', ' + count + (count === 1 ? ' block' : ' blocks') : '');
+      cell.appendChild(node('span', '', String(day.getDate())));
+      if (count) cell.appendChild(node('span', 'bd-cal__mdot'));
+      cell.setAttribute('data-mini-key', key);
+      cell.addEventListener('click', function () {
+        var use = this.getAttribute('data-mini-key');
+        plan.date = use;
+        plan.month = monthStart(calMs(use));
+        plan.calMonth = plan.month;
+        paintPlanner();
+      });
+      grid.appendChild(cell);
+    }
+    wrap.appendChild(grid);
+    return wrap;
+  }
+
   function paintPlanner() {
     var plan = board.planner;
     if (!plan || !board.root) return;
@@ -4502,10 +4663,13 @@ function richItemOf(box) {
     });
     dayTop.appendChild(calButton(plan.full ? 'Exit fullscreen' : 'Fullscreen', function () {
       plan.full = !plan.full;
+      plan.calMonth = null;
+      plan.view = null;
       paintPlanner();
     }, 'is-quiet'));
     dayTop.appendChild(dayClose);
     column.appendChild(dayTop);
+    if (plan.full) column.appendChild(planMiniCal(plan, todayKey));
     var week = node('div', 'bd-cal__week');
     var weekStart = new Date(ms === null ? Date.now() : ms);
     weekStart.setDate(weekStart.getDate() - weekStart.getDay());
@@ -4645,6 +4809,10 @@ function richItemOf(box) {
     }
     column.appendChild(list);
     el.appendChild(column);
+    if (plan.full) {
+      planChrome(plan);
+      planPaintView(plan);
+    }
     if (keepScroll) {
       var after = el.querySelector('.bd-cal__list');
       if (after) after.scrollTop = keepScroll;
@@ -7362,7 +7530,7 @@ function richItemOf(box) {
       var w = wrap.offsetWidth;
       var h = wrap.offsetHeight;
       if (w < 2 || h < 2) return;
-      var k = inkScale(w, h);
+      var k = inkScale(w, h) * planInkZoom(wrap);
       if (canvas.inkScale && canvas.inkW === w && canvas.inkH === h && Math.abs(k - canvas.inkScale) / canvas.inkScale < 0.2) return;
       canvas.inkScale = k;
       canvas.inkW = w;
