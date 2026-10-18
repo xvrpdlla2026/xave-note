@@ -4174,6 +4174,105 @@ function richItemOf(box) {
     return box;
   }
 
+  var PLAN_ORIGIN = { x: 3000, y: 2400 };
+  var PLAN_PAD = { w: 6000, h: 4800 };
+
+  function planCanvasBox(item, key, index) {
+    var saved = item.data && item.data.planCanvas ? item.data.planCanvas[key] : null;
+    if (saved && typeof saved.x === 'number') return { x: saved.x, y: saved.y, w: saved.w, h: saved.h };
+    var w = Math.max(250, Math.min(470, Math.round(item.w || 300)));
+    var h = Math.max(190, Math.min(430, Math.round(item.h || 230)));
+    return { x: 30 + (index % 3) * 330, y: 30 + Math.floor(index / 3) * 310, w: w, h: h };
+  }
+
+  function planCanvasApply(card, box) {
+    card.style.left = (PLAN_ORIGIN.x + box.x) + 'px';
+    card.style.top = (PLAN_ORIGIN.y + box.y) + 'px';
+    card.style.width = Math.round(box.w) + 'px';
+    card.style.height = Math.round(box.h) + 'px';
+    var ink = card.querySelector('.bd-draw__canvas');
+    if (ink && ink.inkPaint) requestAnimationFrame(function () { ink.inkPaint(); });
+  }
+
+  function planCanvasKeep(item, key, box) {
+    if (!item.data) item.data = {};
+    if (!item.data.planCanvas) item.data.planCanvas = {};
+    item.data.planCanvas[key] = { x: Math.round(box.x), y: Math.round(box.y), w: Math.round(box.w), h: Math.round(box.h) };
+    saveItem(item);
+  }
+
+  // The canvas moves a card with the pointer instead of the list's drag and drop, so the block keeps a
+  // place of its own on the day and the day can be laid out like a board.
+  function planCanvasPull(event, entry, key, resize) {
+    if (event.button !== 0) return;
+    var card = event.currentTarget && event.currentTarget.closest ? event.currentTarget.closest('.bd-item') : null;
+    if (!card) return;
+    var box = card.__planCanvas || planCanvasBox(entry.item, key, 0);
+    card.__planCanvas = box;
+    var start = { x: event.clientX, y: event.clientY, box: { x: box.x, y: box.y, w: box.w, h: box.h } };
+    var move = function (event) {
+      var dx = event.clientX - start.x;
+      var dy = event.clientY - start.y;
+      if (resize) {
+        box.w = Math.max(230, Math.round(start.box.w + dx));
+        box.h = Math.max(150, Math.round(start.box.h + dy));
+      } else {
+        box.x = Math.round(start.box.x + dx);
+        box.y = Math.round(start.box.y + dy);
+      }
+      planCanvasApply(card, box);
+    };
+    var up = function () {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      card.classList.remove('is-moving');
+      planCanvasKeep(entry.item, key, box);
+    };
+    card.classList.add('is-moving');
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  function planCanvasCard(card, entry, key, index) {
+    var box = planCanvasBox(entry.item, key, index);
+    card.__planCanvas = box;
+    card.setAttribute('data-plan-canvas', '1');
+    var bar = card.querySelector('.bd-item__bar');
+    if (bar) {
+      bar.setAttribute('draggable', 'false');
+      bar.title = 'Drag to move the block, or drag its corner to resize';
+      bar.addEventListener('pointerdown', function (event) { planCanvasPull(event, entry, key, false); });
+    }
+    var grip = node('div', 'bd-cal__grip');
+    grip.title = 'Resize';
+    grip.setAttribute('aria-hidden', 'true');
+    grip.addEventListener('pointerdown', function (event) { planCanvasPull(event, entry, key, true); });
+    card.appendChild(grip);
+    planCanvasApply(card, box);
+  }
+
+  function planCanvasGrab(event) {
+    var plan = board.planner;
+    if (!plan || !plan.full || event.button !== 0) return;
+    if (event.target && event.target.closest && event.target.closest('.bd-item')) return;
+    var list = event.currentTarget;
+    var start = { x: event.clientX, y: event.clientY, left: list.scrollLeft, top: list.scrollTop };
+    var move = function (event) {
+      list.scrollLeft = start.left - (event.clientX - start.x);
+      list.scrollTop = start.top - (event.clientY - start.y);
+    };
+    var up = function () {
+      list.classList.remove('is-grabbing');
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    list.classList.add('is-grabbing');
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    event.preventDefault();
+  }
   function paintPlanner() {
     var plan = board.planner;
     if (!plan || !board.root) return;
@@ -4254,6 +4353,7 @@ function richItemOf(box) {
     }, 'is-quiet'));
     top.appendChild(calButton('Day', function () {
       plan.dayOpen = !plan.dayOpen;
+      if (!plan.dayOpen) plan.full = false;
       paintPlanner();
     }, 'is-quiet bd-cal__sheetbtn'));
     top.appendChild(calButton('Close', function () { closePlanner(); }, 'is-quiet'));
@@ -4392,6 +4492,10 @@ function richItemOf(box) {
       plan.dayOpen = false;
       paintPlanner();
     });
+    dayTop.appendChild(calButton(plan.full ? 'Exit fullscreen' : 'Fullscreen', function () {
+      plan.full = !plan.full;
+      paintPlanner();
+    }, 'is-quiet'));
     dayTop.appendChild(dayClose);
     column.appendChild(dayTop);
     var week = node('div', 'bd-cal__week');
@@ -4498,8 +4602,9 @@ function richItemOf(box) {
       }
       planDropEvent(event, plan.date);
     });
-    dayEntries.forEach(function (entry) {
+    dayEntries.forEach(function (entry, index) {
       var card = planCard(entry);
+      if (plan.full) planCanvasCard(card, entry, plan.date, index);
       list.appendChild(card);
       var ink = card.querySelector('.bd-draw__canvas');
       if (ink && ink.inkPaint) requestAnimationFrame(function () { ink.inkPaint(); });
@@ -4520,6 +4625,16 @@ function richItemOf(box) {
       if (board.planDrag) { dropPlanOn(plan.date); return; }
       planDropEvent(event, plan.date);
     });
+    if (plan.full) {
+      column.classList.add('is-full');
+      list.classList.add('is-canvas');
+      list.appendChild(node('div', 'bd-cal__canvas'));
+      list.addEventListener('pointerdown', planCanvasGrab);
+      requestAnimationFrame(function () {
+        list.scrollLeft = PLAN_ORIGIN.x - 24;
+        list.scrollTop = PLAN_ORIGIN.y - 24;
+      });
+    }
     column.appendChild(list);
     el.appendChild(column);
     if (keepScroll) {
