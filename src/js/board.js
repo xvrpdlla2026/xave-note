@@ -3870,32 +3870,44 @@ function richItemOf(box) {
 
   function dropPlanOn(key, index) {
     var drag = board.planDrag;
+    var sources = board.planDragSources;
     board.planDrag = null;
+    board.planDragSources = null;
     if (!drag) return;
-    var item = drag.board ? findItem(drag.id) : board.plans.filter(function (row) { return row.id === drag.id; })[0];
-    if (!item) return;
+    if (!sources || !sources.length) sources = [{ id: drag.id, board: drag.board, from: drag.from }];
+    if (sources.length > 1) index = undefined;
     var added = false;
     var moved = false;
-    var keys = planKeysOf(item);
-    if (drag.board) {
-      // A card dragged out of the planner keeps its other dates, but the day it came from is
-      // replaced, because a drop on another day reads as a move and not as a second date.
-      if (drag.from && drag.from !== key && keys.indexOf(drag.from) >= 0) {
-        planSync(item, keys.filter(function (other) { return other !== drag.from; }).concat([key]).sort());
+    var count = 0;
+    var last = null;
+    sources.forEach(function (source) {
+      var item = source.board ? findItem(source.id) : board.plans.filter(function (row) { return row.id === source.id; })[0];
+      if (!item) return;
+      last = item;
+      var keys = planKeysOf(item);
+      if (source.board) {
+        // A block dragged inside the planner keeps its other dates, but the day it came from is
+        // replaced, because a drop on another day reads as a move and not as a second date.
+        if (source.from && source.from !== key && keys.indexOf(source.from) >= 0) {
+          planSync(item, keys.filter(function (other) { return other !== source.from; }).concat([key]).sort());
+          added = true;
+          moved = true;
+          count++;
+        } else if (keys.indexOf(key) < 0) {
+          planAdd(item, key, true);
+          added = true;
+          count++;
+        }
+      } else if (item.data.planner !== key) {
+        item.data.planner = key;
+        savePlanItem(item);
         added = true;
         moved = true;
-      } else if (keys.indexOf(key) < 0) {
-        planAdd(item, key, true);
-        added = true;
+        count++;
       }
-    } else if (item.data.planner !== key) {
-      item.data.planner = key;
-      savePlanItem(item);
-      added = true;
-      moved = true;
-    }
-    if (typeof index === 'number') planReorder(planSort(planFiltered(planEntries(key)), key), item, key, index);
-    if (added) util.toast((moved ? 'Moved to ' : (drag.board ? 'Planned for ' : 'Moved to ')) + calShort(key));
+    });
+    if (typeof index === 'number' && last) planReorder(planSort(planFiltered(planEntries(key)), key), last, key, index);
+    if (added) util.toast(count > 1 ? 'Moved ' + count + ' blocks to ' + calShort(key) : (moved ? 'Moved to ' : (drag.board ? 'Planned for ' : 'Moved to ')) + calShort(key));
     if (board.planner) board.planner.date = key;
     paintPlanner();
   }
@@ -4052,6 +4064,7 @@ function richItemOf(box) {
     bar.title = 'Drag to reorder, or onto another day';
     bar.addEventListener('dragstart', function (event) {
       board.planDrag = { id: item.id, board: isBoard, from: entry.key };
+      board.planDragSources = null;
       if (event.dataTransfer) {
         event.dataTransfer.effectAllowed = 'move';
         try { event.dataTransfer.setData('text/plain', item.id); } catch (e) { }
@@ -4262,16 +4275,29 @@ function richItemOf(box) {
         groups.forEach(function (group) { if (group.kind === entry.item.kind) found = group; });
         if (!found) {
           var text = kindText(entry.item.kind);
-          found = { kind: entry.item.kind, label: text.label, icon: text.icon, n: 0, board: false };
+          found = { kind: entry.item.kind, label: text.label, icon: text.icon, n: 0, board: false, entries: [] };
           groups.push(found);
         }
         found.n++;
+        found.entries.push(entry);
         if (entry.board) found.board = true;
       });
       groups.slice(0, 3).forEach(function (group) {
         var tag = node('span', 'bd-cal__t' + (group.board ? ' is-board' : ''));
         tag.appendChild(App.ui.icon(group.icon, 11));
         tag.appendChild(node('span', 'bd-cal__tlabel', group.n > 1 ? group.label + ' \u00d7' + group.n : group.label));
+        tag.setAttribute('draggable', 'true');
+        tag.addEventListener('dragstart', (function (useKey) {
+          return function (event) {
+            board.planDragSources = group.entries.map(function (entry) { return { id: entry.item.id, board: !!entry.board, from: useKey }; });
+            board.planDrag = board.planDragSources[0];
+            if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+          };
+        })(key));
+        tag.addEventListener('dragend', function () {
+          board.planDrag = null;
+          board.planDragSources = null;
+        });
         cell.appendChild(tag);
       });
       if (groups.length > 3) cell.appendChild(node('span', 'bd-cal__t', '+' + (groups.length - 3) + ' more'));

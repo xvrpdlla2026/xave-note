@@ -4420,3 +4420,5 @@ html.is-board-boot body > *:not(.board) { display: none; }
   .bd-cal__day { height: min(86%, 620px); }
   .bd-cal__rtime, .bd-cal__rboard { display: none; }
 }
+.bd-cal__t { user-select: none; }
+.bd-cal__t[draggable="true"] { cursor: grab; }
