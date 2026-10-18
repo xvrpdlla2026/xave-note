@@ -4599,3 +4599,14 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__list.is-canvas .bd-cal__grip--w { left: 0; right: auto; }
 .bd-cal__list.is-canvas .bd-cal__grip--e { right: 0; left: auto; }
 .bd-cal__list.is-canvas .bd-cal__grip:hover { opacity: 1; border-color: var(--accent); }
+.bd-cal__list .bd-item__body.bd-cal__plain {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 9px;
+  margin: 8px; padding: 11px 12px; border: 1px dashed var(--border-strong); border-radius: 9px;
+  background: none; overflow: visible;
+}
+.bd-cal__plainkind { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); }
+.bd-cal__plainopen { padding: 4px 10px; border: 1px solid var(--border-strong); border-radius: 7px; background: none; color: var(--text-dim); font-size: 11.5px; cursor: pointer; }
+.bd-cal__plainopen:hover { background: var(--bg-hover); color: var(--text); }
+.bd-cal__list .bd-item.is-plain, .bd-cal__list .bd-item.is-plain .bd-item__bar { background: var(--bg-raised); border-color: var(--border); }
+.bd-cal__list .bd-item.is-plain .bd-item__bar { border-bottom-color: var(--border); }
+.bd-cal__list.is-canvas .bd-item.is-plain { box-shadow: 0 10px 30px var(--shadow-color); }

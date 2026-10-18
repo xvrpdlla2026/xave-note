@@ -3867,7 +3867,7 @@ function richItemOf(box) {
       x: Math.round(rect.left),
       y: Math.round(rect.bottom + 4),
       title: 'Add a block',
-      items: BLOCK_KINDS.map(function (entry) {
+      items: BLOCK_KINDS.filter(planAddable).map(function (entry) {
         return { label: entry.label, icon: entry.icon, onclick: function () { addPlannerItem(entry.kind, key, ''); } };
       }),
     });
@@ -4153,7 +4153,17 @@ function richItemOf(box) {
     bar.appendChild(tools);
     box.appendChild(bar);
     var body = node('div', 'bd-item__body');
-    body.appendChild(bodyFor(view));
+    if (isBoard && PLAN_ADD_KINDS.indexOf(item.kind) < 0) {
+      box.classList.add('is-plain');
+      body.classList.add('bd-cal__plain');
+      body.appendChild(node('span', 'bd-cal__plainkind', kindText(item.kind).label));
+      var open = node('button', 'bd-cal__plainopen', 'Show on the board');
+      open.type = 'button';
+      open.addEventListener('click', function (event) { event.stopPropagation(); revealOnBoard(entry); });
+      body.appendChild(open);
+    } else {
+      body.appendChild(bodyFor(view));
+    }
     box.appendChild(body);
     if (item.kind === 'link') { try { renderLinkCard(view); } catch (e) { } }
     try { applyFont(view); } catch (e) { }
@@ -5147,6 +5157,11 @@ function planCanvasGrab(event) {
     var dayActs = node('div', 'bd-cal__dayacts');
     var blockButton = calButton('+ Block', function () { kindMenu(blockButton, plan.date); }, 'is-quiet');
     dayActs.appendChild(blockButton);
+    var drawButton = calButton('', function () { addPlannerItem('draw', plan.date, ''); }, 'is-icon is-quiet');
+    drawButton.title = 'Draw on this day';
+    drawButton.setAttribute('aria-label', 'Draw on this day');
+    drawButton.appendChild(App.ui.icon('pencil', 15));
+    dayActs.appendChild(drawButton);
     dayActs.appendChild(node('div', 'bd-cal__zoomslot'));
     var dayClose = node('button', 'bd-cal__dayclose');
     dayClose.type = 'button';
@@ -5201,7 +5216,7 @@ function planCanvasGrab(event) {
       var tools = node('div', 'bd-cal__tools');
       if (plan.full) tools.appendChild(node('div', 'bd-cal__railtitle', 'Add a block'));
       var rail = node('div', 'bd-cal__rail');
-      BLOCK_KINDS.forEach(function (entry) {
+      BLOCK_KINDS.filter(planAddable).forEach(function (entry) {
         var button = railButton(entry.icon, entry.label, function () { addPlannerItem(entry.kind, plan.date, ''); });
         button.title = entry.label;
         button.setAttribute('aria-label', entry.label);
@@ -5547,6 +5562,12 @@ planRevealFresh(plan);
     button.addEventListener('click', action);
     return button;
   }
+
+  var PLAN_ADD_KINDS = ['note', 'todo', 'link', 'image'];
+
+  // The planner keeps a block of any kind, but only these four carry their own surface, so only they can
+  // be started here. Anything else is a link to a block that already lives on a board.
+  function planAddable(entry) { return PLAN_ADD_KINDS.indexOf(entry.kind) >= 0; }
 
   var BLOCK_KINDS = [
     { kind: 'note', label: 'Note', icon: 'note' },
