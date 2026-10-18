@@ -7247,8 +7247,16 @@ function richItemOf(box) {
       var ctx = canvas.getContext('2d');
       ctx.setTransform(k, 0, 0, k, 0, 0);
       ctx.clearRect(0, 0, w, h);
-    if (item.data && typeof item.data.ox === 'number' && !(wrap.closest && wrap.closest('.bd-cal'))) {
+      // On the board the ink sits at the offset it was drawn at. A planned card is a different size, so it
+      // fits the block's body into the card at one scale, which keeps the drawing whole and in the same place.
+      if (item.data && typeof item.data.ox === 'number' && !(wrap.closest && wrap.closest('.bd-cal'))) {
         ctx.setTransform(k, 0, 0, k, k * (item.data.ox - item.x - 1), k * (item.data.oy - item.y - 1 - INK_BAR));
+      } else if (item.data && typeof item.data.ox === 'number') {
+        var bw = Number(item.w) > 4 ? item.w - 2 : w;
+        var bh = Number(item.h) > INK_BAR + 4 ? item.h - 2 - INK_BAR : h;
+        var fit = Math.min(w / bw, h / bh);
+        var s = k * fit;
+        ctx.setTransform(s, 0, 0, s, k * ((w - bw * fit) / 2) - s * (item.x + 1), k * ((h - bh * fit) / 2) - s * (item.y + 1 + INK_BAR));
       } else {
         var box = strokeBox(strokes);
         ctx.setTransform(k, 0, 0, k, k * ((w - box.w) / 2 - box.x), k * ((h - box.h) / 2 - box.y));
