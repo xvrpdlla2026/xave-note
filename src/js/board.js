@@ -5105,6 +5105,74 @@ function richItemOf(box) {
     if (zoomLabel) zoomLabel.textContent = planZoomLabel(plan);
   }
 
+  function planFitView(plan) {
+    var list = plannerEl().querySelector('.bd-cal__list');
+    if (!list || !plan) return false;
+    var cards = Array.prototype.slice.call(list.querySelectorAll('.bd-item[data-plan-id]'));
+    var left = Infinity;
+    var top = Infinity;
+    var right = -Infinity;
+    var bottom = -Infinity;
+    cards.forEach(function (card) {
+      var box = card.__planCanvas;
+      if (!box) return;
+      left = Math.min(left, box.x);
+      top = Math.min(top, box.y);
+      right = Math.max(right, box.x + box.w);
+      bottom = Math.max(bottom, box.y + box.h);
+    });
+    if (left === Infinity) return false;
+    var view = planView(plan);
+    var pad = 56;
+    var wide = Math.max(120, list.clientWidth - pad * 2);
+    var room = Math.max(120, list.clientHeight - pad * 2);
+    var z = Math.min(1, Math.max(0.15, Math.min(wide / Math.max(1, right - left), room / Math.max(1, bottom - top))));
+    view.z = z;
+    view.x = Math.round((list.clientWidth - (right - left) * z) / 2 - left * z);
+    view.y = Math.round((list.clientHeight - (bottom - top) * z) / 2 - top * z);
+    planPaintView(plan);
+    planPaintInk();
+    planSheetZoomPaint(plan);
+    return true;
+  }
+
+  function planCenterOn(plan, id) {
+    var list = plannerEl().querySelector('.bd-cal__list');
+    var card = list ? list.querySelector('[data-plan-id="' + id + '"]') : null;
+    if (!list || !card || !card.__planCanvas) return;
+    var box = card.__planCanvas;
+    var view = planView(plan);
+    view.x = Math.round(list.clientWidth / 2 - (box.x + box.w / 2) * view.z);
+    view.y = Math.round(list.clientHeight / 2 - (box.y + box.h / 2) * view.z);
+    planPaintView(plan);
+    card.classList.add('is-fresh');
+    window.setTimeout(function () { card.classList.remove('is-fresh'); }, 1200);
+  }
+
+  function planRailOutline(plan) {
+    var wrap = node('div', 'bd-cal__outline');
+    var entries = planSort(planFiltered(planEntries(plan.date)), plan.date);
+    var head = node('div', 'bd-cal__railtitle', 'On this day');
+    if (entries.length) head.appendChild(node('span', 'bd-cal__railcount', String(entries.length)));
+    wrap.appendChild(head);
+    if (!entries.length) {
+      wrap.appendChild(node('div', 'bd-cal__railnote', 'Nothing planned yet.'));
+      return wrap;
+    }
+    entries.forEach(function (entry) {
+      var row = node('button', 'bd-cal__olrow' + (planDoneOf(entry.item, entry.board) ? ' is-done' : ''));
+      row.type = 'button';
+      row.title = 'Show this block on the canvas';
+      row.setAttribute('data-ol-id', entry.item.id);
+      row.appendChild(node('span', 'bd-cal__oltitle', planTitle(entry.item) || entry.item.kind));
+      var kindRow = BLOCK_KINDS.filter(function (kindDef) { return kindDef.kind === entry.item.kind; })[0];
+      row.appendChild(node('span', 'bd-cal__olkind', (kindRow || {}).label || entry.item.kind));
+      row.addEventListener('click', function () { planCenterOn(plan, this.getAttribute('data-ol-id')); });
+      wrap.appendChild(row);
+    });
+    return wrap;
+  }
+
   function planChrome(plan) {
     if (!plan) return;
     var el = plannerEl();
@@ -5140,11 +5208,20 @@ function richItemOf(box) {
         if (!open || event.ctrlKey || event.metaKey || event.altKey) return;
         var target = event.target;
         if (target && target.closest && target.closest('input, textarea, select, [contenteditable="true"]')) return;
+        if (String(event.key || '').toLowerCase() === 'f') {
+          event.preventDefault();
+          planFitView(open);
+          return;
+        }
         var want = { d: 'day', w: 'week', m: 'month', y: 'year' }[String(event.key || '').toLowerCase()];
         if (!want) return;
         event.preventDefault();
         planSetView(open, want);
       });
+    }
+    if (plan.__fitPending) {
+      plan.__fitPending = false;
+      planFitView(plan);
     }
     if (el.querySelector('.bd-cal__zoom')) return;
     var zoom = node('div', 'bd-cal__zoom');
@@ -5637,6 +5714,12 @@ function richItemOf(box) {
       plan.dayOpen = false;
       paintPlanner();
     });
+    if (plan.full) {
+      var fitButton = calButton('Fit', function () { planFitView(plan); }, 'is-quiet');
+      fitButton.title = 'Frame every block on this day (F)';
+      fitButton.setAttribute('aria-label', 'Frame every block on this day');
+      dayActs.appendChild(fitButton);
+    }
     dayActs.appendChild(calButton(plan.full ? 'Exit fullscreen' : 'Fullscreen', function () {
       plan.full = !plan.full;
       if (!board.planner.full) board.planInk = null;
@@ -5650,9 +5733,12 @@ function richItemOf(box) {
     dayTop.appendChild(dayActs);
     if (plan.full) dayTop.insertBefore(planDayNav(plan, todayKey), dayActs);
     column.appendChild(dayTop);
+    var railPanel = null;
     if (plan.full) {
-      column.appendChild(node('div', 'bd-cal__railpanel'));
-      column.appendChild(planMiniCal(plan, todayKey));
+      railPanel = node('div', 'bd-cal__railpanel');
+      column.appendChild(railPanel);
+      railPanel.appendChild(planMiniCal(plan, todayKey));
+      railPanel.appendChild(planRailOutline(plan));
     }
     var week = node('div', 'bd-cal__week');
     var weekStart = new Date(ms === null ? Date.now() : ms);
@@ -5689,7 +5775,7 @@ function richItemOf(box) {
         rail.appendChild(button);
       });
       tools.appendChild(rail);
-      column.appendChild(tools);
+      (railPanel || column).appendChild(tools);
     }
     var list = node('div', 'bd-cal__list');
     var dayEntries = planSort(planFiltered(planEntries(plan.date)), plan.date);
@@ -5699,9 +5785,17 @@ function richItemOf(box) {
       ? dayEntries.length + (dayEntries.length === 1 ? ' block' : ' blocks') + (dayDone ? ' \u00b7 ' + dayDone + ' done' : '')
       : 'Nothing planned';
     if (!dayEntries.length) {
-      list.appendChild(node('div', 'bd-cal__empty', plan.query || planTypes(plan).length
-        ? 'Nothing here matches the filter.'
-        : (plan.mode === 'assign' ? 'Nothing on this day yet' : 'Nothing planned. Add a block, or schedule one from the board.')));
+      if (plan.full) {
+        var blank = node('div', 'bd-cal__empty is-center');
+        blank.appendChild(node('div', 'bd-cal__emptytitle', plan.query || planTypes(plan).length ? 'Nothing matches the filter' : 'Nothing planned on this day'));
+        blank.appendChild(node('div', 'bd-cal__emptyhint', 'Add a block from the left, or schedule one from the board.'));
+        blank.appendChild(node('div', 'bd-cal__emptygestures', 'Drag to pan \u00b7 Ctrl + wheel to zoom \u00b7 F to frame'));
+        list.appendChild(blank);
+      } else {
+        list.appendChild(node('div', 'bd-cal__empty', plan.query || planTypes(plan).length
+          ? 'Nothing here matches the filter.'
+          : (plan.mode === 'assign' ? 'Nothing on this day yet' : 'Nothing planned. Add a block, or schedule one from the board.')));
+      }
     }
     list.addEventListener('dragover', function (event) {
       if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
@@ -5759,6 +5853,7 @@ function richItemOf(box) {
       }
       planDropEvent(event, plan.date);
     });
+    if (plan.full && !plan.view) plan.__fitPending = true;
     dayEntries.forEach(function (entry, index) {
       var card = planCard(entry);
       if (plan.full) planCanvasCard(card, entry, plan.date, index);
