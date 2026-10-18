@@ -4250,6 +4250,12 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__list.is-canvas { position: relative; display: block; flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0; background-image: radial-gradient(circle, var(--border) 1px, transparent 1px); background-size: 24px 24px; }
 .bd-cal__list.is-canvas.is-grabbing { cursor: move; }
 .bd-cal__list.is-canvas .bd-item { position: absolute; margin: 0; z-index: 1; box-shadow: 0 10px 30px var(--shadow-color, rgba(0, 0, 0, 0.35)); }
+/* A planned drawing is ink on the surface, so its card keeps the board's transparent look
+   in the day canvas, whatever the selection state. */
+.bd-cal__list.is-canvas .bd-item--draw,
+.bd-cal__list.is-canvas .bd-item--draw:hover,
+.bd-cal__list.is-canvas .bd-item--draw.is-selected,
+.bd-cal__list.is-canvas .bd-item--draw.is-fresh { background: transparent; border-color: transparent; box-shadow: none; }
 .bd-cal__list.is-canvas .bd-item__body { flex: 1 1 auto; min-height: 0; overflow: auto; }
 .bd-cal__list.is-canvas .bd-item__bar { cursor: move; }
 .bd-cal__list.is-canvas .bd-item.is-moving { z-index: 9; cursor: move; }
@@ -4322,8 +4328,6 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__list .bd-item--comment .bd-item__body,
 .bd-cal__list .bd-item--todo .bd-item__body { max-height: 132px; overflow: hidden; }
 .bd-cal__list .bd-item { max-height: 380px; }
-.bd-cal__list .bd-item--draw { background: var(--bg-raised); border-color: var(--border); }
-.bd-cal__list .bd-item--draw .bd-item__bar { opacity: 1; }
 .bd-cal__list .bd-item--column { height: auto; }
 .bd-item__lock.is-on { color: var(--accent); }
 
@@ -4510,10 +4514,6 @@ html.is-board-boot body > *:not(.board) { display: none; }
 
 /* Marquee selection over the day canvas. */
 .bd-cal__marbox { position: absolute; z-index: 6; border: 1px solid var(--accent); border-radius: 4px; background: var(--accent-ring); pointer-events: none; }
-
-/* Planner draw blocks are sheets of paper, so the pad ink stays readable on them. */
-.bd-cal .bd-draw { border-radius: 10px; background: #f7f8fa; }
-.bd-cal .bd-draw__canvas { border-radius: 10px; }
 
 
 /* A group in the day holds blocks, so its card only needs the height of its own header. */
