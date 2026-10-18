@@ -4171,7 +4171,6 @@ function richItemOf(box) {
     return box;
   }
 
-  var PLAN_GRIPS = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
   var PLAN_ORIGIN = { x: 3000, y: 2400 };
   var PLAN_PAD = { w: 6000, h: 4800 };
 
@@ -4217,18 +4216,14 @@ function richItemOf(box) {
       var dx = (event.clientX - start.x) / zoom;
       var dy = (event.clientY - start.y) / zoom;
       if (dir) {
-        var w = start.box.w;
-        var h = start.box.h;
-        var x = start.box.x;
-        var y = start.box.y;
-        if (dir.indexOf('e') >= 0) w = Math.max(230, Math.round(start.box.w + dx));
-        if (dir.indexOf('s') >= 0) h = Math.max(150, Math.round(start.box.h + dy));
-        if (dir.indexOf('w') >= 0) { w = Math.max(230, Math.round(start.box.w - dx)); x = Math.round(start.box.x + start.box.w - w); }
-        if (dir.indexOf('n') >= 0) { h = Math.max(150, Math.round(start.box.h - dy)); y = Math.round(start.box.y + start.box.h - h); }
-        box.x = x;
-        box.y = y;
+        var growX = dir.indexOf('e') >= 0 ? dx : dir.indexOf('w') >= 0 ? -dx : 0;
+        var growY = dir.indexOf('s') >= 0 ? dy : dir.indexOf('n') >= 0 ? -dy : 0;
+        var w = Math.max(230, Math.round(start.box.w + growX));
+        var h = Math.max(150, Math.round(start.box.h + growY));
         box.w = w;
         box.h = h;
+        box.x = Math.round(start.box.x + (dir.indexOf('w') >= 0 ? start.box.w - w : 0));
+        box.y = Math.round(start.box.y + (dir.indexOf('n') >= 0 ? start.box.h - h : 0));
       } else {
         box.x = Math.round(start.box.x + dx);
         box.y = Math.round(start.box.y + dy);
@@ -4242,11 +4237,13 @@ function richItemOf(box) {
         });
       }
       planCanvasApply(card, box);
+      if (dir) card.style.cursor = RESIZE_CURSOR[dir] || 'nwse-resize';
     };
     var up = function () {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       card.classList.remove('is-moving');
+      card.style.cursor = '';
       planCanvasKeep(entry.item, key, box);
       mateStart.forEach(function (row) {
         if (row.item && row.card) planCanvasKeep(row.item, row.key, row.card.__planCanvas);
@@ -4275,7 +4272,7 @@ function richItemOf(box) {
     card.__planItem = entry.item;
   card.__planKey = key;
   card.addEventListener('pointerdown', function (event) {
-    if (event.target.closest && (event.target.closest('.bd-item__bar') || event.target.closest('.bd-cal__grip') || event.target.closest('.bd-cal__inkbar') || event.target.closest('.bd-draw'))) return;
+    if (event.target.closest && (event.target.closest('.bd-item__bar') || event.target.closest('.bd-item__resize') || event.target.closest('.bd-cal__inkbar') || event.target.closest('.bd-draw'))) return;
     planSelectPaint(card.parentNode, [card]);
   });
     var bar = card.querySelector('.bd-item__bar');
@@ -4287,9 +4284,9 @@ function richItemOf(box) {
       bar.title = 'Drag to move the block, or drag its corner to resize';
       bar.addEventListener('pointerdown', function (event) { planCanvasPull(event, entry, key, false); });
     }
-    PLAN_GRIPS.forEach(function (dir) {
-      var grip = node('div', 'bd-cal__grip bd-cal__grip--' + dir);
-      grip.title = 'Resize';
+    RESIZE_DIRS.forEach(function (dir) {
+      var grip = node('div', 'bd-item__resize bd-item__resize--' + dir);
+      grip.setAttribute('data-dir', dir);
       grip.setAttribute('aria-hidden', 'true');
       grip.addEventListener('pointerdown', function (event) { planCanvasPull(event, entry, key, dir); });
       card.appendChild(grip);
