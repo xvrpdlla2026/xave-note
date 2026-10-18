@@ -3585,26 +3585,37 @@ function richItemOf(box) {
     if (on.length > 1) on.length = 0;
     var row = node('div', 'bd-cal__frow');
     row.appendChild(node('span', 'bd-cal__label', 'Types'));
-    var pick = node('select', 'bd-cal__type');
-    pick.setAttribute('aria-label', 'Show only these types of block');
-    var all = node('option', '', 'All types');
-    all.value = '';
-    pick.appendChild(all);
-    present.forEach(function (kind) {
-      var text = kindText(kind);
-      var opt = node('option', '', text.label + ' (' + counts[kind] + ')');
-      opt.value = kind;
-      opt.title = text.label + ': ' + counts[kind] + ' planned in every month';
-      pick.appendChild(opt);
+    var button = node('button', 'bd-cal__type' + (on.length ? ' is-on' : ''));
+    button.type = 'button';
+    button.setAttribute('aria-haspopup', 'menu');
+    button.setAttribute('aria-label', 'Show only one type of block');
+    button.appendChild(node('span', 'bd-cal__typelabel', on.length ? kindText(on[0]).label : 'All types'));
+    button.appendChild(node('span', 'bd-cal__caret'));
+    button.addEventListener('click', function () {
+      var at = button.getBoundingClientRect();
+      var items = [{
+        label: 'All types',
+        checked: !on.length,
+        onclick: function () { planTypes(plan).length = 0; paintPlanner(); },
+      }];
+      present.forEach(function (kind) {
+        var text = kindText(kind);
+        items.push({
+          label: text.label,
+          icon: text.icon,
+          shortcut: String(counts[kind] || 0),
+          checked: on.indexOf(kind) >= 0,
+          onclick: function () {
+            var list = planTypes(plan);
+            list.length = 0;
+            list.push(kind);
+            paintPlanner();
+          },
+        });
+      });
+      App.ui.openMenu({ x: Math.round(at.left), y: Math.round(at.bottom + 6), items: items });
     });
-    pick.value = on.length === 1 && present.indexOf(on[0]) >= 0 ? on[0] : '';
-    pick.addEventListener('change', function () {
-      var list = planTypes(plan);
-      list.length = 0;
-      if (pick.value) list.push(pick.value);
-      paintPlanner();
-    });
-    row.appendChild(pick);
+    row.appendChild(button);
     return row;
   }
 

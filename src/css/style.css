@@ -4221,9 +4221,12 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__searchx:hover { background: var(--bg-hover); color: var(--text); }
 .bd-cal__frow { display: flex; align-items: center; gap: 12px; }
 
-.bd-cal__type { width: 196px; max-width: 42vw; height: 32px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-raised); color: var(--text); font: inherit; font-size: 12.5px; cursor: pointer; }
-.bd-cal__type:hover { border-color: var(--border-strong); }
-.bd-cal__type:focus-visible { outline: none; border-color: var(--accent); }
+.bd-cal__type { display: inline-flex; align-items: center; gap: 8px; height: 32px; min-width: 176px; max-width: 42vw; padding: 0 10px 0 11px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-raised); color: var(--text-muted); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer; transition: border-color var(--fast), background var(--fast), color var(--fast); }
+.bd-cal__type:hover { border-color: var(--border-strong); background: var(--bg-hover); color: var(--text); }
+.bd-cal__type:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+.bd-cal__type.is-on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.bd-cal__typelabel { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bd-cal__caret { flex: none; width: 0; height: 0; margin-top: 2px; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid currentColor; opacity: 0.75; }
 .bd-cal__day.is-full { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; width: auto; height: auto; max-height: none; border: 0; border-radius: 0; background: var(--bg); }
 .bd-cal__canvas { position: absolute; left: 0; top: 0; width: 6000px; height: 4800px; pointer-events: none; }
 .bd-cal__list.is-canvas { position: relative; display: block; flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0; background-image: radial-gradient(circle, var(--border) 1px, transparent 1px); background-size: 24px 24px; }
