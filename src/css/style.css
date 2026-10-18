@@ -4561,3 +4561,12 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__jumpcell:hover { background: var(--bg-hover); color: var(--text); }
 .bd-cal__jumpcell.is-sel { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 .bd-cal__jump .bd-cal__minigrid { gap: 2px; }
+.bd-cal__top > .bd-cal__btn.bd-cal__close {
+  width: 46px; min-width: 46px; height: 32px; padding: 0; border: 0; border-radius: 4px;
+  background: rgba(229, 72, 77, 0.16); color: #e5484d;
+}
+.bd-cal__top > .bd-cal__btn.bd-cal__close svg { width: 15px; height: 15px; }
+.bd-cal__top > .bd-cal__btn.bd-cal__close:hover,
+.bd-cal__top > .bd-cal__btn.bd-cal__close:focus-visible,
+.bd-cal__top > .bd-cal__btn.bd-cal__close:active { background: #c42b1c; color: #ffffff; }
+.bd-cal__top > .bd-cal__btn.bd-cal__close:active { background: #b1271b; color: rgba(255, 255, 255, 0.8); }
