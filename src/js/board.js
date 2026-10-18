@@ -4243,8 +4243,12 @@ function richItemOf(box) {
     event.stopPropagation();
   }
 
+  // Reordering the day slides blocks up and down the list, so a block takes its place on the canvas
+  // once and keeps it, because the canvas is laid out by hand and the list is laid out by order.
   function planCanvasCard(card, entry, key, index) {
     var box = planCanvasBox(entry.item, key, index);
+    var stored = entry.item.data && entry.item.data.planCanvas ? entry.item.data.planCanvas[key] : null;
+    if (!stored) planCanvasKeep(entry.item, key, box);
     card.__planCanvas = box;
     card.setAttribute('data-plan-canvas', '1');
     card.__planItem = entry.item;
@@ -4255,6 +4259,9 @@ function richItemOf(box) {
   });
     var bar = card.querySelector('.bd-item__bar');
     if (bar) {
+      var ordinal = node('span', 'bd-cal__ordinal', String(index + 1));
+      ordinal.title = 'Number ' + (index + 1) + ' of the day';
+      bar.insertBefore(ordinal, bar.firstChild);
       bar.setAttribute('draggable', 'false');
       bar.title = 'Drag to move the block, or drag its corner to resize';
       bar.addEventListener('pointerdown', function (event) { planCanvasPull(event, entry, key, false); });

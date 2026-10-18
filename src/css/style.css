@@ -4570,3 +4570,10 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__top > .bd-cal__btn.bd-cal__close:focus-visible,
 .bd-cal__top > .bd-cal__btn.bd-cal__close:active { background: #c42b1c; color: #ffffff; }
 .bd-cal__top > .bd-cal__btn.bd-cal__close:active { background: #b1271b; color: rgba(255, 255, 255, 0.8); }
+.bd-cal__list.is-canvas .bd-item__bar > .bd-item__kind { margin-right: auto; }
+.bd-cal__list.is-canvas .bd-item__bar > .bd-cal__ordinal {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  min-width: 17px; height: 17px; padding: 0 4px; border-radius: 5px;
+  background: var(--bg-hover); color: var(--text-dim);
+  font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
