@@ -4490,3 +4490,49 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__day.is-full .bd-cal__tools .board__tool:hover { border-color: var(--border-strong); background: var(--bg-hover); }
 .bd-item.is-fresh { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring), 0 12px 30px rgba(0, 0, 0, 0.4); animation: bd-fresh 1.4s var(--ease) 1; }
 @keyframes bd-fresh { 0% { box-shadow: 0 0 0 14px var(--accent-ring), 0 12px 30px rgba(0, 0, 0, 0.4); } 100% { box-shadow: 0 0 0 3px var(--accent-ring), 0 12px 30px rgba(0, 0, 0, 0.4); } }
+
+/* Planner cursors: cards read as content, so the move cursor belongs on the drag bar and grip only. */
+.bd-cal__list .bd-item { cursor: default; }
+.bd-cal__list .bd-item__body.is-readonly { cursor: default; }
+.bd-cal__list .bd-item [contenteditable="true"],
+.bd-cal__list .bd-item input,
+.bd-cal__list .bd-item textarea { cursor: text; }
+.bd-cal__list.is-canvas { cursor: default; }
+.bd-cal__list.is-canvas .bd-item,
+.bd-cal__list.is-canvas .bd-item__body,
+.bd-cal__list.is-canvas .bd-item__body.is-readonly { cursor: default; }
+.bd-cal__list.is-canvas .bd-item__bar,
+.bd-cal__list.is-canvas .bd-item__grip,
+.bd-cal__list.is-canvas .bd-cal__grip { cursor: move; }
+.bd-cal__list.is-canvas .bd-item.is-dragging,
+.bd-cal__list.is-canvas .bd-item.is-dragging * { cursor: move; }
+.bd-cal__list.is-canvas.is-grabbing { cursor: grabbing; }
+
+/* Marquee selection over the day canvas. */
+.bd-cal__marbox { position: absolute; z-index: 6; border: 1px solid var(--accent); border-radius: 4px; background: var(--accent-ring); pointer-events: none; }
+
+/* Planner draw blocks are sheets of paper, so the pad ink stays readable on them. */
+.bd-cal .bd-draw { border-radius: 10px; background: #f7f8fa; }
+.bd-cal .bd-draw__canvas { border-radius: 10px; }
+
+/* Fullscreen drawing: the ink layer covers the day canvas and the bar drives it. */
+.bd-cal__inklayer { position: absolute; inset: 0; z-index: 7; cursor: crosshair; touch-action: none; }
+.bd-cal__inkbar { position: absolute; left: 50%; bottom: 18px; z-index: 8; display: flex; align-items: center; gap: 6px; padding: 6px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--bg-raised); box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45); }
+.bd-cal__inkbtn { display: inline-flex; align-items: center; justify-content: center; min-width: 28px; height: 28px; padding: 0 8px; border: 1px solid transparent; border-radius: 8px; background: none; color: var(--text); font: inherit; font-size: 11.5px; cursor: pointer; }
+.bd-cal__inkbtn:hover { background: var(--bg-hover); }
+.bd-cal__inkbtn.is-active { border-color: var(--accent); color: var(--accent); }
+.bd-cal__inkdot { width: 16px; height: 16px; padding: 0; border: 1px solid var(--border-strong); border-radius: 50%; cursor: pointer; }
+.bd-cal__inkdot.is-active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-ring); }
+.bd-cal__inksep { width: 1px; height: 18px; background: var(--border); }
+.bd-cal__inkgo { border-color: var(--accent); background: var(--accent); color: #ffffff; }
+
+/* A group in the day holds blocks, so its card only needs the height of its own header. */
+.bd-cal__list .bd-item--group { min-height: 0; height: auto; }
+.bd-cal__list .bd-item--group .bd-container { min-height: 0; }
+.bd-cal__list .bd-item .bd-item__body,
+.bd-cal__list .bd-item__body,
+.bd-cal__list .bd-item__body.is-readonly,
+.bd-cal__list .bd-item .bd-item__body.is-readonly { cursor: default; }
+.bd-cal__list .bd-item .bd-item__body [contenteditable="true"],
+.bd-cal__list .bd-item .bd-item__body input,
+.bd-cal__list .bd-item .bd-item__body textarea { cursor: text; }

@@ -3819,6 +3819,14 @@ function richItemOf(box) {
   }
 
   function addPlannerItem(kind, key, time) {
+    if (kind === 'draw' && !board.planDrawAdd) {
+      if (board.planner && board.planner.full) planInkOpen(key);
+      else {
+        board.planPadDate = key;
+        openDrawPad(null);
+      }
+      return null;
+    }
     var now = util.nowIso();
     var size = { note: [268, 176], todo: [256, 196], link: [268, 96], image: [288, 216], comment: [268, 132], table: [320, 208], file: [300, 236] }[kind] || [260, 160];
     var data = defaultData(kind);
@@ -4223,6 +4231,14 @@ function richItemOf(box) {
         box.x = Math.round(start.box.x + dx);
         box.y = Math.round(start.box.y + dy);
       }
+      if (!resize) {
+        mateStart.forEach(function (row) {
+          if (!row.card) return;
+          row.card.__planCanvas.x = Math.round(row.x + dx);
+          row.card.__planCanvas.y = Math.round(row.y + dy);
+          planCanvasApply(row.card, row.card.__planCanvas);
+        });
+      }
       planCanvasApply(card, box);
     };
     var up = function () {
@@ -4230,7 +4246,15 @@ function richItemOf(box) {
       window.removeEventListener('pointerup', up);
       card.classList.remove('is-moving');
       planCanvasKeep(entry.item, key, box);
+      mateStart.forEach(function (row) {
+        if (row.item && row.card) planCanvasKeep(row.item, row.key, row.card.__planCanvas);
+      });
     };
+    var mateStart = Array.prototype.filter.call(document.querySelectorAll('.bd-cal__list .bd-item.is-selected'), function (other) {
+      return other !== card && other.__planCanvas;
+    }).map(function (other) {
+      return { card: other, item: other.__planItem, key: other.__planKey, x: other.__planCanvas.x, y: other.__planCanvas.y };
+    });
     card.classList.add('is-moving');
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -4242,6 +4266,12 @@ function richItemOf(box) {
     var box = planCanvasBox(entry.item, key, index);
     card.__planCanvas = box;
     card.setAttribute('data-plan-canvas', '1');
+    card.__planItem = entry.item;
+  card.__planKey = key;
+  card.addEventListener('pointerdown', function (event) {
+    if (event.target.closest && (event.target.closest('.bd-item__bar') || event.target.closest('.bd-cal__grip') || event.target.closest('.bd-cal__inkbar') || event.target.closest('.bd-draw'))) return;
+    planSelectPaint(card.parentNode, [card]);
+  });
     var bar = card.querySelector('.bd-item__bar');
     if (bar) {
       bar.setAttribute('draggable', 'false');
@@ -4256,11 +4286,17 @@ function richItemOf(box) {
     planCanvasApply(card, box);
   }
 
-  function planCanvasGrab(event) {
+function planCanvasGrab(event) {
     var plan = board.planner;
     if (!plan || !plan.full || event.button !== 0) return;
+    if (board.planInk) return;
     if (event.target && event.target.closest && event.target.closest('.bd-item')) return;
-    var list = event.currentTarget;
+    if (event.button === 1 || event.shiftKey) planCanvasPan(event, event.currentTarget);
+    else planMarqueeStart(event, event.currentTarget);
+  }
+
+  function planCanvasPan(event, list) {
+    var plan = board.planner;
     var view = planView(plan);
     var start = { x: event.clientX, y: event.clientY, vx: view.x, vy: view.y };
     var move = function (event) {
@@ -4332,6 +4368,256 @@ function richItemOf(box) {
     }
   }
 
+  // The day canvas doubles as the drawing surface: in fullscreen a draw block is sketched anywhere on
+  // the infinite board and lands where it was drawn, which is closer to the board than a dialog is.
+  function planInkOpen(key) {
+    var plan = board.planner;
+    if (!plan || !key) return;
+    board.planInk = { key: key, strokes: [], drawing: null, tool: 'pen', color: '#111827', width: DRAW_WIDTHS[1] };
+    plan.full = true;
+    paintPlanner();
+  }
+
+  function planInkPlace(item, key, local, base, box) {
+    if (!item.data) item.data = {};
+    item.data.strokes = local;
+    item.data.ox = base.x;
+    item.data.oy = base.y;
+    item.data.ink = 1;
+    item.data.w = Math.max(16, box.w);
+    item.data.h = Math.max(16, box.h);
+    item.w = Math.max(230, Math.round(box.w) + INK_PAD * 2);
+    item.h = Math.max(150, Math.round(box.h) + INK_PAD * 2 + INK_BAR);
+    if (board.planner && board.planner.full) {
+      if (!item.data.planCanvas) item.data.planCanvas = {};
+      item.data.planCanvas[key] = { x: Math.round(box.x - INK_PAD), y: Math.round(box.y - INK_PAD), w: item.w, h: item.h };
+    }
+    savePlanItem(item);
+    board.planFresh = { id: item.id, until: Date.now() + 4000 };
+  }
+
+  function planInkDone(save) {
+    var ink = board.planInk;
+    if (!ink) return;
+    board.planInk = null;
+    if (save && ink.strokes.length) {
+      var box = strokeBox(ink.strokes);
+      var local = ink.strokes.map(function (stroke) { return inkShift(stroke, -box.x, -box.y); });
+      board.planDrawAdd = true;
+      var made = addPlannerItem('draw', ink.key, '');
+      board.planDrawAdd = false;
+      if (made) planInkPlace(made, ink.key, local, box, box);
+    }
+    paintPlanner();
+  }
+
+  function planInkPaint(plan) {
+    var ink = board.planInk;
+    var layer = plannerEl().querySelector('.bd-cal__inklayer');
+    if (!ink || !layer || !plan) return;
+    var view = planView(plan);
+    var dpr = window.devicePixelRatio || 1;
+    var ctx = layer.getContext('2d');
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, layer.width, layer.height);
+    ctx.setTransform(dpr * view.z, 0, 0, dpr * view.z, dpr * view.x, dpr * view.y);
+    ink.strokes.forEach(function (stroke) { paintStroke(ctx, stroke); });
+    if (ink.drawing) paintStroke(ctx, ink.drawing);
+  }
+
+  function planInkUndo() {
+    var ink = board.planInk;
+    if (!ink || !ink.strokes.length) return;
+    ink.strokes.pop();
+    planInkPaint(board.planner);
+  }
+
+  function planInkTools(plan) {
+    var ink = board.planInk;
+    var bar = plannerEl().querySelector('.bd-cal__inkbar');
+    if (!ink || !bar) return;
+    Array.prototype.forEach.call(bar.querySelectorAll('[data-ink-tool]'), function (button) {
+      button.classList.toggle('is-active', button.getAttribute('data-ink-tool') === ink.tool);
+    });
+    Array.prototype.forEach.call(bar.querySelectorAll('[data-ink-width]'), function (button) {
+      button.classList.toggle('is-active', Number(button.getAttribute('data-ink-width')) === ink.width);
+    });
+    Array.prototype.forEach.call(bar.querySelectorAll('[data-ink-color]'), function (button) {
+      button.classList.toggle('is-active', button.getAttribute('data-ink-color') === ink.color);
+    });
+  }
+
+  function planInkBar(plan) {
+    var ink = board.planInk;
+    var bar = node('div', 'bd-cal__inkbar');
+    var button = function (label, className) {
+      var el = node('button', 'bd-cal__inkbtn' + (className ? ' ' + className : ''), label);
+      el.type = 'button';
+      return el;
+    };
+    var pen = button('Pen');
+    pen.setAttribute('data-ink-tool', 'pen');
+    pen.addEventListener('click', function () { ink.tool = 'pen'; planInkTools(plan); });
+    var eraser = button('Eraser');
+    eraser.setAttribute('data-ink-tool', 'eraser');
+    eraser.addEventListener('click', function () { ink.tool = 'eraser'; planInkTools(plan); });
+    bar.appendChild(pen);
+    bar.appendChild(eraser);
+    bar.appendChild(node('span', 'bd-cal__inksep'));
+    DRAW_WIDTHS.forEach(function (width) {
+      var dot = node('button', 'bd-cal__inkbtn');
+      dot.type = 'button';
+      dot.setAttribute('data-ink-width', String(width));
+      dot.setAttribute('aria-label', width + ' pixel pen');
+      dot.textContent = width + 'px';
+      dot.addEventListener('click', function () { ink.width = width; planInkTools(plan); });
+      bar.appendChild(dot);
+    });
+    bar.appendChild(node('span', 'bd-cal__inksep'));
+    ['#111827', '#e5484d', '#f5a524', '#30a46c', '#3b82f6', '#8b5cf6'].forEach(function (color) {
+      var swatch = node('button', 'bd-cal__inkdot');
+      swatch.type = 'button';
+      swatch.setAttribute('data-ink-color', color);
+      swatch.setAttribute('aria-label', 'Colour ' + color);
+      swatch.style.background = color;
+      swatch.addEventListener('click', function () { ink.color = color; ink.tool = 'pen'; planInkTools(plan); });
+      bar.appendChild(swatch);
+    });
+    bar.appendChild(node('span', 'bd-cal__inksep'));
+    var undo = button('Undo');
+    undo.addEventListener('click', planInkUndo);
+    var clear = button('Clear');
+    clear.addEventListener('click', function () { ink.strokes = []; planInkPaint(plan); });
+    var done = button('Done', 'bd-cal__inkgo');
+    done.addEventListener('click', function () { planInkDone(true); });
+    var cancel = button('Cancel');
+    cancel.addEventListener('click', function () { planInkDone(false); });
+    bar.appendChild(undo);
+    bar.appendChild(clear);
+    bar.appendChild(cancel);
+    bar.appendChild(done);
+    planInkTools(plan);
+    return bar;
+  }
+
+  function planInkLayer(plan) {
+    var ink = board.planInk;
+    var list = plannerEl().querySelector('.bd-cal__list');
+    if (!ink || !list) return;
+    var rect = list.getBoundingClientRect();
+    var dpr = window.devicePixelRatio || 1;
+    var layer = node('canvas', 'bd-cal__inklayer');
+    layer.width = Math.max(1, Math.round(rect.width * dpr));
+    layer.height = Math.max(1, Math.round(rect.height * dpr));
+    var point = function (event) {
+      var view = planView(plan);
+      return [(event.clientX - rect.left - view.x) / view.z, (event.clientY - rect.top - view.y) / view.z];
+    };
+    layer.addEventListener('pointerdown', function (event) {
+      if (event.button !== 0) return;
+      var start = point(event);
+      ink.drawing = ink.tool === 'eraser' ? null : { c: ink.color, e: 0, w: ink.width, p: [start] };
+      ink.path = ink.tool === 'eraser' ? [start] : null;
+      if (layer.setPointerCapture) layer.setPointerCapture(event.pointerId);
+      planInkPaint(plan);
+      event.preventDefault();
+    });
+    layer.addEventListener('pointermove', function (event) {
+      if (!ink.drawing && !ink.path) return;
+      var next = point(event);
+      if (ink.drawing) ink.drawing.p.push(next);
+      else ink.path.push(next);
+      planInkPaint(plan);
+    });
+    layer.addEventListener('pointerup', function (event) {
+      if (ink.path) {
+        var radius = Math.max(8, ink.width * 2);
+        var path = ink.path;
+        ink.path = null;
+        ink.strokes = ink.strokes.filter(function (stroke) {
+          return !stroke.p.some(function (dot) {
+            return path.some(function (step) { return (dot[0] - step[0]) * (dot[0] - step[0]) + (dot[1] - step[1]) * (dot[1] - step[1]) <= radius * radius; });
+          });
+        });
+      }
+      if (ink.drawing) {
+        ink.strokes.push(ink.drawing);
+        ink.drawing = null;
+      }
+      planInkPaint(plan);
+      planInkTools(plan);
+      event.preventDefault();
+    });
+    list.appendChild(layer);
+    list.appendChild(planInkBar(plan));
+    if (!board.planInkKeys) {
+      board.planInkKeys = true;
+      window.addEventListener('keydown', function (event) {
+        if (!board.planInk) return;
+        if (event.key === 'Escape') { event.preventDefault(); planInkDone(false); return; }
+        if ((event.ctrlKey || event.metaKey) && (event.key === 'z' || event.key === 'Z')) { event.preventDefault(); planInkUndo(); }
+      });
+    }
+    planInkPaint(plan);
+  }
+
+  function planSel() {
+    if (!board.planSel) board.planSel = [];
+    return board.planSel;
+  }
+
+  function planSelectPaint(list, cards) {
+    if (!list) return;
+    var sel = planSel();
+    var canvas = list.classList.contains('is-canvas');
+    sel.length = 0;
+    Array.prototype.forEach.call(list.querySelectorAll('.bd-item'), function (card) { card.classList.remove('is-selected'); });
+    cards.forEach(function (card) {
+      if (canvas && !card.__planCanvas) return;
+      sel.push(card.getAttribute('data-plan-id'));
+      card.classList.add('is-selected');
+    });
+  }
+
+  function planMarqueeStart(event, list) {
+    var plan = board.planner;
+    if (!plan || !list) return;
+    var view = planView(plan);
+    var rect = list.getBoundingClientRect();
+    var toCanvas = function (event) {
+      return { x: (event.clientX - rect.left - view.x) / view.z, y: (event.clientY - rect.top - view.y) / view.z };
+    };
+    var start = toCanvas(event);
+    var box = node('div', 'bd-cal__marbox');
+    var moved = false;
+    var paint = function (event) {
+      var p = toCanvas(event);
+      var x = Math.min(start.x, p.x), y = Math.min(start.y, p.y);
+      var w = Math.abs(p.x - start.x), h = Math.abs(p.y - start.y);
+      if (w > 4 || h > 4) moved = true;
+      box.style.cssText = 'left:' + (x * view.z + view.x) + 'px;top:' + (y * view.z + view.y) + 'px;width:' + (w * view.z) + 'px;height:' + (h * view.z) + 'px;';
+      var hits = [];
+      Array.prototype.forEach.call(list.querySelectorAll('.bd-item'), function (card) {
+        var row = card && card.__planCanvas;
+        if (!row) return;
+        if (row.x < x + w && row.x + row.w > x && row.y < y + h && row.y + row.h > y) hits.push(card);
+      });
+      planSelectPaint(list, hits);
+    };
+    var move = function (event) { paint(event); };
+    var up = function () {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      if (!moved) planSelectPaint(list, []);
+      if (box.parentNode) box.parentNode.removeChild(box);
+    };
+    if (!event.shiftKey) planSelectPaint(list, []);
+    list.appendChild(box);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    paint(event);
+    event.preventDefault();
+  }
   function planView(plan) {
     if (!plan) return { x: 48, y: 28, z: 1 };
     if (!plan.view) plan.view = { x: 48, y: 28, z: 1 };
@@ -4347,10 +4633,11 @@ function richItemOf(box) {
     list.style.backgroundSize = dot + 'px ' + dot + 'px';
     list.style.backgroundPosition = (((view.x % dot) + dot) % dot) + 'px ' + (((view.y % dot) + dot) % dot) + 'px';
     Array.prototype.forEach.call(list.querySelectorAll('.bd-item'), function (card) {
-      if (card.__planCanvas) planCanvasApply(card, card.__planCanvas);
+      if (card && card.__planCanvas) planCanvasApply(card, card.__planCanvas);
     });
     var label = plannerEl().querySelector('.bd-cal__zoomlabel');
     if (label) label.textContent = Math.round(view.z * 100) + '%';
+  if (board.planInk) planInkPaint(plan);
   }
 
   function planPaintInk() {
@@ -4721,6 +5008,7 @@ function richItemOf(box) {
     });
     dayActs.appendChild(calButton(plan.full ? 'Exit fullscreen' : 'Fullscreen', function () {
       plan.full = !plan.full;
+      if (!board.planner.full) board.planInk = null;
       plan.calMonth = null;
       plan.view = null;
       paintPlanner();
@@ -4878,7 +5166,8 @@ column.addEventListener('dragover', function (event) {
       planChrome(plan);
       planPaintView(plan);
     }
-    planRevealFresh(plan);
+planRevealFresh(plan);
+    if (plan.full && board.planInk) planInkLayer(plan);
     if (keepScroll) {
       var after = el.querySelector('.bd-cal__list');
       if (after) after.scrollTop = keepScroll;
@@ -5598,7 +5887,26 @@ column.addEventListener('dragover', function (event) {
   function openAddMenu(item, button) {
     var rect = button.getBoundingClientRect();
     var add = function (kind) {
-      return function () { addItem(kind, { parent: item.id }); };
+return function () {
+        var key = button.closest && button.closest('.bd-cal') && board.planner ? board.planner.date : null;
+        if (key && item.data && item.data.planner) {
+          board.planDrawAdd = true;
+          var made = addPlannerItem(kind, key, '');
+          board.planDrawAdd = false;
+          if (made) {
+            made.data.parent = item.id;
+            savePlanItem(made);
+            paintPlanner();
+          }
+          return;
+        }
+        addItem(kind, { parent: item.id });
+        if (key) {
+          var child = board.items[board.items.length - 1];
+          if (child) planAdd(child, key, true);
+          paintPlanner();
+        }
+      };
     };
     App.ui.openMenu({
       x: Math.round(rect.left),
@@ -7558,7 +7866,18 @@ column.addEventListener('dragover', function (event) {
     });
     var data = { strokes: strokes, w: Math.max(24, Math.round(box.w)), h: Math.max(24, Math.round(box.h)) };
     var target = pad.state.item;
+    var planKey = board.planPadDate;
+    board.planPadDate = null;
     closeDrawPad();
+    if (planKey && !target) {
+      var planned = null;
+      board.planDrawAdd = true;
+      planned = addPlannerItem('draw', planKey, '');
+      board.planDrawAdd = false;
+      if (planned) planInkPlace(planned, planKey, data.strokes, { x: 0, y: 0 }, { x: 0, y: 0, w: data.w, h: data.h });
+      paintPlanner();
+      return;
+    }
     if (target) {
       pushUndo('edit');
       target.data.strokes = data.strokes;
@@ -7626,7 +7945,8 @@ column.addEventListener('dragover', function (event) {
     canvas.inkPaint = paint;
     wrap.addEventListener('dblclick', function (event) {
       event.stopPropagation();
-      startInk(item);
+if (wrap.closest && wrap.closest('.bd-cal')) openDrawPad(item);
+      else startInk(item);
     });
     if (typeof ResizeObserver === 'function') new ResizeObserver(paint).observe(wrap);
     requestAnimationFrame(paint);
