@@ -4611,3 +4611,5 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__day:not(.is-full) .bd-cal__daytop { flex-direction: column; align-items: stretch; gap: 10px; }
 .bd-cal__day:not(.is-full) .bd-cal__dayacts { justify-content: flex-end; margin-left: 0; }
 .bd-cal__day.is-full .bd-cal__daytop { flex-wrap: wrap; row-gap: 8px; }
+.bd-cal__list.is-canvas.is-select-mode { cursor: crosshair; }
+.bd-cal__list.is-canvas:not(.is-select-mode):not(.is-grabbing) { cursor: grab; }

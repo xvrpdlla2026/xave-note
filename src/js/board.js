@@ -3709,6 +3709,7 @@ function richItemOf(box) {
       date: date || calKey(Date.now()),
       month: monthStart(ms === null ? Date.now() : ms),
       dayOpen: false,
+      tool: board.mode === 'select' ? 'select' : 'grab',
     };
     var el = plannerEl();
     el.hidden = false;
@@ -4329,12 +4330,42 @@ function richItemOf(box) {
     planCanvasApply(card, box);
   }
 
-function planCanvasGrab(event) {
+  function planToolPaint(button, plan) {
+    var on = plan.tool === 'select';
+    button.textContent = '';
+    var glyph = App.ui.icon(on ? 'marquee' : 'hand', 16);
+    if (glyph) button.appendChild(glyph);
+    button.classList.toggle('is-select', on);
+    button.title = on ? 'Drag to select blocks, hold Space to pan' : 'Drag to pan the canvas';
+    button.setAttribute('aria-label', button.title);
+    button.setAttribute('aria-pressed', on ? 'true' : 'false');
+    var day = button.closest('.bd-cal__day');
+    var list = day ? day.querySelector('.bd-cal__list') : null;
+    if (list) list.classList.toggle('is-select-mode', on);
+  }
+
+  function planToolButton(plan) {
+    var button = calButton('', function () {
+      plan.tool = plan.tool === 'select' ? 'grab' : 'select';
+      planToolPaint(button, plan);
+      if (plan.tool !== 'select') {
+        var day = button.closest('.bd-cal__day');
+        var list = day ? day.querySelector('.bd-cal__list') : null;
+        if (list) planSelectPaint(list, []);
+      }
+      util.toast(plan.tool === 'select' ? 'Drag to select blocks' : 'Drag to pan the canvas');
+    }, 'is-icon is-quiet');
+    button.setAttribute('data-plan-tool', '1');
+    planToolPaint(button, plan);
+    return button;
+  }
+
+  function planCanvasGrab(event) {
     var plan = board.planner;
     if (!plan || !plan.full || event.button !== 0) return;
     if (board.planInk) return;
     if (event.target && event.target.closest && event.target.closest('.bd-item')) return;
-    if (event.button === 1 || event.shiftKey) planCanvasPan(event, event.currentTarget);
+    if (board.space || plan.tool !== 'select') planCanvasPan(event, event.currentTarget);
     else planMarqueeStart(event, event.currentTarget);
   }
 
@@ -5194,6 +5225,7 @@ function planCanvasGrab(event) {
     drawButton.setAttribute('aria-label', 'Draw on this day');
     drawButton.appendChild(App.ui.icon('pencil', 15));
     dayActs.appendChild(drawButton);
+    if (plan.full) dayActs.appendChild(planToolButton(plan));
     dayActs.appendChild(node('div', 'bd-cal__zoomslot'));
     var dayClose = node('button', 'bd-cal__dayclose');
     dayClose.type = 'button';
@@ -5352,6 +5384,7 @@ column.addEventListener('dragover', function (event) {
     if (plan.full) {
       column.classList.add('is-full');
       list.classList.add('is-canvas');
+      if (board.planner && board.planner.tool === 'select') list.classList.add('is-select-mode');
       list.appendChild(node('div', 'bd-cal__canvas'));
       list.addEventListener('pointerdown', planCanvasGrab);
       requestAnimationFrame(function () {
