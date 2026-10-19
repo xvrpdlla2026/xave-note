@@ -3804,8 +3804,7 @@ function richItemOf(box) {
     var form = node('div', 'bd-plan__whenform');
     var chip = button.getBoundingClientRect();
     form.style.left = Math.max(8, Math.round(chip.right - 484)) + 'px';
-    if (chip.bottom + 56 > window.innerHeight) form.style.bottom = Math.round(window.innerHeight - chip.top + 6) + 'px';
-    else form.style.top = Math.round(chip.bottom + 6) + 'px';
+    form.style.top = Math.round(chip.bottom + 6) + 'px';
     var time = node('input', 'bd-plan__time');
     time.type = 'time';
     time.value = planTimeOf(item, isBoard);
@@ -3865,9 +3864,17 @@ function richItemOf(box) {
     form.appendChild(whenActs);
     requestAnimationFrame(function () {
       if (!form.parentNode) return;
-      var wide = form.getBoundingClientRect().width;
+      var size = form.getBoundingClientRect();
       var chipBox = button.getBoundingClientRect();
-      form.style.left = Math.max(8, Math.min(Math.round(chipBox.right - wide), Math.round(window.innerWidth - wide - 8))) + 'px';
+      form.style.left = Math.max(8, Math.min(Math.round(chipBox.right - size.width), Math.round(window.innerWidth - size.width - 8))) + 'px';
+      // The form is as tall as its fields, so it goes above the block when the block sits near the bottom of the window.
+      if (chipBox.bottom + 6 + size.height > window.innerHeight - 8 && chipBox.top - 6 - size.height >= 8) {
+        form.style.top = '';
+        form.style.bottom = Math.round(window.innerHeight - chipBox.top + 6) + 'px';
+        return;
+      }
+      form.style.bottom = '';
+      form.style.top = Math.round(Math.min(chipBox.bottom + 6, Math.max(8, window.innerHeight - size.height - 8))) + 'px';
     });
     return form;
   }
