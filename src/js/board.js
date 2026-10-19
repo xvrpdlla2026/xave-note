@@ -4103,8 +4103,46 @@ function richItemOf(box) {
     savePlanItem(item);
   }
 
-  // Creating a block on the clock asks for its title right where you drew it, the way a calendar does.
-  function planQuickAdd(item, key, at) {
+  function planQuickNode(item) {
+    return function () {
+      return plannerEl().querySelector('.bd-cal__tevent[data-plan-id="' + item.id + '"], .bd-cal__tdchip[data-plan-id="' + item.id + '"]');
+    };
+  }
+
+  // The popover is fixed to the viewport, so the box a block can scroll out of is whatever scrolls it.
+  function planQuickFrame(node) {
+    var row = node.parentNode;
+    while (row && row.nodeType === 1 && row !== document.body) {
+      if (row.clientHeight > 0 && row.scrollHeight > row.clientHeight + 4 && /auto|scroll|overlay/.test(window.getComputedStyle(row).overflowY || '')) {
+        return row.getBoundingClientRect();
+      }
+      row = row.parentNode;
+    }
+    return { top: 0, bottom: window.innerHeight, left: 0, right: window.innerWidth };
+  }
+
+  // The popover is fixed to the viewport, so a scroll would leave it behind the block it belongs to.
+  function planQuickPlace(box, at, anchor) {
+    var spot = at || null;
+    var target = anchor ? (typeof anchor === 'function' ? anchor() : anchor) : null;
+    var away = false;
+    if (target && target.isConnected) {
+      var frame = planQuickFrame(target);
+      var rect = target.getBoundingClientRect();
+      away = rect.bottom < frame.top + 4 || rect.top > frame.bottom - 4 || rect.right < frame.left || rect.left > frame.right;
+      if (!away) spot = { left: rect.right + 12, top: rect.top - 22 };
+    }
+    box.style.display = away && !at ? 'none' : '';
+    if (away && !at) return;
+    var base = spot || { left: 40, top: 120 };
+    var width = box.offsetWidth || 336;
+    var height = box.offsetHeight || 250;
+    box.style.left = Math.max(8, Math.min(Math.round(base.left), Math.round(window.innerWidth - width - 8))) + 'px';
+    box.style.top = Math.max(8, Math.min(Math.round(base.top), Math.round(window.innerHeight - height - 8))) + 'px';
+  }
+
+  // A block asks for its title and its time right where it sits, whether it is new or already there.
+  function planQuickAdd(item, key, at, anchor, isBoard) {
     planQuickClose();
     var box = node('div', 'bd-cal__quick');
     box.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
@@ -4113,7 +4151,7 @@ function richItemOf(box) {
     title.value = planTitle(item) || '';
     title.placeholder = 'Add title';
     title.setAttribute('aria-label', 'Block title');
-    var when = String((item.data && item.data.time) || '');
+    var when = planTimeOf(item, !!isBoard);
     var row = node('div', 'bd-cal__quickrow');
     var glyph = node('span', 'bd-cal__quickicon');
     var glyphIcon = App.ui.icon('calendar', 13);
@@ -4133,7 +4171,7 @@ function richItemOf(box) {
     var dash = node('span', 'bd-plan__rangedash', '-');
     var to = node('input', 'bd-plan__time');
     to.type = 'time';
-    to.value = String((item.data && item.data.end) || '');
+    to.value = planEndOf(item, !!isBoard);
     to.title = 'End time';
     to.setAttribute('aria-label', 'End time');
     row.appendChild(from);
@@ -4161,8 +4199,10 @@ function richItemOf(box) {
     document.body.appendChild(box);
     var commit = function () {
       if (!item.data) item.data = {};
-      item.data.time = all.checked ? '' : from.value;
-      item.data.end = all.checked ? '' : (to.value || '');
+      var time = all.checked ? '' : from.value;
+      var stop = all.checked ? '' : (to.value || '');
+      if (isBoard) { item.data.planTime = time; item.data.planEnd = stop; }
+      else { item.data.time = time; item.data.end = stop; }
       planQuickName(item, title.value);
     };
     var close = function (redraw) {
@@ -4211,13 +4251,16 @@ function richItemOf(box) {
     };
     window.addEventListener('pointerdown', outside, true);
     window.addEventListener('keydown', keys, true);
+    var follow = function () { planQuickPlace(box, at, anchor); };
     box.__planOff = function () {
       window.removeEventListener('pointerdown', outside, true);
       window.removeEventListener('keydown', keys, true);
+      window.removeEventListener('scroll', follow, true);
+      window.removeEventListener('resize', follow);
     };
-    var spot = at || { left: box.getBoundingClientRect().left || 40, top: 120 };
-    box.style.left = Math.max(8, Math.min(Math.round(spot.left), Math.round(window.innerWidth - box.getBoundingClientRect().width - 8))) + 'px';
-    box.style.top = Math.max(8, Math.min(Math.round(spot.top), Math.round(window.innerHeight - box.getBoundingClientRect().height - 8))) + 'px';
+    planQuickPlace(box, at, anchor);
+    window.addEventListener('scroll', follow, true);
+    window.addEventListener('resize', follow);
     title.focus();
     try { title.setSelectionRange(title.value.length, title.value.length); } catch (e) { }
     return item;
@@ -5185,7 +5228,7 @@ function richItemOf(box) {
         if (ghost.parentNode) ghost.remove();
         if (cancelled) return;
         var made = addPlannerItem('note', key, planStamped(from), planStamped(to));
-        if (made) planQuickAdd(made, key, { left: event.clientX + 12, top: event.clientY - 26 });
+        if (made) planQuickAdd(made, key, { left: event.clientX + 12, top: event.clientY - 26 }, planQuickNode(made));
       };
       var move = function (event) { pointerY = event.clientY; paint(event.clientY); };
       var up = function (event) { stop(event, false); };
@@ -5226,7 +5269,7 @@ function richItemOf(box) {
           if (board.planDrag || board.planDragSources) return;
           event.preventDefault();
           var made = addPlannerItem('note', useKey, '', '');
-          if (made) planQuickAdd(made, useKey, { left: event.clientX + 12, top: event.clientY + 6 });
+          if (made) planQuickAdd(made, useKey, { left: event.clientX + 12, top: event.clientY + 6 }, planQuickNode(made));
         };
       })(key));
       planSort(planFiltered(planEntries(key)), key).forEach(function (entry) {
@@ -5237,7 +5280,11 @@ function richItemOf(box) {
         chip.appendChild(App.ui.icon(kindText(planKindOf(entry.item)).icon, 11));
         chip.appendChild(node('span', 'bd-cal__tdchiptext', planGridName(entry, key)));
         if (planDoneOf(entry.item, entry.board)) chip.classList.add('is-done');
-        chip.addEventListener('click', function () { planGridPick(plan, key, entry.item.id); });
+        chip.setAttribute('data-plan-id', entry.item.id);
+        chip.addEventListener('click', function () {
+          planGridPick(plan, key, entry.item.id);
+          planQuickAdd(entry.item, key, null, planQuickNode(entry.item), entry.board);
+        });
         chip.setAttribute('draggable', 'true');
         chip.addEventListener('dragstart', function (event) {
           board.planDragSources = [{ id: entry.item.id, board: !!entry.board, from: key }];
@@ -5293,12 +5340,13 @@ function richItemOf(box) {
           board.planDrag = null;
           board.planDragSources = null;
         });
-        bar.addEventListener('click', (function (useKey, useId) {
+        bar.addEventListener('click', (function (useEntry, useKey) {
           return function (event) {
             event.stopPropagation();
-            planGridPick(plan, useKey, useId);
+            planGridPick(plan, useKey, useEntry.item.id);
+            planQuickAdd(useEntry.item, useKey, null, planQuickNode(useEntry.item), useEntry.board);
           };
-        })(key, entry.item.id));
+        })(entry, key));
         col.appendChild(bar);
       });
       if (key === todayKey) {
