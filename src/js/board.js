@@ -4240,6 +4240,7 @@ function richItemOf(box) {
     document.body.appendChild(box);
     var commit = function () {
       if (!item.data) item.data = {};
+      if (!all.checked && !from.value && !to.value) all.checked = true;
       var time = all.checked ? '' : from.value;
       var stop = all.checked ? '' : (to.value || '');
       if (isBoard) { item.data.planTime = time; item.data.planEnd = stop; }
@@ -4265,8 +4266,13 @@ function richItemOf(box) {
     };
     kill.addEventListener('click', function () { removePlannerItem(item); });
     title.addEventListener('input', function () { planQuickName(item, title.value); });
-    from.addEventListener('change', function () { stamp(); commit(); });
-    to.addEventListener('change', function () { stamp(); commit(); });
+    // A typed time means a timed block, so the all day box clears itself instead of swallowing the clock.
+    var wake = function () {
+      if (!all.checked) return;
+      all.checked = false;
+    };
+    from.addEventListener('change', function () { wake(); stamp(); commit(); });
+    to.addEventListener('change', function () { wake(); stamp(); commit(); });
     all.addEventListener('change', function () {
       if (!all.checked && !from.value) from.value = '09:00';
       if (!all.checked && !to.value) to.value = planStamped(Math.min(1439, planClock(from.value) + QUICK_HOUR));
