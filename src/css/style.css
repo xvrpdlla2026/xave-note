@@ -4654,25 +4654,17 @@ html.is-board-boot body > *:not(.board) { display: none; }
 /* A block can run across days, so the day chips mark where the run starts and stops. */
 .bd-cal__t.is-span-start { border-left: 2px solid var(--accent); }
 .bd-cal__t.is-span-end { border-right: 2px solid var(--accent); }
-.bd-plan__range { position: relative; display: inline-flex; align-items: center; }
-/* The time and the day range both say when a block happens, so they share one control. */
-.bd-plan__when { display: inline-flex; align-items: stretch; height: 22px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-raised); }
-.bd-plan__when:hover, .bd-plan__when:focus-within { border-color: var(--border-strong); }
-.bd-plan__when .bd-plan__time { width: 82px; height: 100%; border: 0; border-radius: 5px 0 0 5px; background: none; }
-.bd-plan__when .bd-plan__time:focus { background: var(--bg); }
-.bd-plan__when .bd-plan__rangebtn { height: 100%; border: 0; border-left: 1px solid var(--border); border-radius: 0 5px 5px 0; background: none; }
-.bd-plan__when .bd-plan__rangebtn:hover { border-left-color: var(--border-strong); }
-.bd-plan__when .bd-plan__rangebtn.is-on { border-left-color: var(--accent-ring); background: var(--accent-soft); color: var(--accent); }
-.bd-plan__rangebtn { height: 22px; padding: 0 7px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-raised); color: var(--text-faint); font-size: 11px; white-space: nowrap; cursor: pointer; }
-.bd-plan__rangebtn:hover { border-color: var(--border-strong); color: var(--text); }
-.bd-plan__rangebtn.is-on { border-color: var(--accent-ring); background: var(--accent-soft); color: var(--accent); }
-.bd-plan__rangeform { position: absolute; top: 26px; right: 0; z-index: 40; display: flex; align-items: center; gap: 6px; padding: 8px; border: 1px solid var(--border-strong); border-radius: 9px; background: var(--bg-raised); box-shadow: 0 10px 26px rgba(0, 0, 0, .38); }
+/* The clock and the days both say when a block happens, so one chip opens both and the bar stays short. */
+.bd-plan__when { position: relative; display: inline-flex; align-items: center; }
+.bd-plan__whenbtn { max-width: 148px; height: 22px; padding: 0 8px; overflow: hidden; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-raised); color: var(--text-faint); font: inherit; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; text-overflow: ellipsis; cursor: pointer; }
+.bd-plan__whenbtn:hover { border-color: var(--border-strong); color: var(--text); }
+.bd-plan__whenbtn.is-on { border-color: var(--accent-ring); background: var(--accent-soft); color: var(--accent); }
+.bd-plan__whenform { position: absolute; top: 26px; right: 0; z-index: 40; display: flex; align-items: center; gap: 6px; padding: 8px; border: 1px solid var(--border-strong); border-radius: 9px; background: var(--bg-raised); box-shadow: 0 10px 26px rgba(0, 0, 0, .38); }
+.bd-plan__whenform .bd-plan__time { width: 84px; }
 .bd-plan__rangedate { height: 26px; padding: 0 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 11.5px; }
 .bd-plan__rangedash { font-size: 11px; color: var(--text-faint); }
 .bd-plan__rangego { height: 26px; padding: 0 10px; border: 1px solid var(--accent-ring); border-radius: 6px; background: var(--accent-soft); color: var(--accent); font-size: 11.5px; cursor: pointer; }
-.bd-plan__rangego.is-quiet { border-color: var(--border); background: none; color: var(--text-faint); }
-.bd-plan__rangego.is-quiet:hover { color: var(--text); }
-/* The fullscreen rail stacks its sections instead of pinning two of them into one grid cell. */
+.bd-plan__rangego.is-quiet { border-color: var(--border); background: none; color: var(--text-faint); }/* The fullscreen rail stacks its sections instead of pinning two of them into one grid cell. */
 .bd-cal__day.is-full .bd-cal__railpanel { display: flex; flex-direction: column; gap: 14px; overflow-y: auto; padding: 12px 14px; }
 .bd-cal__day.is-full .bd-cal__railpanel > * { grid-column: auto; grid-row: auto; align-self: stretch; width: auto; }
 .bd-cal__day.is-full .bd-cal__railpanel .bd-cal__tools { margin-top: auto; }

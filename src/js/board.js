@@ -3731,27 +3731,53 @@ function richItemOf(box) {
     return calShort(from) + ' - ' + calShort(to);
   }
 
-  function planRangeForm(item, from, to) {
-    var form = node('div', 'bd-plan__rangeform');
+  function planTimeLabel(value) {
+    var parts = String(value || '').split(':');
+    if (parts.length < 2) return '';
+    var at = new Date();
+    at.setHours(Number(parts[0]) || 0, Number(parts[1]) || 0, 0, 0);
+    try { return at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); } catch (e) { return value; }
+  }
+
+  // One block is planned for one stretch of time, so its clock and its days are set in one place
+  // and the card bar spends a single short chip on them.
+  function planWhenLabel(item, isBoard) {
+    var from = item.data && item.data.spanFrom ? item.data.spanFrom : '';
+    var to = item.data && item.data.spanTo ? item.data.spanTo : '';
+    var day = from ? calRangeLabel(from, to) : (planKeyOf(item) ? calShort(planKeyOf(item)) : 'When');
+    var time = planTimeLabel(planTimeOf(item, isBoard));
+    return time ? time + ' \u00b7 ' + day : day;
+  }
+
+  function planWhenForm(item, isBoard) {
+    var from = item.data && item.data.spanFrom ? item.data.spanFrom : '';
+    var to = item.data && item.data.spanTo ? item.data.spanTo : '';
+    var form = node('div', 'bd-plan__whenform');
+    var time = node('input', 'bd-plan__time');
+    time.type = 'time';
+    time.value = planTimeOf(item, isBoard);
+    time.title = 'Time';
+    time.setAttribute('aria-label', 'Time');
     var start = node('input', 'bd-plan__rangedate');
     start.type = 'date';
-    start.value = from;
+    start.value = from || planKeyOf(item) || '';
     start.title = 'First day';
     start.setAttribute('aria-label', 'First day of the range');
     var end = node('input', 'bd-plan__rangedate');
     end.type = 'date';
-    end.value = to || from;
+    end.value = to || from || planKeyOf(item) || '';
     end.title = 'Last day';
     end.setAttribute('aria-label', 'Last day of the range');
-    [start, end].forEach(function (input) {
+    [time, start, end].forEach(function (input) {
       input.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
     });
     var apply = node('button', 'bd-plan__rangego', 'Apply');
     apply.type = 'button';
     apply.addEventListener('click', function (event) {
       event.stopPropagation();
-      if (planSetRange(item, start.value, end.value)) paintPlanner();
-      else util.toast('Pick a first and a last day');
+      if (start.value && !planSetRange(item, start.value, end.value || start.value)) util.toast('Pick a first and a last day');
+      setPlanTime(item, isBoard, time.value);
+      paintPlanner();
     });
     var clear = node('button', 'bd-plan__rangego is-quiet', 'Clear');
     clear.type = 'button';
@@ -3761,6 +3787,7 @@ function richItemOf(box) {
       planClearRange(item);
       paintPlanner();
     });
+    form.appendChild(time);
     form.appendChild(start);
     form.appendChild(node('span', 'bd-plan__rangedash', 'to'));
     form.appendChild(end);
@@ -3769,20 +3796,20 @@ function richItemOf(box) {
     return form;
   }
 
-  function planRangeTools(item, isBoard) {
-    var wrap = node('div', 'bd-plan__range');
+  function planWhenTools(item, isBoard) {
+    var wrap = node('div', 'bd-plan__when');
     var from = item.data && item.data.spanFrom ? item.data.spanFrom : '';
-    var to = item.data && item.data.spanTo ? item.data.spanTo : '';
-    var button = node('button', 'bd-plan__rangebtn' + (from ? ' is-on' : ''), from ? calRangeLabel(from, to) : 'Range');
+    var timed = !!planTimeOf(item, isBoard);
+    var button = node('button', 'bd-plan__whenbtn' + (from || timed ? ' is-on' : ''), planWhenLabel(item, isBoard));
     button.type = 'button';
-    button.title = from ? 'Change or clear the date range' : 'Give this block a date range';
+    button.title = 'Set the time and the days for this block';
     button.setAttribute('aria-label', button.title);
     button.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
     button.addEventListener('click', function (event) {
       event.stopPropagation();
-      var open = wrap.querySelector('.bd-plan__rangeform');
+      var open = wrap.querySelector('.bd-plan__whenform');
       if (open) { open.parentNode.removeChild(open); return; }
-      wrap.appendChild(planRangeForm(item, from || planKeyOf(item) || calKey(Date.now()), to || ''));
+      wrap.appendChild(planWhenForm(item, isBoard));
     });
     wrap.appendChild(button);
     return wrap;
@@ -4229,17 +4256,7 @@ function richItemOf(box) {
     }
     bar.appendChild(label);
     var tools = node('div', 'bd-item__tools');
-    var time = node('input', 'bd-plan__time');
-    time.type = 'time';
-    time.value = planTimeOf(item, isBoard);
-    time.title = 'Time';
-    time.setAttribute('aria-label', 'Time');
-    time.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
-    time.addEventListener('change', function () { setPlanTime(item, isBoard, time.value); });
-    var when = node('div', 'bd-plan__when');
-    when.appendChild(time);
-    when.appendChild(planRangeTools(item, isBoard));
-    tools.appendChild(when);
+    tools.appendChild(planWhenTools(item, isBoard));
     if (!isBoard && (item.kind === 'todo' || item.kind === 'note')) {
       var done = planDoneOf(item, false);
       var toggle = node('button', 'bd-item__lock' + (done ? ' is-on' : ''), '');
