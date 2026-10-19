@@ -6946,11 +6946,11 @@ function richItemOf(box) {
       if (!plan.dayOpen) plan.full = false;
       paintPlanner();
     }, 'is-quiet bd-cal__sheetbtn'));
-    var shut = node('button', 'bd-cal__btn bd-cal__close');
+    var shut = node('button', 'bd-cal__btn is-quiet is-icon bd-cal__close');
     shut.type = 'button';
     shut.title = 'Close the planner';
     shut.setAttribute('aria-label', 'Close the planner');
-    var shutmark = App.ui.icon('close', 14);
+    var shutmark = App.ui.icon('close', 15);
     if (shutmark) shut.appendChild(shutmark);
     shut.addEventListener('click', function () { closePlanner(); });
     top.appendChild(shut);
