@@ -2507,6 +2507,17 @@ function richItemOf(box) {
     span.style.display = 'none';
     span.parentNode.insertBefore(input, span.nextSibling);
     document.addEventListener('pointerdown', onClickAway, true);
+  // Pointing anywhere else retires the landing ring at once, so a new block never sits there lit up.
+  document.addEventListener('pointerdown', function (event) {
+    var fresh = board.planFresh;
+    if (!fresh) return;
+    var card = event.target && event.target.closest ? event.target.closest('.bd-item') : null;
+    if (card && card.getAttribute('data-plan-id') === fresh.id) return;
+    board.planFresh = null;
+    Array.prototype.forEach.call(document.querySelectorAll('.bd-item.is-fresh'), function (one) {
+      one.classList.remove('is-fresh');
+    });
+  }, true);
     input.focus();
     input.select();
   }
@@ -5611,6 +5622,9 @@ function richItemOf(box) {
     if (edit) {
       try { edit.focus({ preventScroll: true }); } catch (e) { edit.focus(); }
     }
+    // The ring only says where the new block landed, so it settles as soon as the caret is in place.
+    card.classList.remove('is-selected');
+    setTimeout(function () { card.classList.remove('is-fresh'); }, 1400);
   }
 
   // The day canvas doubles as the drawing surface: in fullscreen a draw block is sketched anywhere on
@@ -7249,7 +7263,7 @@ function richItemOf(box) {
     dayEntries.forEach(function (entry, index) {
       var card = planCard(entry);
       if (plan.full) planCanvasCard(card, entry, plan.date, index, dayEntries);
-      if (board.planFresh && board.planFresh.id === entry.item.id) card.classList.add('is-fresh', 'is-selected');
+      if (board.planFresh && board.planFresh.id === entry.item.id) card.classList.add('is-fresh');
       list.appendChild(card);
       var ink = card.querySelector('.bd-draw__canvas');
       if (ink && ink.inkPaint) requestAnimationFrame(function () { ink.inkPaint(); });
