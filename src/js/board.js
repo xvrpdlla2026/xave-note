@@ -7022,12 +7022,17 @@ function richItemOf(box) {
         }
       });
       groups.slice(0, 3).forEach(function (group) {
-        var tag = node('span', 'bd-cal__t' + (group.board ? ' is-board' : '')
+        // A tag that stands for several blocks counts what is left of them, so finishing one takes it
+        // off the count and only the last one strikes the whole line through.
+        var left = group.entries.reduce(function (total, entry) {
+          return planDoneOf(entry.item) ? total : total + 1;
+        }, 0);
+        var tag = node('span', 'bd-cal__t' + (left ? '' : ' is-done') + (group.board ? ' is-board' : '')
           + (group.spanStart ? ' is-span-start' : '')
           + (group.spanEnd ? ' is-span-end' : '')
           + (!group.spanStart && !group.spanEnd && group.spanMid ? ' is-span-mid' : ''));
         tag.appendChild(App.ui.icon(group.icon, 11));
-        tag.appendChild(node('span', 'bd-cal__tlabel', group.n > 1 ? group.label + ' \u00d7' + group.n : group.label));
+        tag.appendChild(node('span', 'bd-cal__tlabel', group.n > 1 && left > 0 ? group.label + ' \u00d7' + left : group.label));
         tag.setAttribute('draggable', 'true');
         tag.addEventListener('dragstart', (function (useKey) {
           return function (event) {
