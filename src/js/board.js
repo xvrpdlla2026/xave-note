@@ -6241,15 +6241,15 @@ function richItemOf(box) {
     keys.forEach(function (key) {
       var lane = node('div', 'bd-cal__tallcol');
       lane.setAttribute('data-key', key);
-      // A blank all day lane is a thin strip with nothing to aim at, so every lane carries a button
-      // that books a block on the day it sits over.
+      // A blank all day lane is a thin strip with nothing to aim at, so every lane ends with a quiet
+      // line that books a block on the day it sits over.
       var add = node('button', 'bd-cal__tadd');
       add.type = 'button';
       add.title = 'Add a block on ' + CAL_MONTHS[new Date(calMs(key)).getMonth()] + ' ' + new Date(calMs(key)).getDate();
       add.setAttribute('aria-label', add.title);
       var addMark = App.ui.icon('plus', 10);
       if (addMark) add.appendChild(addMark);
-      add.appendChild(node('span', 'bd-cal__taddtext', 'Add'));
+      add.appendChild(node('span', 'bd-cal__taddtext', 'Add block'));
       add.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
       add.addEventListener('click', function (event) {
         event.stopPropagation();
@@ -6258,7 +6258,6 @@ function richItemOf(box) {
         var made = addPlannerItem('note', key, '', '', true);
         if (made) planQuickAdd(made, key, { left: event.clientX + 12, top: event.clientY + 6 }, planQuickNode(made), null, { isNew: true });
       });
-      lane.appendChild(add);
       lane.addEventListener('pointerdown', (function (useKey) {
         return function (event) {
           if (event.button !== 0 || event.target !== lane) return;
@@ -6296,6 +6295,7 @@ function richItemOf(box) {
         });
         lane.appendChild(chip);
       });
+      lane.appendChild(add);
       lanes.appendChild(lane);
     });
     band.appendChild(lanes);
