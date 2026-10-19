@@ -4451,8 +4451,6 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__yday.is-today .bd-cal__ydot { background: #ffffff; }
 @media (max-width: 1080px) { .bd-cal__tgrid { --cal-hour: 34px; } }
 /* A block can run across days, so the day chips mark where the run starts and stops. */
-.bd-cal__t.is-span-start { border-left: 2px solid var(--accent); }
-.bd-cal__t.is-span-end { border-right: 2px solid var(--accent); }
 /* The clock and the days both say when a block happens, so one chip opens both and the bar stays short. */
 .bd-plan__when { position: relative; display: inline-flex; align-items: center; }
 .bd-plan__whenbtn { max-width: 176px; height: 22px; padding: 0 8px; overflow: hidden; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-raised); color: var(--text-faint); font: inherit; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; text-overflow: ellipsis; cursor: pointer; }
