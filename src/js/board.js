@@ -3772,15 +3772,10 @@ function richItemOf(box) {
     return planTimeLabel(planStamped(start)) + ' - ' + planTimeLabel(planStamped(end));
   }
 
-  function planSpanning(item) {
-    var data = (item && item.data) || {};
-    return !!(data.spanFrom && data.spanTo && data.spanFrom !== data.spanTo);
-  }
-
-  // A block that is timed and lasts the day is drawn on the clock, everything else waits in the all day band.
+  // A block with a time is drawn on the clock, on every day its range covers; one without a time waits in the all day band.
   function planTimed(entry) {
     var start = planClock(planTimeOf(entry.item, entry.board));
-    if (start === null || planSpanning(entry.item)) return null;
+    if (start === null) return null;
     var end = planClock(planEndOf(entry.item, entry.board));
     if (end === null || end <= start) end = Math.min(1440, start + 60);
     return { start: start, end: end, entry: entry };
