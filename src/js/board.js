@@ -3739,13 +3739,56 @@ function richItemOf(box) {
     try { return at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); } catch (e) { return value; }
   }
 
+  function planClock(value) {
+    var parts = String(value || '').split(':');
+    if (parts.length < 2) return null;
+    var hour = Number(parts[0]);
+    var minute = Number(parts[1]);
+    if (isNaN(hour) || isNaN(minute)) return null;
+    return Math.max(0, Math.min(1439, hour * 60 + minute));
+  }
+
+  function planStamped(minutes) {
+    var at = Math.max(0, Math.min(1439, Math.round(minutes)));
+    var hour = Math.floor(at / 60);
+    var minute = at % 60;
+    return (hour < 10 ? '0' : '') + hour + ':' + (minute < 10 ? '0' : '') + minute;
+  }
+
+  function planEndOf(item, isBoard) {
+    if (!item || !item.data) return '';
+    return String((isBoard ? item.data.planEnd : item.data.end) || '');
+  }
+
+  function planEventClock(item, isBoard) {
+    var start = planClock(planTimeOf(item, isBoard));
+    if (start === null) return '';
+    var end = planClock(planEndOf(item, isBoard));
+    if (end === null || end <= start) return planTimeLabel(planStamped(start));
+    return planTimeLabel(planStamped(start)) + ' - ' + planTimeLabel(planStamped(end));
+  }
+
+  function planSpanning(item) {
+    var data = (item && item.data) || {};
+    return !!(data.spanFrom && data.spanTo && data.spanFrom !== data.spanTo);
+  }
+
+  // A block that is timed and lasts the day is drawn on the clock, everything else waits in the all day band.
+  function planTimed(entry) {
+    var start = planClock(planTimeOf(entry.item, entry.board));
+    if (start === null || planSpanning(entry.item)) return null;
+    var end = planClock(planEndOf(entry.item, entry.board));
+    if (end === null || end <= start) end = Math.min(1440, start + 60);
+    return { start: start, end: end, entry: entry };
+  }
+
   // One block is planned for one stretch of time, so its clock and its days are set in one place
   // and the card bar spends a single short chip on them.
   function planWhenLabel(item, isBoard) {
     var from = item.data && item.data.spanFrom ? item.data.spanFrom : '';
     var to = item.data && item.data.spanTo ? item.data.spanTo : '';
     var day = from ? calRangeLabel(from, to) : (planKeyOf(item) ? calShort(planKeyOf(item)) : 'When');
-    var time = planTimeLabel(planTimeOf(item, isBoard));
+    var time = planEventClock(item, isBoard);
     return time ? time + ' \u00b7 ' + day : day;
   }
 
@@ -3769,6 +3812,11 @@ function richItemOf(box) {
     time.value = planTimeOf(item, isBoard);
     time.title = 'Time';
     time.setAttribute('aria-label', 'Time');
+    var stop = node('input', 'bd-plan__time');
+    stop.type = 'time';
+    stop.value = planEndOf(item, isBoard);
+    stop.title = 'End time';
+    stop.setAttribute('aria-label', 'End time');
     var start = node('input', 'bd-plan__rangedate');
     start.type = 'date';
     start.value = from || planKeyOf(item) || '';
@@ -3779,7 +3827,7 @@ function richItemOf(box) {
     end.value = to || from || planKeyOf(item) || '';
     end.title = 'Last day';
     end.setAttribute('aria-label', 'Last day of the range');
-    [time, start, end].forEach(function (input) {
+    [time, stop, start, end].forEach(function (input) {
       input.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
     });
     var apply = node('button', 'bd-plan__rangego', 'Apply');
@@ -3787,7 +3835,9 @@ function richItemOf(box) {
     apply.addEventListener('click', function (event) {
       event.stopPropagation();
       if (start.value && !planSetRange(item, start.value, end.value || start.value)) util.toast('Pick a first and a last day');
-      setPlanTime(item, isBoard, time.value);
+      if (!item.data) item.data = {};
+      if (isBoard) { item.data.planTime = time.value; item.data.planEnd = stop.value; } else { item.data.time = time.value; item.data.end = stop.value; }
+      savePlanItem(item);
       paintPlanner();
     });
     var clear = node('button', 'bd-plan__rangego is-quiet', 'Clear');
@@ -3799,6 +3849,7 @@ function richItemOf(box) {
       paintPlanner();
     });
     form.appendChild(time);
+    form.appendChild(stop);
     form.appendChild(start);
     form.appendChild(node('span', 'bd-plan__rangedash', 'to'));
     form.appendChild(end);
@@ -3872,8 +3923,8 @@ function richItemOf(box) {
       date: date || calKey(Date.now()),
       month: monthStart(ms === null ? Date.now() : ms),
       dayOpen: dayFirst,
-      full: dayFirst,
-      viewMode: saved === 'day' ? 'month' : saved,
+      full: false,
+      viewMode: saved,
       sheetZoom: 1,
       tool: board.mode === 'select' ? 'select' : 'grab',
     };
@@ -4714,8 +4765,8 @@ function richItemOf(box) {
     if (!plan || !mode) return;
     if (mode === 'day') {
       plan.dayOpen = true;
-      plan.full = true;
-      plan.view = null;
+      plan.full = false;
+      plan.viewMode = 'day';
       plan.calMonth = null;
     } else {
       plan.full = false;
@@ -4744,6 +4795,7 @@ function richItemOf(box) {
     var mode = planViewMode(plan);
     var ms = calMs(plan.date);
     var day = new Date(ms === null ? Date.now() : ms);
+    if (mode === 'day') return CAL_MONTHS[day.getMonth()] + ' ' + day.getDate() + ', ' + day.getFullYear();
     if (mode === 'year') return String(new Date(plan.month).getFullYear());
     if (mode === 'week') {
       var start = new Date(day.getTime());
@@ -4832,6 +4884,10 @@ function richItemOf(box) {
   }
 
   function planSumLabel(plan, mode, monthTotal, monthLate) {
+    if (mode === 'day') {
+      var onDay = planFiltered(planEntries(plan.date)).length;
+      return onDay ? onDay + (onDay === 1 ? ' block' : ' blocks') + ' on this day' : 'Nothing planned on this day';
+    }
     if (mode !== 'week' && mode !== 'year') {
       return monthTotal
         ? monthTotal + (monthTotal === 1 ? ' block' : ' blocks') + (monthLate ? ' \u00b7 ' + monthLate + ' late' : '')
@@ -4854,54 +4910,198 @@ function richItemOf(box) {
     return all ? all + (all === 1 ? ' block' : ' blocks') + ' in ' + year : 'Nothing planned in ' + year;
   }
 
-  function planWeekView(plan, todayKey) {
-    var wrap = node('div', 'bd-cal__weekview');
-    var ms = calMs(plan.date);
-    var start = new Date(ms === null ? Date.now() : ms);
-    start.setDate(start.getDate() - start.getDay());
-    start.setHours(0, 0, 0, 0);
-    for (var i = 0; i < 7; i++) {
-      var dayMs = start.getTime() + i * 86400000;
-      var key = calKey(dayMs);
-      var day = new Date(dayMs);
-      var col = node('div', 'bd-cal__wcol' + (key === todayKey ? ' is-today' : '') + (key === plan.date ? ' is-sel' : ''));
-      var head = node('button', 'bd-cal__whead');
-      head.type = 'button';
-      head.title = CAL_DAYS[day.getDay()] + ', ' + CAL_MONTHS[day.getMonth()] + ' ' + day.getDate();
-      head.appendChild(node('span', '', CAL_DOW[day.getDay()]));
-      head.appendChild(node('span', '', String(day.getDate())));
-      head.addEventListener('click', (function (useKey) {
-        return function () {
-          plan.date = useKey;
-          plan.month = monthStart(calMs(useKey));
-          plan.dayOpen = true;
-          paintPlanner();
+  var PLAN_HOUR = 46;
+
+  function planHourLabel(hour) {
+    var shown = hour % 12;
+    if (!shown) shown = 12;
+    return shown + ' ' + (hour < 12 ? 'AM' : 'PM');
+  }
+
+  function planZoneLabel() {
+    var offset = -new Date().getTimezoneOffset();
+    var abs = Math.abs(offset);
+    return 'GMT' + (offset < 0 ? '-' : '+') + (abs / 60 < 10 ? '0' : '') + Math.floor(abs / 60) + (abs % 60 ? ':' + (abs % 60 < 10 ? '0' : '') + (abs % 60) : '');
+  }
+
+  function planMinutesAt(column, clientY) {
+    var box = column.getBoundingClientRect();
+    if (!box.height) return 0;
+    return (clientY - box.top) / box.height * 1440;
+  }
+
+  function planSnapped(minutes) {
+    return Math.max(0, Math.min(1425, Math.round(minutes / 15) * 15));
+  }
+
+  function planGridName(entry) {
+    return planTitle(entry.item) || kindText(planKindOf(entry.item)).label;
+  }
+
+  function planGridPick(plan, key, id) {
+    plan.date = key;
+    plan.month = monthStart(calMs(key));
+    plan.dayOpen = true;
+    board.planFresh = { id: id, board: !!board.planFresh && board.planFresh.board };
+    paintPlanner();
+  }
+
+  // Day and week share one clock: an hour gutter, a lane per day and every timed block drawn where it belongs.
+  function planTimeGrid(plan, keys, todayKey, week) {
+    var wrap = node('div', 'bd-cal__tgrid');
+    var head = node('div', 'bd-cal__thead');
+    head.appendChild(node('div', 'bd-cal__tcorner'));
+    keys.forEach(function (key) {
+      var day = new Date(calMs(key));
+      var cell = node('button', 'bd-cal__tday' + (key === todayKey ? ' is-today' : '') + (key === plan.date ? ' is-sel' : ''));
+      cell.type = 'button';
+      cell.title = CAL_DAYS[day.getDay()] + ', ' + CAL_MONTHS[day.getMonth()] + ' ' + day.getDate();
+      cell.appendChild(node('span', 'bd-cal__tdow', week ? CAL_DOW[day.getDay()] : CAL_DAYS[day.getDay()]));
+      cell.appendChild(node('span', 'bd-cal__tdnum', String(day.getDate())));
+      cell.addEventListener('click', (function (useKey) {
+        return function () { planGridPick(plan, useKey, null); };
+      })(key));
+      head.appendChild(cell);
+    });
+    wrap.appendChild(head);
+    var band = node('div', 'bd-cal__tall');
+    band.appendChild(node('div', 'bd-cal__tallab', 'All day'));
+    var lanes = node('div', 'bd-cal__tallcols');
+    keys.forEach(function (key) {
+      var lane = node('div', 'bd-cal__tallcol');
+      lane.setAttribute('data-key', key);
+      planSort(planFiltered(planEntries(key)), key).forEach(function (entry) {
+        if (planTimed(entry)) return;
+        var chip = node('button', 'bd-cal__tdchip' + (planDoneOf(entry.item, entry.board) ? ' is-done' : ''));
+        chip.type = 'button';
+        chip.title = planGridName(entry, key);
+        chip.appendChild(App.ui.icon(kindText(planKindOf(entry.item)).icon, 11));
+        chip.appendChild(node('span', 'bd-cal__tdchiptext', planGridName(entry, key)));
+        if (planDoneOf(entry.item, entry.board)) chip.classList.add('is-done');
+        chip.addEventListener('click', function () { planGridPick(plan, key, entry.item.id); });
+        chip.setAttribute('draggable', 'true');
+        chip.addEventListener('dragstart', function (event) {
+          board.planDragSources = [{ id: entry.item.id, board: !!entry.board, from: key }];
+          board.planDrag = board.planDragSources[0];
+          if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+        });
+        chip.addEventListener('dragend', function () {
+          board.planDrag = null;
+          board.planDragSources = null;
+        });
+        lane.appendChild(chip);
+      });
+      lanes.appendChild(lane);
+    });
+    band.appendChild(lanes);
+    wrap.appendChild(band);
+    var body = node('div', 'bd-cal__tbody');
+    var gutter = node('div', 'bd-cal__tgutter');
+    gutter.appendChild(node('div', 'bd-cal__tz', planZoneLabel()));
+    for (var hour = 0; hour < 24; hour++) gutter.appendChild(node('div', 'bd-cal__thour', planHourLabel(hour)));
+    body.appendChild(gutter);
+    var cols = node('div', 'bd-cal__tcols');
+    var now = new Date();
+    var nowMinutes = now.getHours() * 60 + now.getMinutes();
+    keys.forEach(function (key) {
+      var col = node('div', 'bd-cal__tcol' + (key === todayKey ? ' is-today' : ''));
+      col.setAttribute('data-key', key);
+      col.style.height = (24 * PLAN_HOUR) + 'px';
+      planSort(planFiltered(planEntries(key)), key).forEach(function (entry) {
+        var span = planTimed(entry);
+        if (!span) return;
+        var bar = node('button', 'bd-cal__tevent' + (planDoneOf(entry.item, entry.board) ? ' is-done' : ''));
+        bar.type = 'button';
+        bar.style.top = (span.start / 60 * PLAN_HOUR) + 'px';
+        bar.style.height = Math.max(16, (span.end - span.start) / 60 * PLAN_HOUR) + 'px';
+        bar.title = planEventClock(entry.item, entry.board) + ' \u00b7 ' + planGridName(entry, key);
+        bar.appendChild(node('span', 'bd-cal__teventtime', planEventClock(entry.item, entry.board)));
+        var line = node('span', 'bd-cal__teventname');
+        line.appendChild(App.ui.icon(kindText(planKindOf(entry.item)).icon, 11));
+        line.appendChild(node('span', 'bd-cal__teventtext', planGridName(entry, key)));
+        bar.appendChild(line);
+        bar.setAttribute('draggable', 'true');
+        bar.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
+        bar.addEventListener('dragstart', (function (useEntry, useKey) {
+          return function (event) {
+            board.planDragSources = [{ id: useEntry.item.id, board: !!useEntry.board, from: useKey }];
+            board.planDrag = board.planDragSources[0];
+            if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+          };
+        })(entry, key));
+        bar.addEventListener('dragend', function () {
+          board.planDrag = null;
+          board.planDragSources = null;
+        });
+        bar.addEventListener('click', (function (useKey, useId) {
+          return function (event) {
+            event.stopPropagation();
+            planGridPick(plan, useKey, useId);
+          };
+        })(key, entry.item.id));
+        col.appendChild(bar);
+      });
+      if (key === todayKey) {
+        var mark = node('div', 'bd-cal__nowline');
+        mark.style.top = (nowMinutes / 60 * PLAN_HOUR) + 'px';
+        mark.title = 'Now';
+        col.appendChild(mark);
+      }
+      col.addEventListener('click', (function (useKey) {
+        return function (event) {
+          if (event.target !== col) return;
+          addPlannerItem('note', useKey, planStamped(planSnapped(planMinutesAt(col, event.clientY))));
         };
       })(key));
-      col.appendChild(head);
-      var list = node('div', 'bd-cal__wlist');
-      var entries = planSort(planFiltered(planEntries(key)), key);
-      entries.forEach(function (entry) { list.appendChild(planCard(entry)); });
-      if (!entries.length) list.appendChild(node('div', 'bd-cal__wempty', 'Nothing planned'));
-      col.appendChild(list);
       col.addEventListener('dragover', function (event) {
         if (!board.planDrag && !planDragHas(event)) return;
         event.preventDefault();
         col.classList.add('is-over');
       });
       col.addEventListener('dragleave', function () { col.classList.remove('is-over'); });
-      col.addEventListener('drop', (function (useKey) {
+      col.addEventListener('drop', (function (useKey, useCol) {
         return function (event) {
           col.classList.remove('is-over');
-          if (board.planDrag) { event.preventDefault(); dropPlanOn(useKey); return; }
+          if (board.planDrag) {
+            event.preventDefault();
+            var at = planStamped(planSnapped(planMinutesAt(useCol, event.clientY)));
+            var isBoardDrag = !!board.planDrag.board;
+            var moved = findItem(board.planDrag.id);
+            if (moved) {
+              if (!moved.data) moved.data = {};
+              if (isBoardDrag) moved.data.planTime = at; else moved.data.time = at;
+              savePlanItem(moved);
+            }
+            dropPlanOn(useKey);
+            return;
+          }
           if (planDropEvent(event, useKey)) event.preventDefault();
         };
-      })(key));
-      wrap.appendChild(col);
-    }
+      })(key, col));
+      cols.appendChild(col);
+    });
+    body.appendChild(cols);
+    wrap.appendChild(body);
+    var spot = (week ? 'week ' : 'day ') + plan.date;
+    var keep = board.plannerHourScroll && board.plannerHourScroll.key === spot ? board.plannerHourScroll.top : 7 * PLAN_HOUR - 14;
+    requestAnimationFrame(function () { body.scrollTop = Math.max(0, keep); });
+    body.addEventListener('scroll', function () { board.plannerHourScroll = { key: spot, top: body.scrollTop }; });
     return wrap;
   }
 
+  function planWeekView(plan, todayKey) {
+    var ms = calMs(plan.date);
+    var start = new Date(ms === null ? Date.now() : ms);
+    start.setDate(start.getDate() - start.getDay());
+    start.setHours(0, 0, 0, 0);
+    var keys = [];
+    for (var i = 0; i < 7; i++) keys.push(calKey(start.getTime() + i * 86400000));
+    return planTimeGrid(plan, keys, todayKey, true);
+  }
+
+  function planDayView(plan, todayKey) {
+    return planTimeGrid(plan, [plan.date], todayKey, false);
+  }
   function planYearView(plan, todayKey) {
     var counts = planCountIndex(plan);
     var wrap = node('div', 'bd-cal__yearview');
@@ -5437,10 +5637,13 @@ function richItemOf(box) {
     }
     main.appendChild(rail);
     var viewMode = planViewMode(plan);
+    var sheetDay = viewMode === 'day' && !plan.full;
+    main.classList.toggle('is-dayview', sheetDay);
     main.classList.toggle('is-weekview', viewMode === 'week');
     main.classList.toggle('is-yearview', viewMode === 'year');
     if (viewMode === 'week') main.appendChild(planWeekView(plan, calKey(Date.now())));
     if (viewMode === 'year') main.appendChild(planYearView(plan, calKey(Date.now())));
+    if (sheetDay) main.appendChild(planDayView(plan, calKey(Date.now())));
     var dow = node('div', 'bd-cal__dow');
     CAL_DOW.forEach(function (day) { dow.appendChild(node('span', '', day)); });
     if (plan.jump) main.appendChild(planJumpPanel(plan, calKey(Date.now()), true));

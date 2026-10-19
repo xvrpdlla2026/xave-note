@@ -4277,8 +4277,6 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__wday:hover { border-color: var(--border-strong); background: var(--bg-hover); }
 .bd-cal__wday.is-today { border-color: var(--accent); color: var(--text); }
 .bd-cal__wday.is-sel { background: var(--accent-ring); border-color: var(--accent); color: var(--text); }
-.bd-cal__wn { font-size: 12px; font-variant-numeric: tabular-nums; }
-.bd-cal__wc { font-size: 9px; color: var(--text-faint); }
 .bd-cal__t.is-board { color: var(--text-muted); }
 .bd-cal__day { flex: 0 0 344px; display: flex; flex-direction: column; gap: 12px; padding: 18px 22px 18px 20px; border-left: 1px solid var(--border); }
 .bd-cal__daytop { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
@@ -4617,24 +4615,49 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__list.is-canvas .bd-item.is-resizing * { cursor: inherit; }
 /* Ctrl + wheel zooms the sheet, so the browser must not zoom the page instead. */
 .bd-cal { --cal-zoom: 1; }
-.bd-cal__grid, .bd-cal__weekview, .bd-cal__yearview { zoom: var(--cal-zoom, 1); }
+.bd-cal__grid, .bd-cal__yearview, .bd-cal__tgrid { zoom: var(--cal-zoom, 1); }
+/* Day and week read as a clock: a gutter of hours, a lane for each day, and every timed block where its time puts it. */
+.bd-cal__main.is-dayview .bd-cal__dow, .bd-cal__main.is-dayview .bd-cal__grid { display: none; }
+.bd-cal__main:not(.is-dayview):not(.is-weekview) .bd-cal__tgrid { display: none; }
+.bd-cal__tgrid { --cal-hour: 46px; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.bd-cal__thead { flex: none; display: flex; border-bottom: 1px solid var(--border); }
+.bd-cal__tcorner { flex: none; width: 62px; }
+.bd-cal__tday { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px; border: 0; border-left: 1px solid var(--border); background: none; color: var(--text-muted); font: inherit; cursor: pointer; }
+.bd-cal__tday:hover { background: var(--bg-hover); }
+.bd-cal__tdow { font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; }
+.bd-cal__tdnum { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 26px; border-radius: 999px; color: var(--text); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.bd-cal__tday.is-today .bd-cal__tdnum { background: var(--accent); color: #fff; }
+.bd-cal__tday.is-sel .bd-cal__tdow { color: var(--accent); }
+.bd-cal__tall { flex: none; display: flex; min-height: 28px; border-bottom: 1px solid var(--border); }
+.bd-cal__tallab { flex: none; width: 62px; padding-top: 6px; text-align: right; color: var(--text-faint); font-size: 10.5px; }
+.bd-cal__tallcols { flex: 1 1 0; display: flex; min-width: 0; }
+.bd-cal__tallcol { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 4px 3px; border-left: 1px solid var(--border); }
+.bd-cal__tallcol.is-over { background: var(--accent-soft); }
+.bd-cal__tdchip { display: flex; align-items: center; gap: 4px; min-width: 0; padding: 2px 6px; border: 0; border-radius: 6px; background: var(--accent-soft); color: var(--accent); font: inherit; font-size: 11px; text-align: left; cursor: pointer; }
+.bd-cal__tdchip.is-done, .bd-cal__tevent.is-done { opacity: .55; text-decoration: line-through; }
+.bd-cal__tdchiptext { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.bd-cal__tbody { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; }
+.bd-cal__tgutter { flex: none; width: 62px; }
+.bd-cal__tz { padding: 0 8px 6px 0; text-align: right; color: var(--text-faint); font-size: 10px; }
+.bd-cal__thour { height: var(--cal-hour); padding-right: 8px; text-align: right; color: var(--text-faint); font-size: 10.5px; transform: translateY(-5px); }
+.bd-cal__tcols { flex: 1 1 0; display: flex; min-width: 0; }
+.bd-cal__tcol { position: relative; flex: 1 1 0; min-width: 0; border-left: 1px solid var(--border); background-image: repeating-linear-gradient(to bottom, var(--border) 0, var(--border) 1px, transparent 1px, transparent var(--cal-hour)); background-position: 0 -1px; cursor: pointer; }
+.bd-cal__tcol.is-today { background-color: var(--bg-hover); }
+.bd-cal__tcol.is-over { background-color: var(--accent-soft); }
+.bd-cal__tevent { position: absolute; left: 3px; right: 3px; display: flex; flex-direction: column; gap: 1px; padding: 3px 6px; overflow: hidden; border: 0; border-left: 3px solid var(--accent); border-radius: 6px; background: var(--accent-soft); color: var(--accent); font: inherit; font-size: 11px; line-height: 1.25; text-align: left; cursor: pointer; }
+.bd-cal__tevent:hover { background: var(--accent-ring); }
+.bd-cal__teventtime { font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.bd-cal__teventname { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.bd-cal__teventtext { overflow: hidden; color: var(--text); white-space: nowrap; text-overflow: ellipsis; }
+.bd-cal__nowline { position: absolute; left: 0; right: 0; height: 2px; background: #e5484d; }
+.bd-cal__nowline::before { content: ''; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 999px; background: #e5484d; }
 .bd-cal__views { display: inline-flex; align-items: center; gap: 2px; height: 30px; padding: 0 3px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-raised); }
 .bd-cal__views .bd-cal__btn { height: 24px; padding: 0 10px; border: 0; border-radius: 6px; background: none; color: var(--text-faint); font-size: 12px; }
 .bd-cal__views .bd-cal__btn:hover { background: var(--bg-hover); color: var(--text); }
 .bd-cal__views .bd-cal__btn.is-on { background: var(--accent-soft); color: var(--accent); }
 .bd-cal__main.is-weekview .bd-cal__dow, .bd-cal__main.is-weekview .bd-cal__grid { display: none; }
 .bd-cal__main.is-yearview .bd-cal__dow, .bd-cal__main.is-yearview .bd-cal__grid { display: none; }
-.bd-cal__main:not(.is-weekview) .bd-cal__weekview, .bd-cal__main:not(.is-yearview) .bd-cal__yearview { display: none; }
-.bd-cal__weekview { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; padding: 0 2px 14px; }
-.bd-cal__wcol { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-sunken); }
-.bd-cal__wcol.is-today { border-color: var(--accent); }
-.bd-cal__wcol.is-sel { border-color: var(--border-strong); }
-.bd-cal__wcol.is-over { outline: 1px dashed var(--accent-ring); outline-offset: 2px; }
-.bd-cal__whead { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; width: 100%; height: 26px; padding: 0 6px; border: 0; border-radius: 6px; background: none; color: var(--text-faint); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; cursor: pointer; }
-.bd-cal__whead:hover { background: var(--bg-hover); color: var(--text); }
-.bd-cal__wcol.is-today .bd-cal__whead, .bd-cal__wcol.is-sel .bd-cal__whead { color: var(--accent); }
-.bd-cal__wlist { display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; min-height: 44px; }
-.bd-cal__wempty { padding: 6px; font-size: 11px; color: var(--text-faint); }
+.bd-cal__main:not(.is-yearview) .bd-cal__yearview { display: none; }
 .bd-cal__yearview { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(216px, 1fr)); gap: 14px; padding: 0 2px 16px; }
 .bd-cal__ymonth { padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-sunken); }
 .bd-cal__ytitle { width: 100%; height: 26px; border: 0; border-radius: 6px; background: none; color: var(--text); font-size: 12.5px; font-weight: 600; cursor: pointer; }
@@ -4650,17 +4673,18 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__yday.has-plan { color: var(--text); font-weight: 600; }
 .bd-cal__ydot { position: absolute; bottom: 2px; left: 50%; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); transform: translateX(-50%); }
 .bd-cal__yday.is-today .bd-cal__ydot { background: #ffffff; }
-@media (max-width: 1080px) { .bd-cal__weekview { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 1080px) { .bd-cal__tgrid { --cal-hour: 34px; } }
 /* A block can run across days, so the day chips mark where the run starts and stops. */
 .bd-cal__t.is-span-start { border-left: 2px solid var(--accent); }
 .bd-cal__t.is-span-end { border-right: 2px solid var(--accent); }
 /* The clock and the days both say when a block happens, so one chip opens both and the bar stays short. */
 .bd-plan__when { position: relative; display: inline-flex; align-items: center; }
-.bd-plan__whenbtn { max-width: 148px; height: 22px; padding: 0 8px; overflow: hidden; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-raised); color: var(--text-faint); font: inherit; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; text-overflow: ellipsis; cursor: pointer; }
+.bd-plan__whenbtn { max-width: 176px; height: 22px; padding: 0 8px; overflow: hidden; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-raised); color: var(--text-faint); font: inherit; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; text-overflow: ellipsis; cursor: pointer; }
 .bd-plan__whenbtn:hover { border-color: var(--border-strong); color: var(--text); }
 .bd-plan__whenbtn.is-on { border-color: var(--accent-ring); background: var(--accent-soft); color: var(--accent); }
 .bd-plan__whenform { position: fixed; z-index: 1002; display: flex; align-items: center; gap: 6px; padding: 8px; border: 1px solid var(--border-strong); border-radius: 9px; background: var(--bg-raised); box-shadow: 0 10px 26px rgba(0, 0, 0, .38); }
 .bd-plan__whenform .bd-plan__time { width: 84px; }
+.bd-plan__whenform .bd-plan__time + .bd-plan__time { margin-left: -3px; }
 .bd-plan__rangedate { height: 26px; padding: 0 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 11.5px; }
 .bd-plan__rangedash { font-size: 11px; color: var(--text-faint); }
 .bd-plan__rangego { height: 26px; padding: 0 10px; border: 1px solid var(--accent-ring); border-radius: 6px; background: var(--accent-soft); color: var(--accent); font-size: 11.5px; cursor: pointer; }
