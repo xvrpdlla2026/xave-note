@@ -6417,9 +6417,15 @@ function richItemOf(box) {
     var year = base.getFullYear();
     for (var m = 0; m < 12; m++) {
       var card = node('div', 'bd-cal__ymonth');
-      var title = node('button', 'bd-cal__ytitle', CAL_MONTHS[m] + ' ' + year);
+      var stamp = year + '-' + String(m + 1).padStart(2, '0');
+      var booked = Object.keys(counts).reduce(function (total, one) {
+        return one.slice(0, 7) === stamp ? total + counts[one] : total;
+      }, 0);
+      var title = node('button', 'bd-cal__ytitle');
       title.type = 'button';
       title.title = 'Open ' + CAL_MONTHS[m] + ' ' + year;
+      title.appendChild(node('span', 'bd-cal__ymonthname', CAL_MONTHS[m] + ' ' + year));
+      if (booked) title.appendChild(node('span', 'bd-cal__ycount', String(booked)));
       title.addEventListener('click', (function (useMonth) {
         return function () {
           plan.month = new Date(year, useMonth, 1).getTime();

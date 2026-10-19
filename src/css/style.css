@@ -4448,12 +4448,14 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__main.is-weekview .bd-cal__dow, .bd-cal__main.is-weekview .bd-cal__grid { display: none; }
 .bd-cal__main.is-yearview .bd-cal__dow, .bd-cal__main.is-yearview .bd-cal__grid { display: none; }
 .bd-cal__main:not(.is-yearview) .bd-cal__yearview { display: none; }
-.bd-cal__yearview { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(216px, 1fr)); gap: 14px; padding: 0 2px 16px; }
-.bd-cal__ymonth { padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-sunken); }
-.bd-cal__ytitle { width: 100%; height: 26px; border: 0; border-radius: 6px; background: none; color: var(--text); font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.bd-cal__yearview { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(208px, 1fr)); align-content: start; gap: 12px; padding: 0 2px 16px; }
+.bd-cal__ymonth { align-self: start; padding: 8px 9px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-sunken); }
+.bd-cal__ytitle { display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; height: 26px; padding: 0 6px; border: 0; border-radius: 6px; background: none; color: var(--text); font-size: 12.5px; font-weight: 600; cursor: pointer; }
 .bd-cal__ytitle:hover { background: var(--bg-hover); color: var(--accent); }
-.bd-cal__ygrid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; margin-top: 6px; }
-.bd-cal__ydow, .bd-cal__yday { display: flex; align-items: center; justify-content: center; height: 22px; border: 0; background: none; font-size: 11px; color: var(--text-faint); }
+.bd-cal__ymonthname { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.bd-cal__ycount { flex: none; min-width: 18px; height: 16px; padding: 0 5px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 10px; font-weight: 600; line-height: 16px; text-align: center; }
+.bd-cal__ygrid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; margin-top: 4px; }
+.bd-cal__ydow, .bd-cal__yday { display: flex; align-items: center; justify-content: center; height: 23px; border: 0; background: none; font-size: 11px; color: var(--text-faint); }
 .bd-cal__ydow { font-size: 9.5px; }
 .bd-cal__yday { position: relative; border-radius: 5px; cursor: pointer; }
 .bd-cal__yday:hover { background: var(--bg-hover); color: var(--text); }
