@@ -4655,6 +4655,14 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__t.is-span-start { border-left: 2px solid var(--accent); }
 .bd-cal__t.is-span-end { border-right: 2px solid var(--accent); }
 .bd-plan__range { position: relative; display: inline-flex; align-items: center; }
+/* The time and the day range both say when a block happens, so they share one control. */
+.bd-plan__when { display: inline-flex; align-items: stretch; height: 22px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-raised); }
+.bd-plan__when:hover, .bd-plan__when:focus-within { border-color: var(--border-strong); }
+.bd-plan__when .bd-plan__time { width: 82px; height: 100%; border: 0; border-radius: 5px 0 0 5px; background: none; }
+.bd-plan__when .bd-plan__time:focus { background: var(--bg); }
+.bd-plan__when .bd-plan__rangebtn { height: 100%; border: 0; border-left: 1px solid var(--border); border-radius: 0 5px 5px 0; background: none; }
+.bd-plan__when .bd-plan__rangebtn:hover { border-left-color: var(--border-strong); }
+.bd-plan__when .bd-plan__rangebtn.is-on { border-left-color: var(--accent-ring); background: var(--accent-soft); color: var(--accent); }
 .bd-plan__rangebtn { height: 22px; padding: 0 7px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-raised); color: var(--text-faint); font-size: 11px; white-space: nowrap; cursor: pointer; }
 .bd-plan__rangebtn:hover { border-color: var(--border-strong); color: var(--text); }
 .bd-plan__rangebtn.is-on { border-color: var(--accent-ring); background: var(--accent-soft); color: var(--accent); }

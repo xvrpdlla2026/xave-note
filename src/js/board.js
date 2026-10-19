@@ -4236,8 +4236,10 @@ function richItemOf(box) {
     time.setAttribute('aria-label', 'Time');
     time.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
     time.addEventListener('change', function () { setPlanTime(item, isBoard, time.value); });
-    tools.appendChild(time);
-    tools.appendChild(planRangeTools(item, isBoard));
+    var when = node('div', 'bd-plan__when');
+    when.appendChild(time);
+    when.appendChild(planRangeTools(item, isBoard));
+    tools.appendChild(when);
     if (!isBoard && (item.kind === 'todo' || item.kind === 'note')) {
       var done = planDoneOf(item, false);
       var toggle = node('button', 'bd-item__lock' + (done ? ' is-on' : ''), '');
