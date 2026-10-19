@@ -4411,10 +4411,13 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__quickacts .bd-cal__btn.is-primary { border-color: var(--accent); background: var(--accent); color: #ffffff; }
 .bd-cal__quickacts .bd-cal__btn.is-primary:hover { border-color: var(--accent); background: var(--accent); color: #ffffff; filter: brightness(1.1); }
 /* The kind of a new block is a choice, so fullscreen asks with tiles instead of a menu. */
-.bd-cal__kinds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.bd-cal__kindtile { display: flex; align-items: center; gap: 10px; min-height: 54px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-sunken); color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: background var(--fast), border-color var(--fast); }
-.bd-cal__kindtile:hover { border-color: var(--accent-ring); background: var(--accent-soft); }
-.bd-cal__kindtile:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+/* The four kinds read as one control, so the tiles share a single surface with hairline dividers. */
+.bd-cal__kinds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-sunken); }
+.bd-cal__kindtile { display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 10px 12px; border: 0; border-radius: 0; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: background var(--fast); }
+.bd-cal__kindtile:nth-child(odd) { border-right: 1px solid var(--border); }
+.bd-cal__kindtile:nth-child(n + 3) { border-top: 1px solid var(--border); }
+.bd-cal__kindtile:hover { background: var(--accent-soft); }
+.bd-cal__kindtile:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--accent); }
 .bd-cal__kindicon { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 9px; background: var(--bg-raised); color: var(--text-muted); }
 .bd-cal__kindtile:hover .bd-cal__kindicon { color: var(--accent); }
 .bd-cal__kindtext { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
@@ -4486,6 +4489,9 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__emptygestures { margin-top: 2px; padding: 5px 11px; border: 1px solid var(--border); border-radius: 999px; color: var(--text-faint); font-size: 11px; }
 
 /* The block is set up in a card of its own before it lands on a day. */
-.bd-plan__compose { display: flex; flex-direction: column; padding: 1px; }
-.bd-plan__compose .bd-image__empty { width: 100%; }
-.bd-plan__compose .bd-item { width: 100%; height: auto; min-height: 0; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-raised); }
+/* One field surface for every kind, so the four dialogs share the same shape. */
+.bd-plan__compose { display: flex; flex-direction: column; margin: 0 18px 2px; padding: 12px 14px; min-height: 118px; max-height: 46vh; overflow-y: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-sunken); transition: border-color var(--fast); }
+.bd-plan__compose:focus-within { border-color: var(--accent-ring); }
+.bd-plan__compose .bd-item { position: relative; width: 100%; height: auto; min-height: 0; border: 0; border-radius: 0; background: none; box-shadow: none; overflow: visible; }
+.bd-plan__compose .bd-item__body { padding: 0; overflow: visible; }
+.bd-plan__compose .bd-image__empty { width: 100%; padding: 6px 0; }
