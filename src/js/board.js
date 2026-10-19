@@ -944,8 +944,28 @@ function richItemOf(box) {
     });
   }
 
+  // Inline wrappers that ended up holding whole blocks push their style down onto those blocks,
+  // so the text keeps one block per line instead of a span around a div.
+  function richFlatten(ctx) {
+    Array.prototype.slice.call(ctx.box.querySelectorAll('span[style],b[style],i[style],u[style],font[style]')).forEach(function (el) {
+      var kids = Array.prototype.slice.call(el.children);
+      if (!kids.length) return;
+      var wraps = kids.every(function (kid) {
+        return /^(DIV|P|LI|UL|OL|H[1-6]|BLOCKQUOTE)$/.test(kid.tagName);
+      });
+      if (!wraps) return;
+      var decl = el.getAttribute('style') || '';
+      kids.forEach(function (kid) {
+        var own = kid.getAttribute('style') || '';
+        kid.setAttribute('style', own ? own.replace(/;\s*$/, '; ') + decl : decl);
+      });
+      richUnwrap(el);
+    });
+  }
+
   function richSync(ctx) {
     if (!ctx || !ctx.item) return;
+    richFlatten(ctx);
     ctx.item.data.text = ctx.box.innerHTML;
     ctx.item.updated_at = util.nowIso();
     queueItemSave(ctx.item);
@@ -1033,6 +1053,286 @@ function richItemOf(box) {
     richSync(ctx);
   }
 
+  function richBlockOf(ctx, node, offset) {
+    var el = node && node.nodeType === 3 ? node.parentNode : node;
+    if (el === ctx.box) {
+      var kids = ctx.box.childNodes;
+      var index = Math.min(Math.max((offset || 0) - (offset ? 1 : 0), 0), Math.max(kids.length - 1, 0));
+      var kid = kids[index];
+      el = (kid && kid.nodeType === 1) ? kid : ctx.box;
+    }
+    while (el && el !== ctx.box) {
+      if (el.nodeType === 1 && /^(DIV|P|LI|H[1-6]|BLOCKQUOTE|PRE|UL|OL)$/.test(el.tagName)) return el;
+      el = el.parentNode;
+    }
+    return ctx.box;
+  }
+
+  function richSpanBlocks(ctx) {
+    var first = richBlockOf(ctx, ctx.range.startContainer, ctx.range.startOffset);
+    var last = richBlockOf(ctx, ctx.range.endContainer, ctx.range.endOffset);
+    if (!first || !last || first === last) return [first || ctx.box];
+    var out = [];
+    Array.prototype.forEach.call(ctx.box.querySelectorAll('div,p,li,h1,h2,h3,h4,h5,h6,blockquote,pre'), function (el) {
+      try { if (ctx.range.intersectsNode(el)) out.push(el); } catch (e) { }
+    });
+    return out.length ? out : [first];
+  }
+
+  // A line typed straight into an empty box has no element of its own to carry alignment or
+  // spacing, so the first command that needs one gives it a block.
+  function richBlockTarget(ctx, el) {
+    if (el && el !== ctx.box) return el;
+    var div = document.createElement('div');
+    div.appendChild(ctx.range.extractContents());
+    ctx.range.insertNode(div);
+    var sel = window.getSelection();
+    if (sel) {
+      var next = document.createRange();
+      next.selectNodeContents(div);
+      sel.removeAllRanges();
+      sel.addRange(next);
+    }
+    return div;
+  }
+
+  function richTidyBlock(el, box) {
+    if (!el || el === box) return;
+    if (!el.getAttribute('style')) el.removeAttribute('style');
+  }
+
+  function richSizeHost(ctx) {
+    var host = richHost(ctx.range, ctx.box, 'font-size');
+    if (host) return host;
+    var leaf = ctx.range.startContainer;
+    if (leaf === ctx.box) {
+      var kids = ctx.box.childNodes;
+      var start = ctx.range.startOffset || 0;
+      var index = Math.min(Math.max(start - (start ? 1 : 0), 0), Math.max(kids.length - 1, 0));
+      leaf = kids[index] || ctx.box;
+    }
+    var el = leaf && leaf.nodeType === 3 ? leaf.parentNode : leaf;
+    while (el && el !== ctx.box) {
+      if (el.style && el.style.getPropertyValue('font-size')) return el;
+      el = el.parentNode;
+    }
+    return null;
+  }
+
+  function richTypeName() {
+    var ctx = richSelection();
+    if (!ctx) return 'Normal';
+    if (richHeadingHost(ctx)) return 'Heading';
+    var host = richSizeHost(ctx);
+    if (!host) return 'Normal';
+    var base = Math.max(6, fontNow(ctx.item));
+    var px = parseFloat(getComputedStyle(host).fontSize) || base;
+    var ratio = px / base;
+    if (ratio < 0.95) return 'Small';
+    if (ratio > 1.45) return 'Huge';
+    if (ratio > 1.12) return 'Large';
+    return 'Normal';
+  }
+
+  function richType(kind) {
+    var ctx = richSelection();
+    if (!ctx) return;
+    if (kind === 'heading') { richHeading(); return; }
+    var base = Math.max(6, fontNow(ctx.item));
+    if (kind === 'normal') {
+      pushUndo('format');
+      Array.prototype.slice.call(ctx.box.querySelectorAll('h1,h2,h3,h4,h5,h6,span[style]')).forEach(function (el) {
+        var hit = false;
+        try { hit = ctx.range.intersectsNode(el); } catch (e) { }
+        if (!hit) return;
+        if (/^H[1-6]$/.test(el.tagName)) { richUnwrap(el); return; }
+        el.style.removeProperty('font-size');
+        if (!el.getAttribute('style')) richUnwrap(el);
+      });
+      richSync(ctx);
+      return;
+    }
+    var factor = kind === 'small' ? 0.85 : (kind === 'large' ? 1.25 : 1.6);
+    richSizeTo(Math.round(base * factor));
+  }
+
+  function richAlign(dir) {
+    var ctx = richSelection();
+    if (!ctx) return;
+    pushUndo('format');
+    richSpanBlocks(ctx).forEach(function (el) {
+      var block = richBlockTarget(ctx, el);
+      if (!block) return;
+      if (dir === 'left') block.style.removeProperty('text-align');
+      else block.style.setProperty('text-align', dir);
+      richTidyBlock(block, ctx.box);
+    });
+    richSync(ctx);
+  }
+
+  function richList(command) {
+    var ctx = richSelection();
+    if (!ctx) return;
+    pushUndo('format');
+    var tag = command === 'insertOrderedList' ? 'OL' : 'UL';
+    var blocks = richSpanBlocks(ctx).map(function (el) { return richBlockTarget(ctx, el); });
+    var lists = [];
+    var loose = [];
+    blocks.forEach(function (el) {
+      if (!el) return;
+      var holder = el.tagName === 'UL' || el.tagName === 'OL' ? el : (el.closest ? el.closest('ul,ol') : null);
+      if (holder) {
+        if (lists.indexOf(holder) < 0) lists.push(holder);
+        return;
+      }
+      loose.push(el);
+    });
+    if (lists.length) {
+      var sameTag = lists.every(function (list) { return list.tagName === tag; });
+      lists.forEach(function (list) {
+        var host = list.parentNode;
+        if (!host) return;
+        if (sameTag) {
+          while (list.firstChild) {
+            var item = list.firstChild;
+            if (item.nodeType === 1 && item.tagName === 'LI') {
+              var line = document.createElement('div');
+              while (item.firstChild) line.appendChild(item.firstChild);
+              host.insertBefore(line, list);
+              item.remove();
+            } else {
+              host.insertBefore(item, list);
+            }
+          }
+          list.remove();
+          return;
+        }
+        var swapped = document.createElement(tag.toLowerCase());
+        Array.prototype.slice.call(list.attributes).forEach(function (attr) {
+          swapped.setAttribute(attr.name, attr.value);
+        });
+        while (list.firstChild) swapped.appendChild(list.firstChild);
+        host.replaceChild(swapped, list);
+      });
+      if (!loose.length) {
+        richSync(ctx);
+        return;
+      }
+    }
+    var lead = loose.filter(function (el) { return el && el.parentNode; })[0];
+    if (!lead) {
+      richSync(ctx);
+      return;
+    }
+    var list = document.createElement(tag.toLowerCase());
+    lead.parentNode.insertBefore(list, lead);
+    loose.forEach(function (el) {
+      if (!el || !el.parentNode) return;
+      var item = document.createElement('li');
+      if (el.tagName === 'LI' || el.tagName === 'DIV' || el.tagName === 'P') item.innerHTML = el.innerHTML;
+      else item.appendChild(el.cloneNode(true));
+      list.appendChild(item);
+      el.remove();
+    });
+    var sel = window.getSelection();
+    if (sel) {
+      var select = document.createRange();
+      select.selectNodeContents(list);
+      sel.removeAllRanges();
+      sel.addRange(select);
+    }
+    richSync(ctx);
+  }
+
+  function richIndent(dir) {
+    var ctx = richSelection();
+    if (!ctx) return;
+    pushUndo('format');
+    richSpanBlocks(ctx).forEach(function (el) {
+      var block = richBlockTarget(ctx, el);
+      if (!block) return;
+      var now = parseFloat(block.style.getPropertyValue('margin-left')) || 0;
+      var next = dir === 'out' ? Math.max(0, now - 24) : now + 24;
+      if (next) block.style.setProperty('margin-left', next + 'px');
+      else block.style.removeProperty('margin-left');
+      richTidyBlock(block, ctx.box);
+    });
+    richSync(ctx);
+  }
+
+  function richSpacing(value) {
+    var ctx = richSelection();
+    if (!ctx) return;
+    pushUndo('format');
+    richSpanBlocks(ctx).forEach(function (el) {
+      var block = richBlockTarget(ctx, el);
+      if (!block) return;
+      if (value) block.style.setProperty('line-height', value);
+      else block.style.removeProperty('line-height');
+      richTidyBlock(block, ctx.box);
+    });
+    richSync(ctx);
+  }
+
+  function richMenuClose() {
+    if (!richBar) return;
+    var menu = richBar.querySelector('.bd-rich__menu');
+    if (menu) menu.classList.remove('is-on');
+  }
+
+  function richPopClose() {
+    if (!richBar) return;
+    richBar.classList.remove('is-picking');
+  }
+
+  function richMenuOpt(menu, label, on, act) {
+    var button = node('button', 'bd-rich__opt' + (on ? ' is-on' : ''), label);
+    button.type = 'button';
+    button.setAttribute('aria-label', label);
+    button.addEventListener('pointerdown', function (event) { event.preventDefault(); event.stopPropagation(); });
+    button.addEventListener('click', function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      richMenuClose();
+      richRestore();
+      act();
+    });
+    menu.appendChild(button);
+    return button;
+  }
+
+  function richMenuToggle(kind, trigger) {
+    if (!richBar) return;
+    var menu = richBar.querySelector('.bd-rich__menu');
+    if (!menu) return;
+    richKeep();
+    richPopClose();
+    if (menu.classList.contains('is-on') && menu.getAttribute('data-menu') === kind) { richMenuClose(); return; }
+    menu.setAttribute('data-menu', kind);
+    menu.textContent = '';
+    if (kind === 'type') {
+      var now = richTypeName();
+      var samples = {
+        Normal: ['11.5px', '400'],
+        Heading: ['13px', '700'],
+        Small: ['10px', '400'],
+        Large: ['13.5px', '400'],
+        Huge: ['16.5px', '400'],
+      };
+      ['Normal', 'Heading', 'Small', 'Large', 'Huge'].forEach(function (name) {
+        var option = richMenuOpt(menu, name, now === name, function () { richType(name.toLowerCase()); });
+        if (!samples[name]) return;
+        option.style.fontSize = samples[name][0];
+        option.style.fontWeight = samples[name][1];
+      });
+    } else {
+      [['Line spacing 1.0', '1'], ['Line spacing 1.15', '1.15'], ['Line spacing 1.5', '1.5'], ['Line spacing 2.0', '2']].forEach(function (pair) {
+        richMenuOpt(menu, pair[0], false, function () { richSpacing(pair[1]); });
+      });
+    }
+    menu.classList.add('is-on');
+    menu.style.left = Math.max(0, trigger.offsetLeft) + 'px';
+  }
   function richDirty(ctx) {
     var frag = ctx.range.cloneContents();
     var nodes = Array.prototype.slice.call(frag.querySelectorAll('*'));
@@ -1137,9 +1437,10 @@ function richItemOf(box) {
 
   function richPopToggle() {
     if (!richBar) return;
+    richKeep();
     var open = !richBar.classList.contains('is-picking');
     richBar.classList.toggle('is-picking', open);
-    if (open) richPopPaint();
+    if (open) { richMenuClose(); richPopPaint(); }
   }
 
   function richHex(value) {
@@ -1205,6 +1506,20 @@ function richItemOf(box) {
     var pop = richBar.querySelector('.bd-rich__pop');
     if (!pop) return;
     pop.textContent = '';
+    var palette = node('div', 'bd-rich__pop-row');
+    palette.appendChild(node('span', 'bd-rich__pop-label', 'Colour'));
+    RICH_COLORS.forEach(function (pair) {
+      var swatch = node('button', 'bd-rich__swatch' + (pair[0] ? '' : ' bd-rich__swatch--default'));
+      swatch.type = 'button';
+      swatch.title = pair[1];
+      swatch.setAttribute('aria-label', pair[1]);
+      swatch.setAttribute('data-colour', pair[0]);
+      if (pair[0]) swatch.style.background = pair[0] === 'var(--accent)' ? 'var(--accent)' : pair[0];
+      swatch.addEventListener('pointerdown', function (event) { event.preventDefault(); event.stopPropagation(); });
+      swatch.addEventListener('click', function () { richRestore(); richColor(pair[0]); });
+      palette.appendChild(swatch);
+    });
+    pop.appendChild(palette);
     pop.appendChild(richPopRow('Recent', richRecents().map(function (value) {
       return richPopSwatch(value, value);
     }), 'None yet'));
@@ -1253,29 +1568,40 @@ function richItemOf(box) {
     return button;
   }
 
+  // The bar reads as two rows: what a line is on top, where it sits at the bottom. Everything a
+  // note can be told about its words lives in one of them, so nothing hides in a second surface.
   function buildRichBar() {
     var bar = node('div', 'bd-rich');
     bar.setAttribute('role', 'toolbar');
     bar.setAttribute('aria-label', 'Format the selected text');
-    var group = function () { var g = node('div', 'bd-rich__group'); bar.appendChild(g); return g; };
-    var style = group();
-    ['bold', 'italic', 'underline'].forEach(function (kind) {
-      var label = kind === 'bold' ? 'B' : (kind === 'italic' ? 'I' : 'U');
-      var button = richButton('bd-rich__btn--' + kind, label, kind.charAt(0).toUpperCase() + kind.slice(1));
-      button.setAttribute('data-rich', kind);
-      button.addEventListener('click', function () { richToggle(kind); });
-      style.appendChild(button);
-    });
-    var heading = richButton(null, 'H4', 'Heading');
-    heading.setAttribute('data-heading', 'h4');
-    heading.addEventListener('click', function () { richHeading(); });
-    style.appendChild(heading);
-    var size = group();
-    [['A-', -1, 'Smaller text'], ['A+', 1, 'Larger text']].forEach(function (pair) {
-      var button = richButton(null, pair[0], pair[2]);
-      button.addEventListener('click', function () { richStep(pair[1]); });
-      size.appendChild(button);
-    });
+    var row = function (name) {
+      var strip = node('div', 'bd-rich__row bd-rich__row--' + name);
+      bar.appendChild(strip);
+      return strip;
+    };
+    var group = function (parent) {
+      var box = node('div', 'bd-rich__group');
+      parent.appendChild(box);
+      return box;
+    };
+    var caret = function (button) {
+      button.appendChild(node('span', 'bd-rich__caret'));
+      return button;
+    };
+
+    var head = row('type');
+    var typeBtn = richButton('bd-rich__type', '', 'Text style');
+    typeBtn.appendChild(node('span', 'bd-rich__label', 'Normal'));
+    caret(typeBtn);
+    typeBtn.setAttribute('data-type', '1');
+    typeBtn.setAttribute('aria-haspopup', 'true');
+    typeBtn.addEventListener('click', function (event) { event.stopPropagation(); richMenuToggle('type', typeBtn); });
+    group(head).appendChild(typeBtn);
+
+    var metrics = group(head);
+    var smaller = richButton(null, 'A-', 'Smaller text');
+    smaller.addEventListener('click', function () { richStep(-1); });
+    metrics.appendChild(smaller);
     var field = node('input', 'bd-rich__size');
     field.type = 'text';
     field.inputMode = 'numeric';
@@ -1288,35 +1614,78 @@ function richItemOf(box) {
       if (event.key === 'Escape') { field.value = richSizeNow(); field.blur(); }
     });
     field.addEventListener('change', function () { richSizeTo(field.value); });
-    size.appendChild(field);
-    var colour = group();
-    RICH_COLORS.forEach(function (pair) {
-      var swatch = node('button', 'bd-rich__swatch' + (pair[0] ? '' : ' bd-rich__swatch--default'));
-      swatch.type = 'button';
-      swatch.title = pair[1] + ' text';
-      swatch.setAttribute('aria-label', pair[1] + ' text');
-      swatch.setAttribute('data-colour', pair[0]);
-      if (pair[0]) swatch.style.background = pair[0];
-      swatch.addEventListener('pointerdown', function (event) { event.preventDefault(); event.stopPropagation(); });
-      swatch.addEventListener('click', function () { richColor(pair[0]); });
-      colour.appendChild(swatch);
+    metrics.appendChild(field);
+    var bigger = richButton(null, 'A+', 'Larger text');
+    bigger.addEventListener('click', function () { richStep(1); });
+    metrics.appendChild(bigger);
+
+    var weight = group(head);
+    ['bold', 'italic', 'underline'].forEach(function (kind) {
+      var label = kind === 'bold' ? 'B' : (kind === 'italic' ? 'I' : 'U');
+      var button = richButton('bd-rich__btn--' + kind, label, kind.charAt(0).toUpperCase() + kind.slice(1));
+      button.setAttribute('data-rich', kind);
+      button.addEventListener('click', function () { richToggle(kind); });
+      weight.appendChild(button);
     });
-    var custom = richButton('bd-rich__swatch bd-rich__swatch--custom', '', 'Custom colours');
-    custom.setAttribute('data-custom', '1');
-    custom.addEventListener('click', function (event) {
+
+    var ink = group(head);
+    var colour = richButton('bd-rich__btn--colour', 'A', 'Text colour');
+    caret(colour);
+    colour.setAttribute('data-ink', '1');
+    colour.setAttribute('aria-haspopup', 'true');
+    colour.addEventListener('click', function (event) {
       event.stopPropagation();
-      richPopToggle();
+      richKeep();
+      richMenuClose();
+      if (!richBar.classList.contains('is-picking')) richPopToggle();
     });
-    colour.appendChild(custom);
-    var pop = node('div', 'bd-rich__pop');
-    bar.appendChild(pop);
-    var done = group();
-    var clear = richButton('bd-rich__btn--clear bd-rich__btn--wide', 'Clear', 'Clear formatting');
-    clear.addEventListener('click', function () { clearFormatting(null); });
-    done.appendChild(clear);
-    var shut = richButton('bd-rich__btn--shut', '\u2715', 'Close the formatting bar');
-    shut.addEventListener('click', function () { richHide(); });
-    done.appendChild(shut);
+    ink.appendChild(colour);
+
+    var tidy = group(head);
+    var clear = richButton('bd-rich__btn--wide', 'Clear', 'Clear the formatting');
+    clear.addEventListener('click', function () { clearFormatting(); });
+    tidy.appendChild(clear);
+    var shut = richButton('bd-rich__btn--shut', '\u00d7', 'Close the bar');
+    shut.addEventListener('click', function () { richPopClose(); richHide(); });
+    tidy.appendChild(shut);
+
+    var base = row('block');
+    var align = group(base);
+    [['alignleft', 'left', 'Align left'], ['aligncenter', 'center', 'Align centre'], ['alignright', 'right', 'Align right']].forEach(function (pair) {
+      var button = richButton('bd-rich__btn--icon', '', pair[2]);
+      button.setAttribute('data-align', pair[1]);
+      var glyph = App.ui.icon(pair[0], 13);
+      if (glyph) button.appendChild(glyph);
+      button.addEventListener('click', function () { richAlign(pair[1]); });
+      align.appendChild(button);
+    });
+    var lists = group(base);
+    [['bullets', 'insertUnorderedList', 'Bulleted list'], ['numbers', 'insertOrderedList', 'Numbered list']].forEach(function (pair) {
+      var button = richButton('bd-rich__btn--icon', '', pair[2]);
+      button.setAttribute('data-list', pair[1]);
+      var glyph = App.ui.icon(pair[0], 13);
+      if (glyph) button.appendChild(glyph);
+      button.addEventListener('click', function () { richList(pair[1]); });
+      lists.appendChild(button);
+    });
+    var nest = group(base);
+    [['outdent', 'out', 'Outdent'], ['indent', 'in', 'Indent']].forEach(function (pair) {
+      var button = richButton('bd-rich__btn--icon', '', pair[2]);
+      var glyph = App.ui.icon(pair[0], 13);
+      if (glyph) button.appendChild(glyph);
+      button.addEventListener('click', function () { richIndent(pair[1]); });
+      nest.appendChild(button);
+    });
+    var space = group(base);
+    var spacing = richButton('bd-rich__type', 'Spacing', 'Line spacing');
+    caret(spacing);
+    spacing.setAttribute('data-space', '1');
+    spacing.setAttribute('aria-haspopup', 'true');
+    spacing.addEventListener('click', function (event) { event.stopPropagation(); richMenuToggle('space', spacing); });
+    space.appendChild(spacing);
+
+    bar.appendChild(node('div', 'bd-rich__menu'));
+    bar.appendChild(node('div', 'bd-rich__pop'));
     document.body.appendChild(bar);
     return bar;
   }
@@ -1327,21 +1696,40 @@ function richItemOf(box) {
       var pair = RICH_STYLE[button.getAttribute('data-rich')];
       button.classList.toggle('is-on', !!(ctx && richHost(ctx.range, ctx.box, pair[0])));
     });
-    Array.prototype.forEach.call(richBar.querySelectorAll('[data-heading]'), function (button) {
-      button.classList.toggle('is-on', !!(ctx && richHeadingHost(ctx)));
-    });
-    var custom = richBar.querySelector('[data-custom]');
-    if (custom) {
-      var picked = ctx ? richHost(ctx.range, ctx.box, 'color') : null;
-      var own = richHex(picked ? (picked.style.getPropertyValue('color') || '') : '');
-      custom.style.background = own;
-      custom.classList.toggle('is-on', !!own);
-    }
-    var host = ctx ? richHost(ctx.range, ctx.box, 'color') : null;
-    var value = host ? (host.style.getPropertyValue('color') || '') : '';
-    if (value === 'inherit') value = '';
+    var label = richBar.querySelector('[data-type] .bd-rich__label');
+    if (label) label.textContent = ctx ? richTypeName() : 'Normal';
     Array.prototype.forEach.call(richBar.querySelectorAll('[data-colour]'), function (swatch) {
-      swatch.classList.toggle('is-on', ctx ? swatch.getAttribute('data-colour') === value : false);
+      var host = ctx ? richHost(ctx.range, ctx.box, 'color') : null;
+      var value = host ? (host.style.getPropertyValue('color') || '') : '';
+      if (value === 'inherit') value = '';
+      swatch.classList.toggle('is-on', !!ctx && swatch.getAttribute('data-colour') === value);
+    });
+    var ink = richBar.querySelector('[data-ink]');
+    if (ink) {
+      var inkHost = ctx ? richHost(ctx.range, ctx.box, 'color') : null;
+      var tone = inkHost ? (inkHost.style.getPropertyValue('color') || '') : '';
+      ink.style.setProperty('--tone', tone || 'transparent');
+      ink.classList.toggle('is-on', !!tone);
+    }
+    var block = ctx ? richBlockOf(ctx, ctx.range.startContainer, ctx.range.startOffset) : null;
+    var alignNow = 'left';
+    var probe = block;
+    while (probe && probe !== ctx.box && !alignNow) {
+      alignNow = (probe.style && probe.style.getPropertyValue('text-align')) || '';
+      probe = probe.parentNode;
+    }
+    alignNow = alignNow || 'left';
+    Array.prototype.forEach.call(richBar.querySelectorAll('[data-align]'), function (button) {
+      button.classList.toggle('is-on', !!ctx && button.getAttribute('data-align') === alignNow);
+    });
+    var listNow = '';
+    if (ctx) {
+      var line = richBlockOf(ctx, ctx.range.startContainer, ctx.range.startOffset);
+      var holder = line && line.closest ? line.closest('ul,ol') : null;
+      if (holder) listNow = holder.tagName === 'OL' ? 'insertOrderedList' : 'insertUnorderedList';
+    }
+    Array.prototype.forEach.call(richBar.querySelectorAll('[data-list]'), function (button) {
+      button.classList.toggle('is-on', !!ctx && button.getAttribute('data-list') === listNow);
     });
   }
 
@@ -1373,6 +1761,7 @@ function richItemOf(box) {
     if (!richBar) return;
     richBar.classList.remove('is-on');
     richBar.classList.remove('is-picking');
+    richMenuClose();
     richCtx = null;
   }
 
