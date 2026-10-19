@@ -3957,12 +3957,12 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__top > .bd-cal__btn { height: 30px; padding: 0 11px; border-color: transparent; background: none; color: var(--text-muted); font-size: 12.5px; }
 .bd-cal__top > .bd-cal__btn:hover { background: var(--bg-hover); color: var(--text); }
 .bd-cal__top > .bd-cal__close { min-width: 30px; width: 30px; padding: 0; }
-.bd-cal__find { display: flex; align-items: center; width: 100%; max-width: 680px; height: 38px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-raised); transition: border-color var(--fast), box-shadow var(--fast); }
+.bd-cal__find { display: flex; align-items: center; width: 100%; max-width: 680px; height: 38px; overflow: hidden; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-raised); transition: border-color var(--fast), box-shadow var(--fast); }
 .bd-cal__find:hover { border-color: var(--border-strong); }
 .bd-cal__find:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
 .bd-cal__find .bd-cal__search { flex: 1 1 auto; max-width: none; height: 100%; padding: 0 6px 0 12px; border: 0; border-radius: 0; background: none; }
 .bd-cal__find .bd-cal__search:hover, .bd-cal__find .bd-cal__search:focus-within { border-color: transparent; box-shadow: none; }
-.bd-cal__find .bd-cal__type { flex: 0 0 auto; min-width: 0; max-width: none; height: 100%; padding: 0 12px; border: 0; border-left: 1px solid var(--border); border-radius: 0; background: none; }
+.bd-cal__find .bd-cal__type { flex: 0 0 auto; min-width: 0; max-width: none; height: 100%; padding: 0 12px; border: 0; border-left: 1px solid var(--border); border-radius: 0 9px 9px 0; background: none; }
 .bd-cal__find .bd-cal__type:hover { background: var(--bg-hover); }
 .bd-cal__find .bd-cal__type.is-on { background: var(--accent-soft); color: var(--accent); border-left-color: transparent; }
 .bd-cal__find .bd-cal__type:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
