@@ -4441,13 +4441,16 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-plan__whenbtn:hover { border-color: var(--border-strong); color: var(--text); }
 .bd-plan__whenbtn.is-on { border-color: var(--accent-ring); background: var(--accent-soft); color: var(--accent); }
 .bd-plan__whenform { position: fixed; z-index: 1002; display: flex; flex-direction: column; gap: 8px; width: 306px; padding: 11px 12px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: 0 14px 34px rgba(0, 0, 0, 0.42); }
-.bd-plan__whenlabel { color: var(--text-faint); font-size: 11px; }
+.bd-plan__whenlabel { color: var(--text-faint); font-size: 10.5px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; }
+.bd-plan__whenhead { display: flex; align-items: center; gap: 8px; }
+.bd-plan__whensum { flex: 1; min-width: 0; color: var(--text-faint); font-size: 11.5px; line-height: 1.35; }
+.bd-plan__whenhead .bd-plan__rangego.is-quiet { height: 26px; margin-left: auto; padding: 0 9px; border-radius: 8px; }
 .bd-plan__whenclock, .bd-plan__whenrange { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; }
 .bd-plan__whenform .bd-plan__time, .bd-plan__whenform .bd-plan__rangedate { width: 100%; min-width: 0; height: 32px; padding: 0 9px; border-radius: 9px; background: var(--bg); color: var(--text); font-size: 12.5px; font-variant-numeric: tabular-nums; }
 .bd-plan__whenform .bd-plan__time:focus, .bd-plan__whenform .bd-plan__rangedate:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
 .bd-plan__whenform input::-webkit-calendar-picker-indicator { margin: 0 0 0 2px; padding: 0; opacity: 0.5; cursor: pointer; }
 .bd-plan__whenform input::-webkit-calendar-picker-indicator:hover { opacity: 1; }
-.bd-plan__whenacts { display: flex; align-items: center; gap: 8px; margin-top: 1px; padding-top: 10px; border-top: 1px solid var(--border); }
+.bd-plan__whenacts { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 1px; padding-top: 10px; border-top: 1px solid var(--border); }
 .bd-plan__whenacts .bd-plan__rangego { height: 32px; padding: 0 15px; border-radius: 9px; font-size: 12.5px; }
 .bd-plan__whenacts .bd-plan__rangego.is-quiet { margin-right: auto; }
 .bd-plan__rangedate { height: 26px; padding: 0 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 11.5px; }

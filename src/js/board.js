@@ -3803,7 +3803,7 @@ function richItemOf(box) {
     var to = item.data && item.data.spanTo ? item.data.spanTo : '';
     var form = node('div', 'bd-plan__whenform');
     var chip = button.getBoundingClientRect();
-    form.style.left = Math.max(8, Math.round(chip.right - 484)) + 'px';
+    form.style.left = Math.max(8, Math.round(chip.right - 306)) + 'px';
     form.style.top = Math.round(chip.bottom + 6) + 'px';
     var time = node('input', 'bd-plan__time');
     time.type = 'time';
@@ -3854,9 +3854,21 @@ function richItemOf(box) {
     rangeRow.appendChild(start);
     rangeRow.appendChild(node('span', 'bd-plan__rangedash', 'to'));
     rangeRow.appendChild(end);
+    var head = node('div', 'bd-plan__whenhead');
+    var sum = node('div', 'bd-plan__whensum', '');
+    var refreshSum = function () {
+      sum.textContent = planWhenSumText(start.value, end.value, time.value, stop.value);
+    };
+    [time, stop, start, end].forEach(function (input) {
+      input.addEventListener('change', refreshSum);
+      input.addEventListener('input', refreshSum);
+    });
+    refreshSum();
+    head.appendChild(sum);
+    head.appendChild(clear);
     var whenActs = node('div', 'bd-plan__whenacts');
     whenActs.appendChild(apply);
-    whenActs.appendChild(clear);
+    form.appendChild(head);
     form.appendChild(node('span', 'bd-plan__whenlabel', 'Time'));
     form.appendChild(clockRow);
     form.appendChild(node('span', 'bd-plan__whenlabel', 'Days'));
@@ -4304,14 +4316,32 @@ function richItemOf(box) {
     return item;
   }
 
+  function planLengthText(minutes) {
+    if (!(minutes > 0)) return '';
+    return minutes >= 60 ? Math.floor(minutes / 60) + 'h' + (minutes % 60 ? ' ' + minutes % 60 + 'm' : '') : minutes + 'm';
+  }
+
+  function planWhenSumText(first, last, from, to) {
+    var a = calMs(first);
+    var b = calMs(last);
+    var day = '';
+    if (a !== null && b !== null && b > a) day = calShort(first) + ' - ' + calShort(last) + ' - ' + (Math.round((b - a) / 86400000) + 1) + ' days';
+    else if (a !== null) day = CAL_DAYS[new Date(a).getDay()] + ', ' + calShort(first);
+    var begin = planClock(from);
+    var end = planClock(to);
+    if (begin === null) return day ? day + ' - all day' : 'All day';
+    var clock = planTimeLabel(planStamped(begin)) + (end !== null && end > begin ? ' - ' + planTimeLabel(planStamped(end)) : '');
+    var length = planLengthText(end !== null ? end - begin : 0);
+    return (day ? day + ' - ' : '') + clock + (length ? ' (' + length + ')' : '');
+  }
+
   function planQuickSummary(item, key, isBoard) {
     var name = key || planKeyOf(item);
     var ms = calMs(name);
     var day = ms === null ? '' : CAL_DAYS[new Date(ms).getDay()] + ', ' + calShort(name);
     var clock = planEventClock(item, isBoard);
     if (!clock) return day ? day + ' - all day' : 'All day';
-    var span = planClock(planEndOf(item, isBoard)) - planClock(planTimeOf(item, isBoard));
-    var len = span > 0 ? (span >= 60 ? Math.floor(span / 60) + 'h' + (span % 60 ? ' ' + span % 60 + 'm' : '') : span + 'm') : '';
+    var len = planLengthText(planClock(planEndOf(item, isBoard)) - planClock(planTimeOf(item, isBoard)));
     return day + ' - ' + clock + (len ? ' (' + len + ')' : '');
   }
 
