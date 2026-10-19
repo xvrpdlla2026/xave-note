@@ -3749,10 +3749,21 @@ function richItemOf(box) {
     return time ? time + ' \u00b7 ' + day : day;
   }
 
-  function planWhenForm(item, isBoard) {
+  function planWhenClose() {
+    Array.prototype.forEach.call(document.querySelectorAll('.bd-plan__whenform'), function (form) {
+      if (form.parentNode) form.parentNode.removeChild(form);
+    });
+  }
+
+  // A card clips its own children, so the panel lives on the page and is placed under the chip.
+  function planWhenForm(item, isBoard, button) {
     var from = item.data && item.data.spanFrom ? item.data.spanFrom : '';
     var to = item.data && item.data.spanTo ? item.data.spanTo : '';
     var form = node('div', 'bd-plan__whenform');
+    var chip = button.getBoundingClientRect();
+    form.style.left = Math.max(8, Math.round(chip.right - 484)) + 'px';
+    if (chip.bottom + 56 > window.innerHeight) form.style.bottom = Math.round(window.innerHeight - chip.top + 6) + 'px';
+    else form.style.top = Math.round(chip.bottom + 6) + 'px';
     var time = node('input', 'bd-plan__time');
     time.type = 'time';
     time.value = planTimeOf(item, isBoard);
@@ -3807,9 +3818,24 @@ function richItemOf(box) {
     button.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
     button.addEventListener('click', function (event) {
       event.stopPropagation();
-      var open = wrap.querySelector('.bd-plan__whenform');
-      if (open) { open.parentNode.removeChild(open); return; }
-      wrap.appendChild(planWhenForm(item, isBoard));
+      var open = document.querySelector('.bd-plan__whenform');
+      if (open) { planWhenClose(); return; }
+      var form = planWhenForm(item, isBoard, button);
+      var close = function () {
+        window.removeEventListener('pointerdown', away, true);
+        window.removeEventListener('wheel', away, true);
+        window.removeEventListener('keydown', onKey, true);
+        if (form.parentNode) form.parentNode.removeChild(form);
+      };
+      var away = function (event) {
+        if (event.type === 'pointerdown' && (form.contains(event.target) || button.contains(event.target))) return;
+        close();
+      };
+      var onKey = function (event) { if (event.key === 'Escape') close(); };
+      window.addEventListener('pointerdown', away, true);
+      window.addEventListener('wheel', away, true);
+      window.addEventListener('keydown', onKey, true);
+      document.body.appendChild(form);
     });
     wrap.appendChild(button);
     return wrap;
@@ -5298,6 +5324,7 @@ function richItemOf(box) {
   }
 
   function paintPlanner() {
+    planWhenClose();
     var plan = board.planner;
     if (!plan || !board.root) return;
     var el = plannerEl();

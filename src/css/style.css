@@ -4659,7 +4659,7 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-plan__whenbtn { max-width: 148px; height: 22px; padding: 0 8px; overflow: hidden; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-raised); color: var(--text-faint); font: inherit; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; text-overflow: ellipsis; cursor: pointer; }
 .bd-plan__whenbtn:hover { border-color: var(--border-strong); color: var(--text); }
 .bd-plan__whenbtn.is-on { border-color: var(--accent-ring); background: var(--accent-soft); color: var(--accent); }
-.bd-plan__whenform { position: absolute; top: 26px; right: 0; z-index: 40; display: flex; align-items: center; gap: 6px; padding: 8px; border: 1px solid var(--border-strong); border-radius: 9px; background: var(--bg-raised); box-shadow: 0 10px 26px rgba(0, 0, 0, .38); }
+.bd-plan__whenform { position: fixed; z-index: 1002; display: flex; align-items: center; gap: 6px; padding: 8px; border: 1px solid var(--border-strong); border-radius: 9px; background: var(--bg-raised); box-shadow: 0 10px 26px rgba(0, 0, 0, .38); }
 .bd-plan__whenform .bd-plan__time { width: 84px; }
 .bd-plan__rangedate { height: 26px; padding: 0 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 11.5px; }
 .bd-plan__rangedash { font-size: 11px; color: var(--text-faint); }
