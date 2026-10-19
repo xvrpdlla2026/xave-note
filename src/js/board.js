@@ -906,7 +906,7 @@ window.NoteApp = window.NoteApp || {};
 
 function richItemOf(box) {
   var host = box && box.closest ? box.closest('.bd-item') : null;
-  if (!host) return null;
+  if (!host) return box && box.__planItem ? box.__planItem : null;
   if (host.__planView) return host.__planView;
   return findItem(host.getAttribute('data-board-id'));
 }
@@ -1384,7 +1384,7 @@ function richItemOf(box) {
     var rect = ctx.range.getBoundingClientRect();
     if (!rect || (!rect.width && !rect.height)) { richHide(); return; }
     if (!richBar) richBar = buildRichBar();
-    var layer = ctx.box.closest ? ctx.box.closest('dialog[open]') : null;
+    var layer = ctx.box.closest ? (ctx.box.closest('.bd-cal__quick') || ctx.box.closest('dialog[open]')) : null;
     if (layer && richBar.parentNode !== layer) layer.appendChild(richBar);
     else if (!layer && richBar.parentNode !== document.body) document.body.appendChild(richBar);
     richPlace(rect);
@@ -4185,10 +4185,11 @@ function richItemOf(box) {
   function planQuickName(item, wording) {
     if (!item.data) item.data = {};
     var text = String(wording == null ? '' : wording);
-    var bar = plannerEl().querySelector('.bd-cal__tevent[data-plan-id="' + item.id + '"] .bd-cal__teventtext');
-    if (bar) bar.textContent = text || kindText(item.kind).label;
+    var plain = planPlain(text) || text;
     item.data.text = text;
-    item.data.title = text;
+    item.data.title = plain;
+    var bar = plannerEl().querySelector('.bd-cal__tevent[data-plan-id="' + item.id + '"] .bd-cal__teventtext');
+    if (bar) bar.innerHTML = planCellHtml(item, plain) || util.escapeHtml(plain);
     if (!item.__planDraft) savePlanItem(item);
   }
 
@@ -4252,6 +4253,19 @@ function richItemOf(box) {
     title.value = planTitle(item) || '';
     title.placeholder = 'Add title';
     title.setAttribute('aria-label', 'Block title');
+    // A note is written, not titled, so the dialog gives it the same field and the same bar as its card.
+    var body = item.kind === 'note' ? node('div', 'bd-cal__quicktext bd-text') : null;
+    if (body) {
+      var stored = item.data && item.data.text ? item.data.text : '';
+      body.setAttribute('contenteditable', 'true');
+      body.setAttribute('data-placeholder', 'Add a note');
+      body.setAttribute('aria-label', 'Note text');
+      body.__planItem = item;
+      body.innerHTML = stored ? (util.isRichHtml(stored) ? util.sanitizeRichHtml(stored) : util.escapeHtml(stored)) : '';
+      body.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
+      body.addEventListener('input', function () { if (typeof sum === 'function') { } });
+      title.hidden = true;
+    }
     var when = planTimeOf(item, !!isBoard);
     var kind = kindText(planKindOf(item));
     var head = node('div', 'bd-cal__quickhead');
@@ -4430,7 +4444,7 @@ function richItemOf(box) {
       var first = day.value || key;
       var stop = last.value && calMs(last.value) !== null && calMs(last.value) > calMs(first) ? last.value : first;
       planSetRange(item, first, stop);
-      planQuickName(item, title.value);
+      planQuickName(item, body ? util.sanitizeRichHtml(body.innerHTML) : title.value);
       var timed = !all.checked && !!from.value;
       if (isBoard) {
         item.data.planTime = timed ? from.value : '';
@@ -4470,7 +4484,7 @@ function richItemOf(box) {
     acts.appendChild(keep);
     box.appendChild(head);
     box.appendChild(subtitle);
-    box.appendChild(title);
+    box.appendChild(body || title);
     box.appendChild(group);
     box.appendChild(repeat);
     box.appendChild(acts);
@@ -4535,8 +4549,8 @@ function richItemOf(box) {
     planQuickPlace(box, at, anchor);
     window.addEventListener('scroll', follow, true);
     window.addEventListener('resize', follow);
-    title.focus();
-    try { title.setSelectionRange(title.value.length, title.value.length); } catch (e) { }
+    (body || title).focus();
+    if (!body) { try { title.setSelectionRange(title.value.length, title.value.length); } catch (e) { } }
     return item;
   }
 
