@@ -4081,19 +4081,6 @@ function richItemOf(box) {
     paintPlanner();
   }
 
-  function kindMenu(button, key) {
-    var rect = button.getBoundingClientRect();
-    var pick = function (kind) { return function () { addPlannerItem(kind, key, ''); }; };
-    App.ui.openMenu({
-      x: Math.round(rect.left),
-      y: Math.round(rect.bottom + 4),
-      title: 'Add a block',
-      items: BLOCK_KINDS.filter(planAddable).map(function (entry) {
-        return { label: entry.label, icon: entry.icon, onclick: function () { addPlannerItem(entry.kind, key, ''); } };
-      }),
-    });
-  }
-
   // A planner drag names its blocks by id, and a planned block can belong to any board, so the id
   // resolves against the board you are on and then against every other board in the planner.
   function planRow(id) {
@@ -5771,7 +5758,9 @@ function richItemOf(box) {
     dayInfo.appendChild(dayCountNode);
     dayTop.appendChild(dayInfo);
     var dayActs = node('div', 'bd-cal__dayacts');
-    var blockButton = calButton('+ Block', function () { kindMenu(blockButton, plan.date); }, 'is-quiet');
+    var blockButton = calButton('+ Block', function () { addPlannerItem('note', plan.date, ''); }, 'is-quiet');
+    blockButton.title = 'Add a block to this day';
+    blockButton.setAttribute('aria-label', 'Add a block to this day');
     dayActs.appendChild(blockButton);
     var drawButton = calButton('', function () { addPlannerItem('draw', plan.date, ''); }, 'is-icon is-quiet');
     drawButton.title = 'Draw on this day';
@@ -5839,19 +5828,6 @@ function richItemOf(box) {
       week.appendChild(chip);
     }
     column.appendChild(week);
-    if (plan.mode === 'browse') {
-      var tools = node('div', 'bd-cal__tools');
-      if (plan.full) tools.appendChild(node('div', 'bd-cal__railtitle', 'Add a block'));
-      var rail = node('div', 'bd-cal__rail');
-      BLOCK_KINDS.filter(planAddable).forEach(function (entry) {
-        var button = railButton(entry.icon, entry.label, function () { addPlannerItem(entry.kind, plan.date, ''); });
-        button.title = entry.label;
-        button.setAttribute('aria-label', entry.label);
-        rail.appendChild(button);
-      });
-      tools.appendChild(rail);
-      (railPanel || column).appendChild(tools);
-    }
     var list = node('div', 'bd-cal__list');
     var dayEntries = planSort(planFiltered(planEntries(plan.date)), plan.date);
     var dayDone = 0;
