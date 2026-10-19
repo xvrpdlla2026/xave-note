@@ -2901,6 +2901,8 @@ function richItemOf(box) {
     if (!board.open) return;
     var editing = event.target && event.target.closest && event.target.closest('input, textarea, [contenteditable="true"]');
     if (event.key === 'Escape') {
+      // A dialog owns Escape while it is up, so it does not also close the board behind it.
+      if (document.querySelector('dialog[open]')) return;
       if (board.picker) { closePicker(); return; }
       if (editing) { event.target.blur(); return; }
       if (board.moving) { disarmMarkMove(); return; }
@@ -6035,9 +6037,13 @@ function richItemOf(box) {
     dayInfo.appendChild(dayCountNode);
     dayTop.appendChild(dayInfo);
     var dayActs = node('div', 'bd-cal__dayacts');
-    var blockButton = calButton('+ Block', function () { addPlannerItem('note', plan.date, ''); }, 'is-quiet');
-    blockButton.title = 'Add a block to this day';
-    blockButton.setAttribute('aria-label', 'Add a block to this day');
+    var blockLabel = plan.full ? 'Choose what to add to this day' : 'Add a block to this day';
+    var blockButton = calButton('+ Block', function () {
+      if (plan.full) { planAddKind(plan); return; }
+      addPlannerItem('note', plan.date, '');
+    }, 'is-quiet');
+    blockButton.title = blockLabel;
+    blockButton.setAttribute('aria-label', blockLabel);
     dayActs.appendChild(blockButton);
     var drawButton = calButton('', function () { addPlannerItem('draw', plan.date, ''); }, 'is-icon is-quiet');
     drawButton.title = 'Draw on this day';
@@ -6260,6 +6266,7 @@ planRevealFresh(plan);
 
   window.addEventListener('keydown', function (event) {
     if (event.key !== 'Escape' || !board.planner) return;
+    if (document.querySelector('dialog[open]')) return;
       if (board.planner.jump) {
         board.planner.jump = 0;
         paintPlanner();
@@ -6470,6 +6477,62 @@ planRevealFresh(plan);
     { kind: 'table', label: 'Table', icon: 'grid' },
     { kind: 'draw', label: 'Draw', icon: 'pencil' },
   ];
+
+  var PLAN_KIND_HINTS = {
+    note: 'A page to write in',
+    todo: 'A checklist of tasks',
+    comment: 'A remark on the day',
+    link: 'A URL to open',
+    image: 'A picture or a file',
+    table: 'Rows and columns',
+    column: 'Holds other blocks',
+    draw: 'Sketch by hand',
+  };
+
+  // Fullscreen takes a block of any kind, so it asks which one instead of assuming a note.
+  function planAddKind(plan) {
+    var grid = node('div', 'bd-cal__kinds');
+    var tiles = [];
+    var close = null;
+    ['note', 'todo', 'comment', 'link', 'image', 'table', 'column', 'draw'].forEach(function (kind) {
+      var text = kindText(kind);
+      var tile = node('button', 'bd-cal__kindtile');
+      tile.type = 'button';
+      tile.setAttribute('data-kind', kind);
+      var glyph = node('span', 'bd-cal__kindicon');
+      var picture = App.ui.icon(text.icon, 15);
+      if (picture) glyph.appendChild(picture);
+      var words = node('span', 'bd-cal__kindtext');
+      words.appendChild(node('span', 'bd-cal__kindlabel', text.label));
+      words.appendChild(node('span', 'bd-cal__kindhint', PLAN_KIND_HINTS[kind] || ''));
+      tile.appendChild(glyph);
+      tile.appendChild(words);
+      tile.addEventListener('click', function () { if (close) close(kind); });
+      grid.appendChild(tile);
+      tiles.push(tile);
+    });
+    grid.addEventListener('keydown', function (event) {
+      var moves = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -2, ArrowDown: 2 };
+      var move = moves[event.key];
+      var at = tiles.indexOf(document.activeElement);
+      if (move === undefined || at < 0) return;
+      var next = tiles[Math.max(0, Math.min(tiles.length - 1, at + move))];
+      if (!next) return;
+      event.preventDefault();
+      next.focus();
+    });
+    var ms = calMs(plan.date);
+    var when = new Date(ms === null ? Date.now() : ms);
+    App.ui.dialog({
+      title: 'Add a block to ' + CAL_DAYS[when.getDay()] + ', ' + CAL_MONTHS[when.getMonth()] + ' ' + when.getDate(),
+      icon: 'plus',
+      body: grid,
+      wide: true,
+      hideFooter: true,
+      focus: '.bd-cal__kindtile',
+      onOpen: function (api) { close = api.close; },
+    }).then(function (kind) { if (kind) addPlannerItem(String(kind), plan.date, ''); });
+  }
 
   function kindText(kind) {
     var found = null;

@@ -4389,6 +4389,16 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__quickacts .bd-cal__btn.is-primary { border-color: var(--accent); background: var(--accent); color: #ffffff; }
 .bd-cal__quickacts .bd-cal__btn.is-primary:hover { border-color: var(--accent); background: var(--accent); color: #ffffff; filter: brightness(1.1); }
 .bd-cal__quickacts .bd-cal__btn.is-quiet { margin-right: auto; }
+/* The kind of a new block is a choice, so fullscreen asks with tiles instead of a menu. */
+.bd-cal__kinds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.bd-cal__kindtile { display: flex; align-items: center; gap: 10px; min-height: 54px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-sunken); color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: background var(--fast), border-color var(--fast); }
+.bd-cal__kindtile:hover { border-color: var(--accent-ring); background: var(--accent-soft); }
+.bd-cal__kindtile:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+.bd-cal__kindicon { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 9px; background: var(--bg-raised); color: var(--text-muted); }
+.bd-cal__kindtile:hover .bd-cal__kindicon { color: var(--accent); }
+.bd-cal__kindtext { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.bd-cal__kindlabel { font-size: 12.5px; font-weight: 600; }
+.bd-cal__kindhint { color: var(--text-faint); font-size: 11px; line-height: 1.3; }
 .bd-cal__views { display: inline-flex; align-items: center; gap: 2px; height: 30px; padding: 0 3px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-raised); }
 .bd-cal__views .bd-cal__btn { height: 24px; padding: 0 10px; border: 0; border-radius: 6px; background: none; color: var(--text-faint); font-size: 12px; }
 .bd-cal__views .bd-cal__btn:hover { background: var(--bg-hover); color: var(--text); }
