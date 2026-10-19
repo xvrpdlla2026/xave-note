@@ -3533,8 +3533,25 @@ function richItemOf(box) {
       if (el.__planView) return;
       var slot = el.querySelector('.bd-cal__tdchiptext, .bd-cal__teventtext, .bd-cal__rtitle, .bd-cal__oltitle');
       if (!slot) return;
-      slot.textContent = label;
+      if (slot.classList.contains('bd-cal__tdchiptext') || slot.classList.contains('bd-cal__teventtext')) slot.innerHTML = planCellHtml(item, label);
+      else slot.textContent = label;
     });
+  }
+
+  // A cell shows the block's own words with the colours it was given, at the cell's own size.
+  function planCellHtml(item, fallback) {
+    var raw = item.data && item.data.text;
+    if (!raw || String(raw).indexOf('<') < 0) return util.escapeHtml(String(fallback || ''));
+    var holder = node('div', '', '');
+    holder.innerHTML = util.sanitizeRichHtml(String(raw));
+    Array.prototype.forEach.call(holder.querySelectorAll('[style]'), function (el) {
+      ['font-size', 'font-family', 'line-height', 'background', 'background-color', 'display', 'position'].forEach(function (prop) {
+        el.style.removeProperty(prop);
+      });
+      if (!el.getAttribute('style')) el.removeAttribute('style');
+    });
+    var html = holder.innerHTML.replace(/<\/?(?:div|p|br|h[1-6]|ul|ol|li|blockquote|pre|section|article)[^>]*>/gi, ' ');
+    return planPlain(html) ? html : util.escapeHtml(String(fallback || ''));
   }
 
   function planResultRow(entry) {
@@ -5702,7 +5719,9 @@ function richItemOf(box) {
         chip.type = 'button';
         chip.title = planGridName(entry, key);
         chip.appendChild(App.ui.icon(kindText(planKindOf(entry.item)).icon, 11));
-        chip.appendChild(node('span', 'bd-cal__tdchiptext', planGridName(entry, key)));
+        var chipText = node('span', 'bd-cal__tdchiptext', '');
+        chipText.innerHTML = planCellHtml(entry.item, planGridName(entry, key));
+        chip.appendChild(chipText);
         if (planDoneOf(entry.item)) chip.classList.add('is-done');
         chip.setAttribute('data-plan-id', entry.item.id);
         chip.addEventListener('click', function (event) {
@@ -5749,7 +5768,9 @@ function richItemOf(box) {
         bar.appendChild(node('span', 'bd-cal__teventtime', planEventClock(entry.item, entry.board)));
         var line = node('span', 'bd-cal__teventname');
         line.appendChild(App.ui.icon(kindText(planKindOf(entry.item)).icon, 11));
-        line.appendChild(node('span', 'bd-cal__teventtext', planGridName(entry, key)));
+        var lineText = node('span', 'bd-cal__teventtext', '');
+        lineText.innerHTML = planCellHtml(entry.item, planGridName(entry, key));
+        line.appendChild(lineText);
         bar.appendChild(line);
         bar.setAttribute('draggable', 'true');
         bar.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
