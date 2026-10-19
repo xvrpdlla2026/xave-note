@@ -4769,6 +4769,30 @@ function richItemOf(box) {
     return nav;
   }
 
+  // A block that is focused stays in view through the repaint its own focus causes, so the wish to
+  // reveal it rides along with the paint instead of racing it.
+  function planReveal(id) {
+    if (!id) return;
+    board.planRevealId = id;
+    board.planRevealUntil = Date.now() + 900;
+    planScrollTo(id);
+  }
+
+  // Picking a block brings its bar into view on the clock, the way clicking an event in a calendar does.
+  function planScrollTo(id) {
+    if (!id) return;
+    var el = plannerEl();
+    var body = el.querySelector('.bd-cal__tbody');
+    var bar = el.querySelector('.bd-cal__tevent[data-plan-id="' + id + '"]');
+    if (!body || !bar) return;
+    var view = body.getBoundingClientRect();
+    var spot = bar.getBoundingClientRect();
+    var room = 30;
+    if (spot.top >= view.top + room && spot.bottom <= view.bottom - room) return;
+    var shift = spot.top < view.top + room ? spot.top - (view.top + room) : spot.bottom - (view.bottom - room);
+    body.scrollTop = Math.max(0, Math.round(body.scrollTop + shift));
+  }
+
   function planRevealFresh(plan) {
     var fresh = board.planFresh;
     if (!fresh || Date.now() > fresh.until) return;
@@ -4785,6 +4809,7 @@ function richItemOf(box) {
     } else {
       card.scrollIntoView({ block: 'nearest' });
     }
+    if (!plan.full) planReveal(fresh.id);
     var edit = card.querySelector('[contenteditable="true"]')
       || card.querySelector('input:not([type="checkbox"]):not([type="radio"])')
       || card.querySelector('textarea');
@@ -4830,6 +4855,7 @@ function richItemOf(box) {
       sel.push(card.getAttribute('data-plan-id'));
       card.classList.add('is-selected');
     });
+    if (!canvas && cards.length) planReveal(cards[0].getAttribute('data-plan-id'));
   }
 
   function planMarqueeStart(event, list) {
@@ -5083,6 +5109,7 @@ function richItemOf(box) {
 
   function planGridPick(plan, key, id) {
     plan.date = key;
+    planReveal(id);
     plan.month = monthStart(calMs(key));
     plan.dayOpen = true;
     board.planFresh = { id: id, board: !!board.planFresh && board.planFresh.board };
@@ -5234,6 +5261,7 @@ function richItemOf(box) {
         if (!span) return;
         var bar = node('button', 'bd-cal__tevent' + (planDoneOf(entry.item, entry.board) ? ' is-done' : ''));
         bar.type = 'button';
+        bar.setAttribute('data-plan-id', entry.item.id);
         bar.style.top = (span.start / 60 * PLAN_HOUR) + 'px';
         bar.style.height = Math.max(16, (span.end - span.start) / 60 * PLAN_HOUR) + 'px';
         bar.title = planEventClock(entry.item, entry.board) + ' \u00b7 ' + planGridName(entry, key);
@@ -5743,12 +5771,25 @@ function richItemOf(box) {
   function paintPlanner() {
     planWhenClose();
     planQuickClose();
+    var shell = plannerEl();
+    if (!shell.__planReveal) {
+      shell.__planReveal = 1;
+      var fromCard = function (event) {
+        var card = event.target && event.target.closest ? event.target.closest('.bd-item') : null;
+        if (card) planReveal(card.getAttribute('data-plan-id'));
+      };
+      // Capture, because picking a card repaints the column and takes the focus event down with it.
+      shell.addEventListener('pointerdown', fromCard, true);
+      shell.addEventListener('focusin', fromCard, true);
+    }
     var plan = board.planner;
     if (!plan || !board.root) return;
     var el = plannerEl();
     var keepScroll = 0;
     var before = el.querySelector('.bd-cal__list');
     if (before) keepScroll = before.scrollTop;
+    var clockBefore = el.querySelector('.bd-cal__tbody');
+    var keepClock = clockBefore ? clockBefore.scrollTop : 0;
     var active = document.activeElement;
     // Every keystroke rebuilds this view, so the search box has to be handed back its caret by hand.
     var caret = active && active.classList && active.classList.contains('bd-cal__filter')
@@ -6175,6 +6216,9 @@ planRevealFresh(plan);
       var after = el.querySelector('.bd-cal__list');
       if (after) after.scrollTop = keepScroll;
     }
+    var clock = el.querySelector('.bd-cal__tbody');
+    if (clock && keepClock) clock.scrollTop = keepClock;
+    if (board.planRevealId && board.planRevealUntil > Date.now()) planScrollTo(board.planRevealId);
     if (caret) {
       filter.focus();
       try { filter.setSelectionRange(caret[0], caret[1]); } catch (e) { }
