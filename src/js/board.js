@@ -4175,11 +4175,28 @@ function richItemOf(box) {
 
   var QUICK_HOUR = 60;
 
+  // Putting the dialog away has to take the block it was holding with it, or a press somewhere
+  // else leaves a block behind that was never confirmed.
   function planQuickClose() {
+    var dropped = false;
     Array.prototype.forEach.call(document.querySelectorAll('.bd-cal__quick'), function (el) {
+      var draft = el.__planDraftItem;
+      if (draft && draft.__planDraft) {
+        delete draft.__planDraft;
+        var at = board.plans.indexOf(draft);
+        if (at >= 0) { board.plans.splice(at, 1); dropped = true; }
+      }
       if (typeof el.__planOff === 'function') el.__planOff();
       el.remove();
     });
+    if (dropped && !document.querySelector('.bd-cal__quick')) paintPlanner();
+  }
+
+  // A press outside the dialog puts it away, and that press never also starts a second block.
+  function planQuickBusy() {
+    if (!document.querySelector('.bd-cal__quick')) return false;
+    planQuickClose();
+    return true;
   }
 
   function planQuickName(item, wording) {
@@ -4247,6 +4264,7 @@ function richItemOf(box) {
     planQuickClose();
     var fresh = !!(opts && opts.isNew);
     var box = node('div', 'bd-cal__quick');
+    if (fresh) box.__planDraftItem = item;
     box.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
     var title = node('input', 'bd-cal__quicktitle');
     title.type = 'text';
@@ -5748,6 +5766,7 @@ function richItemOf(box) {
     col.addEventListener('pointerdown', function (event) {
       if (event.button !== 0 || board.planDrag) return;
       if (event.target !== col) return;
+      if (planQuickBusy()) return;
       event.preventDefault();
       var plan = board.planner;
       if (!plan || plan.tool === 'select' && plan.full) return;
@@ -5841,6 +5860,7 @@ function richItemOf(box) {
         return function (event) {
           if (event.button !== 0 || event.target !== lane) return;
           if (board.planDrag || board.planDragSources) return;
+          if (planQuickBusy()) return;
           event.preventDefault();
           var made = addPlannerItem('note', useKey, '', '', true);
           if (made) planQuickAdd(made, useKey, { left: event.clientX + 12, top: event.clientY + 6 }, planQuickNode(made), null, { isNew: true });
@@ -6405,7 +6425,6 @@ function richItemOf(box) {
   }
 
   function paintPlanner() {
-    planQuickClose();
     planQuickClose();
     var shell = plannerEl();
     if (!shell.__planReveal) {
