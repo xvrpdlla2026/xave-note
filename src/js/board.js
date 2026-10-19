@@ -6219,8 +6219,7 @@ function richItemOf(box) {
         window.removeEventListener('pointercancel', gone);
         if (ghost.parentNode) ghost.remove();
         if (cancelled) return;
-        var made = addPlannerItem('note', key, planStamped(from), planStamped(to), true);
-        if (made) planQuickAdd(made, key, { left: event.clientX + 12, top: event.clientY - 26 }, planQuickNode(made), null, { isNew: true });
+        planAddKind(plan, key, planStamped(from), planStamped(to));
       };
       var move = function (event) { pointerY = event.clientY; paint(event.clientY); };
       var up = function (event) { stop(event, false); };
@@ -6269,8 +6268,7 @@ function richItemOf(box) {
         event.stopPropagation();
         if (event.target !== add && event.target.parentNode !== add) return;
         if (planQuickBusy()) return;
-        var made = addPlannerItem('note', key, '', '', true);
-        if (made) planQuickAdd(made, key, { left: event.clientX + 12, top: event.clientY + 6 }, planQuickNode(made), null, { isNew: true });
+        planAddKind(plan, key);
       });
       lane.addEventListener('pointerdown', (function (useKey) {
         return function (event) {
@@ -6278,8 +6276,7 @@ function richItemOf(box) {
           if (board.planDrag || board.planDragSources) return;
           if (planQuickBusy()) return;
           event.preventDefault();
-          var made = addPlannerItem('note', useKey, '', '', true);
-          if (made) planQuickAdd(made, useKey, { left: event.clientX + 12, top: event.clientY + 6 }, planQuickNode(made), null, { isNew: true });
+          planAddKind(plan, useKey);
         };
       })(key));
       planSort(planFiltered(planEntries(key)), key).forEach(function (entry) {
@@ -7564,7 +7561,8 @@ column.addEventListener('dragover', function (event) {
 
 
   // Which kind it is matters, so a new block is picked rather than assumed to be a note.
-  function planAddKind(plan) {
+  function planAddKind(plan, key, from, to) {
+    var dayKey = key || plan.date;
     var grid = node('div', 'bd-cal__kinds');
     var tiles = [];
     var close = null;
@@ -7595,7 +7593,7 @@ column.addEventListener('dragover', function (event) {
       event.preventDefault();
       next.focus();
     });
-    var ms = calMs(plan.date);
+    var ms = calMs(dayKey);
     var when = new Date(ms === null ? Date.now() : ms);
     App.ui.dialog({
       title: 'Add a block to ' + CAL_DAYS[when.getDay()] + ', ' + CAL_MONTHS[when.getMonth()] + ' ' + when.getDate(),
@@ -7605,12 +7603,12 @@ column.addEventListener('dragover', function (event) {
       hideFooter: true,
       focus: '.bd-cal__kindtile',
       onOpen: function (api) { close = api.close; },
-    }).then(function (kind) { if (kind) planCompose(String(kind), plan.date); });
+    }).then(function (kind) { if (kind) planCompose(String(kind), dayKey, from, to); });
   }
 
   // Picking a type opens that block's own editor, so it is set up before it lands on the day.
-  function planCompose(kind, key) {
-    var item = planDraftItem(kind, key, '');
+  function planCompose(kind, key, from, to) {
+    var item = planDraftItem(kind, key, from || '', to || '');
     item.__planDraft = true;
     var view = planClone(item);
     var card = node('div', 'bd-item bd-item--' + kind + ' bd-item--in-plan');
@@ -7625,7 +7623,8 @@ column.addEventListener('dragover', function (event) {
     var ms = calMs(key);
     var when = new Date(ms === null ? Date.now() : ms);
     App.ui.dialog({
-      title: 'New ' + kindText(kind).label + ' for ' + CAL_DAYS[when.getDay()] + ', ' + CAL_MONTHS[when.getMonth()] + ' ' + when.getDate(),
+      title: 'New ' + kindText(kind).label + ' for ' + CAL_DAYS[when.getDay()] + ', ' + CAL_MONTHS[when.getMonth()] + ' ' + when.getDate()
+        + (from && to ? ', ' + planTimeLabel(from) + ' - ' + planTimeLabel(to) : ''),
       icon: kindText(kind).icon,
       body: wrap,
       wide: true,
