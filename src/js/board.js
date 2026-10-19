@@ -4137,7 +4137,12 @@ function richItemOf(box) {
       var frame = planQuickFrame(target);
       var rect = target.getBoundingClientRect();
       away = rect.bottom < frame.top + 4 || rect.top > frame.bottom - 4 || rect.right < frame.left || rect.left > frame.right;
-      if (!away) spot = { left: rect.right + 12, top: rect.top - 22 };
+      if (!away) {
+        // A block can be as wide as its lane, so where the pointer was is the offset to keep, not the block edge.
+        if (at && !box.__planGap) box.__planGap = { dx: at.left - rect.left, dy: at.top - rect.top };
+        if (box.__planGap) spot = { left: rect.left + box.__planGap.dx, top: rect.top + box.__planGap.dy };
+        else if (!spot) spot = { left: rect.right + 12, top: rect.top - 22 };
+      }
     }
     box.style.display = away && !at ? 'none' : '';
     if (away && !at) return;
