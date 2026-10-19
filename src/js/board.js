@@ -4440,6 +4440,8 @@ function richItemOf(box) {
     if (event.button !== 0) return;
     var card = event.currentTarget && event.currentTarget.closest ? event.currentTarget.closest('.bd-item') : null;
     if (!card) return;
+    // A drag moves the blocks you picked, and picking one block lets go of the block you added last.
+    if (!dir && planSel().indexOf(card.getAttribute('data-plan-id')) < 0) planSelectPaint(card.parentNode, [card]);
     card.style.zIndex = ++planCanvasZ;
     var box = card.__planCanvas || planCanvasBox(entry.item, key, 0);
     card.__planCanvas = box;
@@ -4486,8 +4488,10 @@ function richItemOf(box) {
         if (row.item && row.card) planCanvasKeep(row.item, row.key, row.card.__planCanvas);
       });
     };
-    var mateStart = Array.prototype.filter.call(document.querySelectorAll('.bd-cal__list .bd-item.is-selected'), function (other) {
-      return other !== card && other.__planCanvas;
+    var mateStart = planSel().map(function (id) {
+      return card.parentNode ? card.parentNode.querySelector('[data-plan-id="' + id + '"]') : null;
+    }).filter(function (other) {
+      return other && other !== card && other.__planCanvas;
     }).map(function (other) {
       return { card: other, item: other.__planItem, key: other.__planKey, x: other.__planCanvas.x, y: other.__planCanvas.y };
     });
@@ -4675,6 +4679,7 @@ function richItemOf(box) {
     var canvas = list.classList.contains('is-canvas');
     sel.length = 0;
     Array.prototype.forEach.call(list.querySelectorAll('.bd-item'), function (card) { card.classList.remove('is-selected'); });
+    if (board.planFresh && !Array.prototype.some.call(cards, function (card) { return card.getAttribute('data-plan-id') === board.planFresh.id; })) board.planFresh = null;
     cards.forEach(function (card) {
       if (canvas && !card.__planCanvas) return;
       sel.push(card.getAttribute('data-plan-id'));
