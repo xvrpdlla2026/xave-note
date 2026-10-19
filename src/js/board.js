@@ -4744,7 +4744,8 @@ function richItemOf(box) {
 
   function planSheetZoomPaint(plan) {
     var el = plannerEl();
-    el.style.setProperty('--cal-zoom', String((plan && plan.sheetZoom) || 1));
+    // The fullscreen day zooms by moving its cards and dots, so a CSS zoom here would scale it twice.
+    el.style.setProperty('--cal-zoom', String(plan && plan.full ? 1 : ((plan && plan.sheetZoom) || 1)));
     var label = el.querySelector('.bd-cal__zoomlabel');
     if (label) label.textContent = planZoomLabel(plan);
   }
@@ -4769,9 +4770,7 @@ function richItemOf(box) {
     var open = board.planner || plan;
     if (!open) return;
     if (open.full) {
-      open.view = null;
-      planPaintView(open);
-      planPaintInk();
+      planZoomBy(open, 1 / (planView(open).z || 1));
     } else {
       open.sheetZoom = 1;
     }
