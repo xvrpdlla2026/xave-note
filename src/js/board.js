@@ -6975,7 +6975,30 @@ column.addEventListener('dragover', function (event) {
       hideFooter: true,
       focus: '.bd-cal__kindtile',
       onOpen: function (api) { close = api.close; },
-    }).then(function (kind) { if (kind) addPlannerItem(String(kind), plan.date, ''); });
+    }).then(function (kind) {
+      if (!kind) return;
+      var made = addPlannerItem(String(kind), plan.date, '');
+      if (!made) return;
+      planGridPick(plan, plan.date, made.id);
+      planReady(made);
+    });
+  }
+
+  // Picking a type lands you in the block you just made: its own field focused, or its file prompt already open.
+  function planReady(item) {
+    window.requestAnimationFrame(function () {
+      var card = document.querySelector('.bd-item[data-plan-id="' + item.id + '"]');
+      if (!card) return;
+      var picker = item.kind === 'image' ? card.querySelector('.bd-image__empty .btn') : null;
+      if (picker) {
+        picker.click();
+        return;
+      }
+      var field = card.querySelector('input:not([type="checkbox"]):not([type="file"]), textarea');
+      if (!field) return;
+      field.focus();
+      try { field.setSelectionRange(field.value.length, field.value.length); } catch (e) { }
+    });
   }
 
   function kindText(kind) {
