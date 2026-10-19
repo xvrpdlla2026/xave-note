@@ -4484,3 +4484,7 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__emptytitle { color: var(--text); font-size: 15px; font-weight: 600; }
 .bd-cal__emptyhint { color: var(--text-faint); font-size: 12.5px; line-height: 1.5; }
 .bd-cal__emptygestures { margin-top: 2px; padding: 5px 11px; border: 1px solid var(--border); border-radius: 999px; color: var(--text-faint); font-size: 11px; }
+
+/* The block is set up in a card of its own before it lands on a day. */
+.bd-plan__compose { display: flex; flex-direction: column; max-height: 56vh; overflow-y: auto; padding: 1px; }
+.bd-plan__compose .bd-item { border-radius: 12px; border: 1px solid var(--border); background: var(--bg-raised); }

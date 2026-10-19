@@ -100,6 +100,7 @@ window.NoteApp = window.NoteApp || {};
   }
 
   function saveItem(item) {
+    if (item.__planDraft) return;
     item.updated_at = util.nowIso();
     try { App.db.boardUpdateItem(item); } catch (e) { }
   }
@@ -3946,6 +3947,7 @@ function richItemOf(box) {
     return wrap;
   }
   function savePlanItem(item) {
+    if (item.__planDraft) return;
     item.updated_at = util.nowIso();
     try { App.db.boardAddItem(item); } catch (e) { }
   }
@@ -4091,19 +4093,14 @@ function richItemOf(box) {
   }
 
   // A draft stays in memory only, so nothing is stored until the dialog that opened it is confirmed.
-  function addPlannerItem(kind, key, time, end, draft) {
-    if (kind === 'draw' && !board.planDrawAdd) {
-      board.planPadDate = key;
-      openDrawPad(null);
-      return null;
-    }
+  function planDraftItem(kind, key, time, end) {
     var now = util.nowIso();
     var size = { note: [268, 176], todo: [256, 196], link: [268, 96], image: [288, 216], comment: [268, 132], table: [320, 208], file: [300, 236] }[kind] || [260, 160];
     var data = defaultData(kind);
     data.planner = key;
     if (time) data.time = time;
     if (end) data.end = end;
-    var item = {
+    return {
       id: util.uuid(),
       board_id: PLAN_BOARD,
       kind: kind,
@@ -4118,6 +4115,15 @@ function richItemOf(box) {
       created_at: now,
       updated_at: now,
     };
+  }
+
+  function addPlannerItem(kind, key, time, end, draft) {
+    if (kind === 'draw' && !board.planDrawAdd) {
+      board.planPadDate = key;
+      openDrawPad(null);
+      return null;
+    }
+    var item = planDraftItem(kind, key, time, end);
     board.planFresh = { id: item.id, until: Date.now() + 4000 };
     if (draft) item.__planDraft = true;
     board.plans.push(item);
@@ -6975,29 +6981,41 @@ column.addEventListener('dragover', function (event) {
       hideFooter: true,
       focus: '.bd-cal__kindtile',
       onOpen: function (api) { close = api.close; },
-    }).then(function (kind) {
-      if (!kind) return;
-      var made = addPlannerItem(String(kind), plan.date, '');
-      if (!made) return;
-      planGridPick(plan, plan.date, made.id);
-      planReady(made);
-    });
+    }).then(function (kind) { if (kind) planCompose(String(kind), plan.date); });
   }
 
-  // Picking a type lands you in the block you just made: its own field focused, or its file prompt already open.
-  function planReady(item) {
-    window.requestAnimationFrame(function () {
-      var card = document.querySelector('.bd-item[data-plan-id="' + item.id + '"]');
-      if (!card) return;
-      var picker = item.kind === 'image' ? card.querySelector('.bd-image__empty .btn') : null;
-      if (picker) {
-        picker.click();
-        return;
-      }
-      var field = card.querySelector('input:not([type="checkbox"]):not([type="file"]), textarea');
-      if (!field) return;
-      field.focus();
-      try { field.setSelectionRange(field.value.length, field.value.length); } catch (e) { }
+  // Picking a type opens that block's own editor, so it is set up before it lands on the day.
+  function planCompose(kind, key) {
+    var item = planDraftItem(kind, key, '');
+    item.__planDraft = true;
+    var view = planClone(item);
+    var card = node('div', 'bd-item bd-item--' + kind + ' bd-item--in-plan');
+    var body = node('div', 'bd-item__body');
+    card.appendChild(body);
+    view.node = card;
+    body.appendChild(bodyFor(view));
+    if (kind === 'link') { try { renderLinkCard(view); } catch (e) { } }
+    var wrap = node('div', 'bd-plan__compose');
+    wrap.appendChild(card);
+    var ms = calMs(key);
+    var when = new Date(ms === null ? Date.now() : ms);
+    App.ui.dialog({
+      title: 'New ' + kindText(kind).label + ' for ' + CAL_DAYS[when.getDay()] + ', ' + CAL_MONTHS[when.getMonth()] + ' ' + when.getDate(),
+      icon: kindText(kind).icon,
+      body: wrap,
+      wide: true,
+      cancelLabel: 'Cancel',
+      confirmLabel: 'Create',
+      focus: '.bd-plan__compose .bd-text, .bd-plan__compose textarea, .bd-plan__compose input',
+    }).then(function (ok) {
+      if (!ok || !board.planner) return;
+      var made = item;
+      delete made.__planDraft;
+      made.updated_at = util.nowIso();
+      board.plans.push(made);
+      savePlanItem(made);
+      board.planFresh = { id: made.id, until: Date.now() + 4000 };
+      planGridPick(board.planner, key, made.id);
     });
   }
 
