@@ -1712,13 +1712,17 @@ function richItemOf(box) {
       ink.classList.toggle('is-on', !!tone);
     }
     var block = ctx ? richBlockOf(ctx, ctx.range.startContainer, ctx.range.startOffset) : null;
-    var alignNow = 'left';
+    var alignNow = '';
     var probe = block;
     while (probe && probe !== ctx.box && !alignNow) {
       alignNow = (probe.style && probe.style.getPropertyValue('text-align')) || '';
       probe = probe.parentNode;
     }
-    alignNow = alignNow || 'left';
+    if (!alignNow && block && window.getComputedStyle) {
+      var seen = window.getComputedStyle(block).textAlign || '';
+      alignNow = /center|right|justify/.test(seen) ? seen : '';
+    }
+    alignNow = alignNow === 'start' ? 'left' : (alignNow === 'end' ? 'right' : (alignNow || 'left'));
     Array.prototype.forEach.call(richBar.querySelectorAll('[data-align]'), function (button) {
       button.classList.toggle('is-on', !!ctx && button.getAttribute('data-align') === alignNow);
     });
