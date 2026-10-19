@@ -2141,7 +2141,11 @@ function richItemOf(box) {
     box.appendChild(row);
     var name = String(data.title || '').trim();
     if (name) box.appendChild(node('span', 'bd-linkcard__name', name));
-    else if (!media) box.appendChild(node('span', 'bd-linkcard__name', data.host || hostOf(url)));
+    else if (!media) {
+      // Without a page title the host is already on the row above, so the second line is the path.
+      var path = String(url || '').replace(/^[a-z]+:\/\//i, '').replace(/^[^/]+\/?/i, '').replace(/[?#].*$/, '');
+      if (path) box.appendChild(node('span', 'bd-linkcard__name', '/' + path));
+    }
     if (data.description) box.appendChild(node('p', 'bd-linkcard__desc', data.description));
     if (data.failed) box.appendChild(node('span', 'bd-linkcard__status', 'No preview available for this page'));
     fitLinkCard(item);
@@ -7633,6 +7637,11 @@ column.addEventListener('dragover', function (event) {
     if (kind === 'link') { try { renderLinkCard(view); } catch (e) { } }
     var wrap = node('div', 'bd-plan__compose');
     wrap.appendChild(card);
+    // A link is one line of text, so the dialog says what the one line is for instead of leaving a hole.
+    if (kind === 'link') {
+      wrap.classList.add('is-link');
+      wrap.appendChild(node('p', 'bd-plan__hint', 'Paste an address and the card fills in by itself.'));
+    }
     var ms = calMs(key);
     var when = new Date(ms === null ? Date.now() : ms);
     App.ui.dialog({
