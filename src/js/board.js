@@ -739,6 +739,7 @@ window.NoteApp = window.NoteApp || {};
       if (lockOf(item)) return;
       item.data[key] = box.innerHTML;
       queueItemSave(item);
+      planRelabel(item);
     });
     box.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
     box.addEventListener('focus', function () { pushUndo('edit'); });
@@ -3523,11 +3524,25 @@ function richItemOf(box) {
     paintPlanner();
   }
 
+  // A chip, bar or row carries the block's own words, so typing has to reach it before the next repaint does.
+  function planRelabel(item) {
+    if (!item || !item.id) return;
+    var label = planLabelOf(item);
+    if (!label) return;
+    Array.prototype.forEach.call(document.querySelectorAll('[data-plan-id="' + item.id + '"], [data-ol-id="' + item.id + '"]'), function (el) {
+      if (el.__planView) return;
+      var slot = el.querySelector('.bd-cal__tdchiptext, .bd-cal__teventtext, .bd-cal__rtitle, .bd-cal__oltitle');
+      if (!slot) return;
+      slot.textContent = label;
+    });
+  }
+
   function planResultRow(entry) {
     var text = kindText(planKindOf(entry.item));
     var title = planPlain(entry.title) || text.label;
     var row = node('button', 'bd-cal__row' + (planDoneOf(entry.item) ? ' is-done' : ''));
     row.type = 'button';
+    row.setAttribute('data-plan-id', entry.item.id);
     row.setAttribute('data-result-key', entry.key);
     row.title = 'Open ' + entry.key;
     var glyph = node('span', 'bd-cal__ricon');
