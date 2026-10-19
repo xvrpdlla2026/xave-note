@@ -5836,11 +5836,38 @@ window.NoteApp = window.NoteApp || {};
     // shell it was loaded with, so take the one reload that puts the new build on screen.
     var controlled = !!navigator.serviceWorker.controller;
     var reloaded = false;
-    navigator.serviceWorker.addEventListener('controllerchange', function () {
+    // Reloading under someone's hands would drop a draft they are still writing, so wait for a
+    // quiet moment and try again shortly.
+    var busy = function () {
+      var el = document.activeElement;
+      if (document.querySelector('dialog[open], .bd-cal__quick, .bd-rich__pop, .bd-rich__menu')) return true;
+      return !!(el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)));
+    };
+    var land = function () {
       if (!controlled || reloaded) return;
+      if (busy()) {
+        window.setTimeout(land, 4000);
+        return;
+      }
       reloaded = true;
       window.location.reload();
+    };
+    navigator.serviceWorker.addEventListener('controllerchange', land);
+    // The browser only looks for a new build on navigation, which a page left open all day never
+    // does, so ask on its behalf and then let the swap reload this one.
+    var ask = function () {
+      try {
+        navigator.serviceWorker.getRegistration().then(function (reg) {
+          if (reg) reg.update();
+        }).catch(function () {
+        });
+      } catch (err) {  }
+    };
+    window.addEventListener('focus', ask);
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) ask();
     });
+    window.setInterval(ask, 60000);
     try {
       navigator.serviceWorker.register('sw.js').catch(function () {
       });
