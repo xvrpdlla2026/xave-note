@@ -4020,7 +4020,7 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__dayinfo { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .bd-cal__dayhead { font-size: 15px; font-weight: 600; color: var(--text); }
 .bd-cal__daycount { font-size: 11.5px; color: var(--text-faint); }
-.bd-cal__list { position: relative; flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; scrollbar-gutter: stable; }
+.bd-cal__list { padding-bottom: 16px; position: relative; flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; scrollbar-gutter: stable; }
 .bd-cal__row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-raised); }
 .bd-cal__text { flex: 1 1 auto; font-size: 12.5px; color: var(--text); outline: none; min-height: 16px; word-break: break-word; }
 .bd-cal__text.is-edit:empty:before { content: 'Untitled'; color: var(--text-faint); }

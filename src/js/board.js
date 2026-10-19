@@ -4858,6 +4858,16 @@ function richItemOf(box) {
     body.scrollTop = Math.max(0, Math.round(body.scrollTop + shift));
   }
 
+  // Bringing a fresh block's card up keeps it clear of the panel edge, the way the clock reveal keeps its bar clear.
+  function planCardIntoView(list, card) {
+    var view = list.getBoundingClientRect();
+    var spot = card.getBoundingClientRect();
+    var room = 14;
+    var shift = spot.bottom > view.bottom - room ? spot.bottom - (view.bottom - room) : 0;
+    if (spot.top - shift < view.top + room) shift = spot.top - (view.top + room);
+    if (shift) list.scrollTop = Math.max(0, Math.round(list.scrollTop + shift));
+  }
+
   function planRevealFresh(plan) {
     var fresh = board.planFresh;
     if (!fresh || Date.now() > fresh.until) return;
@@ -4872,7 +4882,7 @@ function richItemOf(box) {
       view.y = Math.round(list.clientHeight / 2 - (box.y + box.h / 2) * view.z);
       planPaintView(plan);
     } else {
-      card.scrollIntoView({ block: 'nearest' });
+      planCardIntoView(list, card);
     }
     if (!plan.full) planReveal(fresh.id);
     var edit = card.querySelector('[contenteditable="true"]')
@@ -6274,7 +6284,7 @@ column.addEventListener('dragover', function (event) {
       if (board.planner && board.planner.tool === 'select') list.classList.add('is-select-mode');
       list.appendChild(node('div', 'bd-cal__canvas'));
       list.addEventListener('pointerdown', planCanvasGrab);
-      requestAnimationFrame(function () {
+      if (!board.planFresh) requestAnimationFrame(function () {
         list.scrollLeft = PLAN_ORIGIN.x - 24;
         list.scrollTop = PLAN_ORIGIN.y - 24;
       });
@@ -6284,13 +6294,13 @@ column.addEventListener('dragover', function (event) {
     planChrome(plan);
     planSheetZoomPaint(plan);
     if (plan.full) planPaintView(plan);
-planRevealFresh(plan);
     if (keepScroll) {
       var after = el.querySelector('.bd-cal__list');
       if (after) after.scrollTop = keepScroll;
     }
     var clock = el.querySelector('.bd-cal__tbody');
     if (clock && keepClock) clock.scrollTop = keepClock;
+    planRevealFresh(plan);
     if (board.planRevealId && board.planRevealUntil > Date.now()) planScrollTo(board.planRevealId);
     if (caret) {
       filter.focus();
