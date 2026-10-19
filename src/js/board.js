@@ -3783,6 +3783,26 @@ function richItemOf(box) {
     return time ? time + ' \u00b7 ' + day : day;
   }
 
+  // A repaint tears down the node the pointer just landed on, so a dialog that closes under a press waits for the gesture to end.
+  var planSoon = false;
+  var planPressed = false;
+  function planLater() {
+    if (planSoon) return;
+    planSoon = true;
+    var fire = function () {
+      if (!planSoon) return;
+      planSoon = false;
+      planPressed = false;
+      window.removeEventListener('pointerup', fire, true);
+      window.removeEventListener('pointercancel', fire, true);
+      paintPlanner();
+    };
+    window.addEventListener('pointerup', fire, true);
+    window.addEventListener('pointercancel', fire, true);
+    // A press waits for its own release, because a repaint mid-drag would take the drag highlight with it.
+    if (!planPressed) window.setTimeout(fire, 60);
+  }
+
   function planWhenClose() {
     Array.prototype.forEach.call(document.querySelectorAll('.bd-plan__whenform'), function (form) {
       if (form.parentNode) form.parentNode.removeChild(form);
@@ -4258,7 +4278,7 @@ function richItemOf(box) {
     };
     var shut = function () {
       planQuickClose();
-      paintPlanner();
+      planLater();
     };
     if (!fresh) {
       var kill = calButton('Delete', function () {
@@ -4271,8 +4291,8 @@ function richItemOf(box) {
     }
     var bail = calButton('Cancel', function () {
       planQuickClose();
-      if (fresh) removePlannerItem(item);
-      else paintPlanner();
+      if (fresh) removePlannerItem(item, true);
+      else planLater();
     }, 'is-quiet');
     var keep = calButton(fresh ? 'Create' : 'Save', function () {
       write();
@@ -4310,6 +4330,7 @@ function richItemOf(box) {
     day.addEventListener('input', sum);
     var outside = function (event) {
       if (box.contains(event.target)) return;
+      planPressed = true;
       // Clicking away from a draft that was never confirmed drops it, together with anything typed into it.
       if (fresh) bail.click();
       else keep.click();
@@ -4373,10 +4394,11 @@ function richItemOf(box) {
     return (day ? day + ' - ' : '') + clock + (len ? ' (' + len + ')' : '');
   }
 
-  function removePlannerItem(item) {
+  function removePlannerItem(item, later) {
     board.plans = board.plans.filter(function (row) { return row.id !== item.id; });
     try { App.db.boardDeleteItem(item.id); } catch (e) { }
-    paintPlanner();
+    if (later) planLater();
+    else paintPlanner();
   }
 
   // A planner drag names its blocks by id, and a planned block can belong to any board, so the id
