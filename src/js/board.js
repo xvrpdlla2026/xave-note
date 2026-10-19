@@ -4932,17 +4932,13 @@ function richItemOf(box) {
       if (fresh) bail.click();
       else keep.click();
     };
+    // Enter belongs to the note: a note is lines, so it only ever starts a new one, and the
+    // block is confirmed by pressing Create rather than by a keystroke.
     var keys = function (event) {
-      if (event.key === 'Escape') {
-        event.stopPropagation();
-        event.preventDefault();
-        bail.click();
-        return;
-      }
-      if (event.key === 'Enter') {
-        event.preventDefault();
-        keep.click();
-      }
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      event.preventDefault();
+      bail.click();
     };
     window.addEventListener('pointerdown', outside, true);
     window.addEventListener('keydown', keys, true);
