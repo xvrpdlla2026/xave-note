@@ -4394,6 +4394,8 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__quickicon { display: inline-flex; flex: none; color: var(--text-faint); }
 .bd-cal__quickrow { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; }
 .bd-cal__quickrow .bd-plan__time { width: 100%; min-width: 0; }
+.bd-cal__quickrow .bd-plan__time:disabled { opacity: 0.4; }
+.bd-cal__quickrow.is-off .bd-plan__rangedash { opacity: 0.4; }
 .bd-cal__quickhead { display: flex; align-items: center; gap: 8px; }
 .bd-cal__quickkind { display: inline-flex; align-items: center; gap: 7px; color: var(--text-muted); font-size: 10.5px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; }
 .bd-cal__quickwhen { display: flex; flex-direction: column; gap: 8px; padding: 9px 10px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-sunken); }

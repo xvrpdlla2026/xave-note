@@ -4921,12 +4921,21 @@ function richItemOf(box) {
     to.addEventListener('change', function () { wake(); stamp(); sum(); });
     from.addEventListener('input', sum);
     to.addEventListener('input', sum);
+    // All day means no clock, so the two time fields go quiet rather than sitting there inviting a time.
+    var wireAllDay = function () {
+      var off = all.checked;
+      from.disabled = off;
+      to.disabled = off;
+      row.classList.toggle('is-off', off);
+    };
     all.addEventListener('change', function () {
       if (!all.checked && !from.value) from.value = '09:00';
       if (!all.checked && !to.value) to.value = planStamped(Math.min(1439, planClock(from.value) + QUICK_HOUR));
       stamp();
       sum();
+      wireAllDay();
     });
+    wireAllDay();
     var syncRange = function () {
       if (last.value && calMs(last.value) !== null && calMs(last.value) <= calMs(day.value || key)) last.value = '';
       sum();
