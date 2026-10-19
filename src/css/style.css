@@ -4365,6 +4365,19 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__teventtext { overflow: hidden; color: var(--text); white-space: nowrap; text-overflow: ellipsis; }
 .bd-cal__nowline { position: absolute; left: 0; right: 0; height: 2px; background: #e5484d; }
 .bd-cal__nowline::before { content: ''; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 999px; background: #e5484d; }
+/* A block is booked by pressing a lane, so the lane shows the range before you let go, and the quick add takes its title where you drew it. */
+.bd-cal__tdrag { position: absolute; left: 2px; right: 2px; z-index: 3; display: flex; align-items: flex-start; padding: 3px 6px; border: 1px solid var(--accent-ring); border-radius: 6px; background: var(--accent-soft); color: var(--accent); font-size: 10.5px; font-variant-numeric: tabular-nums; pointer-events: none; }
+.bd-cal__quick { position: fixed; z-index: 1002; display: flex; flex-direction: column; gap: 8px; width: 318px; padding: 10px 12px 12px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--bg-raised); box-shadow: 0 14px 34px rgba(0, 0, 0, 0.38); }
+.bd-cal__quicktitle { width: 100%; padding: 1px 0 7px; border: 0; border-bottom: 1px solid var(--border); background: none; color: var(--text); font: inherit; font-size: 15px; }
+.bd-cal__quicktitle:focus { outline: none; border-bottom-color: var(--accent-ring); }
+.bd-cal__quicksub { color: var(--text-faint); font-size: 11px; }
+.bd-cal__quickrow { display: flex; align-items: center; gap: 6px; }
+.bd-cal__quickicon { display: inline-flex; flex: none; color: var(--text-faint); }
+.bd-cal__quickrow .bd-plan__rangedate { flex: 1 1 auto; min-width: 0; }
+.bd-cal__quickrow .bd-plan__time { flex: none; width: 82px; }
+.bd-cal__quickall { display: flex; align-items: center; gap: 7px; color: var(--text-muted); font-size: 11.5px; cursor: pointer; }
+.bd-cal__quickacts { display: flex; align-items: center; gap: 6px; }
+.bd-cal__quickacts .is-quiet { margin-left: auto; }
 .bd-cal__views { display: inline-flex; align-items: center; gap: 2px; height: 30px; padding: 0 3px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-raised); }
 .bd-cal__views .bd-cal__btn { height: 24px; padding: 0 10px; border: 0; border-radius: 6px; background: none; color: var(--text-faint); font-size: 12px; }
 .bd-cal__views .bd-cal__btn:hover { background: var(--bg-hover); color: var(--text); }

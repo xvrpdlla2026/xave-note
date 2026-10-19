@@ -4042,7 +4042,7 @@ function richItemOf(box) {
     item.saveTimer = setTimeout(function () { item.saveTimer = null; savePlanItem(item); }, 400);
   }
 
-  function addPlannerItem(kind, key, time) {
+  function addPlannerItem(kind, key, time, end) {
     if (kind === 'draw' && !board.planDrawAdd) {
       board.planPadDate = key;
       openDrawPad(null);
@@ -4053,6 +4053,7 @@ function richItemOf(box) {
     var data = defaultData(kind);
     data.planner = key;
     if (time) data.time = time;
+    if (end) data.end = end;
     var item = {
       id: util.uuid(),
       board_id: PLAN_BOARD,
@@ -4073,6 +4074,150 @@ function richItemOf(box) {
     savePlanItem(item);
     paintPlanner();
     return item;
+  }
+
+  var QUICK_HOUR = 60;
+
+  function planQuickClose() {
+    Array.prototype.forEach.call(document.querySelectorAll('.bd-cal__quick'), function (el) {
+      if (typeof el.__planOff === 'function') el.__planOff();
+      el.remove();
+    });
+  }
+
+  function planQuickName(item, wording) {
+    if (!item.data) item.data = {};
+    var text = String(wording == null ? '' : wording);
+    var bar = plannerEl().querySelector('.bd-cal__tevent[data-plan-id="' + item.id + '"] .bd-cal__teventtext');
+    if (bar) bar.textContent = text || kindText(item.kind).label;
+    item.data.text = text;
+    item.data.title = text;
+    savePlanItem(item);
+  }
+
+  // Creating a block on the clock asks for its title right where you drew it, the way a calendar does.
+  function planQuickAdd(item, key, at) {
+    planQuickClose();
+    var box = node('div', 'bd-cal__quick');
+    box.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
+    var title = node('input', 'bd-cal__quicktitle');
+    title.type = 'text';
+    title.value = planTitle(item) || '';
+    title.placeholder = 'Add title';
+    title.setAttribute('aria-label', 'Block title');
+    var when = String((item.data && item.data.time) || '');
+    var row = node('div', 'bd-cal__quickrow');
+    var glyph = node('span', 'bd-cal__quickicon');
+    var glyphIcon = App.ui.icon('calendar', 13);
+    if (glyphIcon) glyph.appendChild(glyphIcon);
+    row.appendChild(glyph);
+    var day = node('input', 'bd-plan__rangedate');
+    day.type = 'date';
+    day.value = key;
+    day.title = 'Day';
+    day.setAttribute('aria-label', 'Day');
+    var from = node('input', 'bd-plan__time');
+    from.type = 'time';
+    from.value = when;
+    from.title = 'Start time';
+    from.setAttribute('aria-label', 'Start time');
+    var dash = node('span', 'bd-plan__rangedash', '-');
+    var to = node('input', 'bd-plan__time');
+    to.type = 'time';
+    to.value = String((item.data && item.data.end) || '');
+    to.title = 'End time';
+    to.setAttribute('aria-label', 'End time');
+    row.appendChild(day);
+    row.appendChild(from);
+    row.appendChild(dash);
+    row.appendChild(to);
+    var allRow = node('label', 'bd-cal__quickall');
+    var all = node('input', '');
+    all.type = 'checkbox';
+    all.checked = !when;
+    allRow.appendChild(all);
+    allRow.appendChild(node('span', '', 'All day'));
+    var subtitle = node('div', 'bd-cal__quicksub', planSubLabel(item, key));
+    var acts = node('div', 'bd-cal__quickacts');
+    var done = calButton('Done', function () { close(true); }, 'is-quiet');
+    var kill = calButton('Delete', function () { removePlannerItem(item); }, 'is-quiet');
+    acts.appendChild(done);
+    acts.appendChild(kill);
+    box.appendChild(title);
+    box.appendChild(subtitle);
+    box.appendChild(row);
+    box.appendChild(allRow);
+    box.appendChild(acts);
+    document.body.appendChild(box);
+    var commit = function () {
+      if (!item.data) item.data = {};
+      item.data.time = all.checked ? '' : from.value;
+      item.data.end = all.checked ? '' : (to.value || '');
+      planQuickName(item, title.value);
+    };
+    var close = function (redraw) {
+      commit();
+      planQuickClose();
+      if (redraw) paintPlanner();
+    };
+    var stamp = function () {
+      if (all.checked) return;
+      if (from.value && !to.value) to.value = planStamped(Math.min(1439, planClock(from.value) + QUICK_HOUR));
+      if (to.value && !from.value) from.value = planStamped(Math.max(0, planClock(to.value) - QUICK_HOUR));
+    };
+    title.addEventListener('input', function () { planQuickName(item, title.value); });
+    from.addEventListener('change', function () { stamp(); commit(); });
+    to.addEventListener('change', function () { stamp(); commit(); });
+    all.addEventListener('change', function () {
+      if (!all.checked && !from.value) from.value = '09:00';
+      if (!all.checked && !to.value) to.value = planStamped(Math.min(1439, planClock(from.value) + QUICK_HOUR));
+      stamp();
+      commit();
+      paintPlanner();
+    });
+    day.addEventListener('change', function () {
+      var next = day.value || key;
+      if (!item.data) item.data = {};
+      item.data.plans = [next];
+      if (item.data.planner) item.data.planner = next;
+      commit();
+      paintPlanner();
+    });
+    var outside = function (event) {
+      if (box.contains(event.target)) return;
+      close(true);
+    };
+    var keys = function (event) {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        event.preventDefault();
+        close(true);
+        return;
+      }
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        close(true);
+      }
+    };
+    window.addEventListener('pointerdown', outside, true);
+    window.addEventListener('keydown', keys, true);
+    box.__planOff = function () {
+      window.removeEventListener('pointerdown', outside, true);
+      window.removeEventListener('keydown', keys, true);
+    };
+    var spot = at || { left: box.getBoundingClientRect().left || 40, top: 120 };
+    box.style.left = Math.max(8, Math.min(Math.round(spot.left), Math.round(window.innerWidth - box.getBoundingClientRect().width - 8))) + 'px';
+    box.style.top = Math.max(8, Math.min(Math.round(spot.top), Math.round(window.innerHeight - box.getBoundingClientRect().height - 8))) + 'px';
+    title.focus();
+    try { title.setSelectionRange(title.value.length, title.value.length); } catch (e) { }
+    return item;
+  }
+
+  function planSubLabel(item, key) {
+    var when = planClock((item.data && item.data.time) || '');
+    var where = planKeyOf(item) ? calShort(planKeyOf(item)) : '';
+    if (when === null) return 'All day' + (where ? ' - ' + where : '');
+    return 'Scheduled' + (where ? ' - ' + where : '');
   }
 
   function removePlannerItem(item) {
@@ -4944,6 +5089,48 @@ function richItemOf(box) {
     paintPlanner();
   }
 
+  // Press and drag down a lane to book a range. A press that does not travel books the hour it landed on.
+  function planTimeDrag(col, key) {
+    col.addEventListener('pointerdown', function (event) {
+      if (event.button !== 0 || board.planDrag) return;
+      if (event.target !== col) return;
+      event.preventDefault();
+      var plan = board.planner;
+      if (!plan || plan.tool === 'select' && plan.full) return;
+      var anchor = planSnapped(planMinutesAt(col, event.clientY));
+      var ghost = node('div', 'bd-cal__tdrag');
+      var stamp = node('span', 'bd-cal__tdragtext');
+      ghost.appendChild(stamp);
+      col.appendChild(ghost);
+      var reach = anchor + QUICK_HOUR;
+      var moved = false;
+      var paint = function (clientY) {
+        var at = planSnapped(planMinutesAt(col, clientY));
+        if (Math.abs(at - anchor) >= 15) moved = true;
+        reach = moved ? Math.max(at, anchor + 15) : anchor + QUICK_HOUR;
+        ghost.style.top = (anchor / 60 * PLAN_HOUR) + 'px';
+        ghost.style.height = Math.max(14, (reach - anchor) / 60 * PLAN_HOUR) + 'px';
+        stamp.textContent = planTimeLabel(planStamped(anchor)) + ' - ' + planTimeLabel(planStamped(reach));
+      };
+      paint(event.clientY);
+      var stop = function (event, cancelled) {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        window.removeEventListener('pointercancel', gone);
+        if (ghost.parentNode) ghost.remove();
+        if (cancelled) return;
+        var made = addPlannerItem('note', key, planStamped(anchor), planStamped(reach));
+        if (made) planQuickAdd(made, key, { left: event.clientX + 12, top: event.clientY - 26 });
+      };
+      var move = function (event) { paint(event.clientY); };
+      var up = function (event) { stop(event, false); };
+      var gone = function (event) { stop(event, true); };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+      window.addEventListener('pointercancel', gone);
+    });
+  }
+
   // Day and week share one clock: an hour gutter, a lane per day and every timed block drawn where it belongs.
   function planTimeGrid(plan, keys, todayKey, week) {
     var wrap = node('div', 'bd-cal__tgrid');
@@ -4968,6 +5155,15 @@ function richItemOf(box) {
     keys.forEach(function (key) {
       var lane = node('div', 'bd-cal__tallcol');
       lane.setAttribute('data-key', key);
+      lane.addEventListener('pointerdown', (function (useKey) {
+        return function (event) {
+          if (event.button !== 0 || event.target !== lane) return;
+          if (board.planDrag || board.planDragSources) return;
+          event.preventDefault();
+          var made = addPlannerItem('note', useKey, '', '');
+          if (made) planQuickAdd(made, useKey, { left: event.clientX + 12, top: event.clientY + 6 });
+        };
+      })(key));
       planSort(planFiltered(planEntries(key)), key).forEach(function (entry) {
         if (planTimed(entry)) return;
         var chip = node('button', 'bd-cal__tdchip' + (planDoneOf(entry.item, entry.board) ? ' is-done' : ''));
@@ -5045,12 +5241,7 @@ function richItemOf(box) {
         mark.title = 'Now';
         col.appendChild(mark);
       }
-      col.addEventListener('click', (function (useKey) {
-        return function (event) {
-          if (event.target !== col) return;
-          addPlannerItem('note', useKey, planStamped(planSnapped(planMinutesAt(col, event.clientY))));
-        };
-      })(key));
+      planTimeDrag(col, key);
       col.addEventListener('dragover', function (event) {
         if (!board.planDrag && !planDragHas(event)) return;
         event.preventDefault();
@@ -5523,6 +5714,7 @@ function richItemOf(box) {
 
   function paintPlanner() {
     planWhenClose();
+    planQuickClose();
     var plan = board.planner;
     if (!plan || !board.root) return;
     var el = plannerEl();
