@@ -4070,7 +4070,8 @@ function richItemOf(box) {
     item.saveTimer = setTimeout(function () { item.saveTimer = null; savePlanItem(item); }, 400);
   }
 
-  function addPlannerItem(kind, key, time, end) {
+  // A draft stays in memory only, so nothing is stored until the dialog that opened it is confirmed.
+  function addPlannerItem(kind, key, time, end, draft) {
     if (kind === 'draw' && !board.planDrawAdd) {
       board.planPadDate = key;
       openDrawPad(null);
@@ -4098,8 +4099,9 @@ function richItemOf(box) {
       updated_at: now,
     };
     board.planFresh = { id: item.id, until: Date.now() + 4000 };
+    if (draft) item.__planDraft = true;
     board.plans.push(item);
-    savePlanItem(item);
+    if (!draft) savePlanItem(item);
     paintPlanner();
     return item;
   }
@@ -4120,7 +4122,7 @@ function richItemOf(box) {
     if (bar) bar.textContent = text || kindText(item.kind).label;
     item.data.text = text;
     item.data.title = text;
-    savePlanItem(item);
+    if (!item.__planDraft) savePlanItem(item);
   }
 
   function planQuickNode(item) {
@@ -4238,6 +4240,7 @@ function richItemOf(box) {
     var acts = node('div', 'bd-cal__quickacts');
     // Nothing reaches the block until Save, so Cancel can put the dialog away without leaving half an edit behind.
     var write = function () {
+      delete item.__planDraft;
       if (!item.data) item.data = {};
       var next = day.value || key;
       item.data.plans = [next];
@@ -4307,7 +4310,9 @@ function richItemOf(box) {
     day.addEventListener('input', sum);
     var outside = function (event) {
       if (box.contains(event.target)) return;
-      keep.click();
+      // Clicking away from a draft that was never confirmed drops it, together with anything typed into it.
+      if (fresh) bail.click();
+      else keep.click();
     };
     var keys = function (event) {
       if (event.key === 'Escape') {
@@ -5598,7 +5603,7 @@ function richItemOf(box) {
         window.removeEventListener('pointercancel', gone);
         if (ghost.parentNode) ghost.remove();
         if (cancelled) return;
-        var made = addPlannerItem('note', key, planStamped(from), planStamped(to));
+        var made = addPlannerItem('note', key, planStamped(from), planStamped(to), true);
         if (made) planQuickAdd(made, key, { left: event.clientX + 12, top: event.clientY - 26 }, planQuickNode(made), null, { isNew: true });
       };
       var move = function (event) { pointerY = event.clientY; paint(event.clientY); };
@@ -5639,7 +5644,7 @@ function richItemOf(box) {
           if (event.button !== 0 || event.target !== lane) return;
           if (board.planDrag || board.planDragSources) return;
           event.preventDefault();
-          var made = addPlannerItem('note', useKey, '', '');
+          var made = addPlannerItem('note', useKey, '', '', true);
           if (made) planQuickAdd(made, useKey, { left: event.clientX + 12, top: event.clientY + 6 }, planQuickNode(made), null, { isNew: true });
         };
       })(key));
