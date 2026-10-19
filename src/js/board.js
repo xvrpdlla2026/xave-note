@@ -4686,27 +4686,8 @@ function richItemOf(box) {
         return x < box.x + box.w + gap && x + w + gap > box.x && y < box.y + box.h + gap && y + h + gap > box.y;
       });
     };
-    var el = board.plannerEl && board.plannerEl.querySelector('.bd-cal__list');
-    var area = null;
-    if (el && board.planner && board.planner.full) {
-      var box = el.getBoundingClientRect();
-      var view = planView(board.planner);
-      area = { x: (box.left - view.x) / view.z + 24, y: (box.top - view.y) / view.z + 24, w: box.width / view.z, h: box.height / view.z };
-    }
-    var seen = function (x, y) {
-      return !area || (x >= area.x - 24 && y >= area.y - 24 && x < area.x + area.w && y < area.y + area.h);
-    };
     var first = { x: 30 + (index % 3) * colStep, y: 30 + Math.floor(index / 3) * rowStep };
-    if (!clash(first.x, first.y) && seen(first.x, first.y)) return first;
-    if (area) {
-      for (var line = 0; line * rowStep < area.h; line++) {
-        for (var slot = 0; slot * colStep < area.w; slot++) {
-          var nearX = Math.round(area.x + slot * colStep);
-          var nearY = Math.round(area.y + line * rowStep);
-          if (!clash(nearX, nearY)) return { x: nearX, y: nearY };
-        }
-      }
-    }
+    if (!clash(first.x, first.y)) return first;
     for (var row = 0; row < 14; row++) {
       for (var col = 0; col < 12; col++) {
         var x = 30 + col * colStep;
