@@ -4166,6 +4166,12 @@ function richItemOf(box) {
     box.style.top = Math.max(8, Math.min(Math.round(base.top), Math.round(window.innerHeight - height - 8))) + 'px';
   }
 
+  // A click carries where the pointer was, so the dialog opens there instead of hanging off the right edge.
+  function planQuickAt(event) {
+    if (!event || (!event.clientX && !event.clientY)) return null;
+    return { left: event.clientX + 12, top: event.clientY - 26 };
+  }
+
   // A block asks for its title and its time right where it sits, whether it is new or already there.
   function planQuickAdd(item, key, at, anchor, isBoard, opts) {
     planQuickClose();
@@ -5646,9 +5652,9 @@ function richItemOf(box) {
         chip.appendChild(node('span', 'bd-cal__tdchiptext', planGridName(entry, key)));
         if (planDoneOf(entry.item, entry.board)) chip.classList.add('is-done');
         chip.setAttribute('data-plan-id', entry.item.id);
-        chip.addEventListener('click', function () {
+        chip.addEventListener('click', function (event) {
           planGridPick(plan, key, entry.item.id);
-          planQuickAdd(entry.item, key, null, planQuickNode(entry.item), entry.board);
+          planQuickAdd(entry.item, key, planQuickAt(event), planQuickNode(entry.item), entry.board);
         });
         chip.setAttribute('draggable', 'true');
         chip.addEventListener('dragstart', function (event) {
@@ -5709,7 +5715,7 @@ function richItemOf(box) {
           return function (event) {
             event.stopPropagation();
             planGridPick(plan, useKey, useEntry.item.id);
-            planQuickAdd(useEntry.item, useKey, null, planQuickNode(useEntry.item), useEntry.board);
+            planQuickAdd(useEntry.item, useKey, planQuickAt(event), planQuickNode(useEntry.item), useEntry.board);
           };
         })(entry, key));
         col.appendChild(bar);
