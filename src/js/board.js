@@ -6106,7 +6106,7 @@ function richItemOf(box) {
     var dayActs = node('div', 'bd-cal__dayacts');
     var blockLabel = 'Choose what to add to this day';
     var blockButton = calButton('+ Block', function () {
-      planAddKind(plan, plan.full ? PLAN_KIND_ORDER : PLAN_ADD_KINDS);
+      planAddKind(plan);
     }, 'is-quiet');
     blockButton.title = blockLabel;
     blockButton.setAttribute('aria-label', blockLabel);
@@ -6558,11 +6558,11 @@ column.addEventListener('dragover', function (event) {
   var PLAN_KIND_ORDER = ['note', 'todo', 'comment', 'link', 'image', 'table', 'column', 'draw'];
 
   // Which kind it is matters, so a new block is picked rather than assumed to be a note.
-  function planAddKind(plan, kinds) {
+  function planAddKind(plan) {
     var grid = node('div', 'bd-cal__kinds');
     var tiles = [];
     var close = null;
-    (kinds || PLAN_ADD_KINDS).forEach(function (kind) {
+    PLAN_ADD_KINDS.forEach(function (kind) {
       var text = kindText(kind);
       var tile = node('button', 'bd-cal__kindtile');
       tile.type = 'button';
