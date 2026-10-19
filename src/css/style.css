@@ -4067,6 +4067,7 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__day.is-over { outline: 1px dashed var(--accent-ring); outline-offset: 2px; }
 .bd-cal__list .bd-item--draw .bd-item__body { height: 220px; }
 .bd-cal__list .bd-item--draw .bd-draw { height: 220px; }
+.bd-cal__list:not(.is-canvas) .bd-item--draw .bd-item__bar { height: 30px; opacity: 1; }
 .bd-cal__list .bd-item--column .bd-item__body { height: 220px; }
 .bd-cal__list .bd-item--table .bd-item__body { max-height: 320px; }
 .bd-cal__list > .bd-item { flex: none; }
