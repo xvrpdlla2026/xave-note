@@ -3345,6 +3345,120 @@ function richItemOf(box) {
     return keys.length ? keys[0] : null;
   }
 
+  var PLAN_REPEAT_UNITS = ['day', 'week', 'month', 'year'];
+
+  function planRepeatOf(item) {
+    var rule = item && item.data ? item.data.repeat : null;
+    if (!rule || !rule.kind || rule.kind === 'none') return null;
+    return rule;
+  }
+
+  function planRepeatStart(item) {
+    var data = (item && item.data) || {};
+    return data.spanFrom || planKeyOf(item) || null;
+  }
+
+  // The dialog starts from the stored rule so re-opening a repeated block shows what it will keep doing.
+  function planRepeatDraft(item) {
+    var saved = planRepeatOf(item);
+    if (!saved) return { kind: 'none', every: 1, unit: 'day', days: [], until: '' };
+    return { kind: saved.kind, every: saved.every || 1, unit: saved.unit || 'day', days: (saved.days || []).slice(), until: saved.until || '' };
+  }
+
+  function planRepeatValue(rule) {
+    if (!rule || !rule.kind || rule.kind === 'none') return null;
+    if (rule.kind !== 'custom') return { kind: rule.kind, every: 1, until: String(rule.until || '') };
+    return {
+      kind: 'custom',
+      every: Math.max(1, Math.round(Number(rule.every) || 1)),
+      unit: PLAN_REPEAT_UNITS.indexOf(rule.unit) >= 0 ? rule.unit : 'day',
+      days: (rule.days || []).slice().sort(),
+      until: String(rule.until || ''),
+    };
+  }
+
+  function planWeekdayOf(key) {
+    var ms = calMs(key);
+    return ms === null ? null : new Date(ms).getDay();
+  }
+
+  function planMonthOf(key) {
+    var ms = calMs(key);
+    return ms === null ? null : new Date(ms).getFullYear() * 12 + new Date(ms).getMonth();
+  }
+
+  function planOrdinal(n) {
+    return ['first', 'second', 'third', 'fourth', 'fifth'][n - 1] || n + 'th';
+  }
+
+  function planLongDay(key) {
+    var ms = calMs(key);
+    if (ms === null) return '';
+    try { return new Date(ms).toLocaleDateString([], { weekday: 'long' }); } catch (e) { return CAL_DAYS[new Date(ms).getDay()]; }
+  }
+
+  function planLongMonth(key) {
+    var ms = calMs(key);
+    if (ms === null) return '';
+    try { return new Date(ms).toLocaleDateString([], { month: 'long', day: 'numeric' }); } catch (e) { return calShort(key); }
+  }
+
+  // The same sentence names the rule in the menu, on the button and in the block chip, so the three never drift apart.
+  function planRepeatText(rule, startKey) {
+    var kind = rule && rule.kind ? rule.kind : 'none';
+    var every = Math.max(1, Math.round(Number(rule && rule.every) || 1));
+    var unit = rule && rule.unit ? rule.unit : 'day';
+    var many = function (n, one) { return n > 1 ? 'Every ' + n + ' ' + one + 's' : 'Every ' + one; };
+    if (kind === 'none') return 'Does not repeat';
+    if (kind === 'daily') return every > 1 ? many(every, 'day') : 'Daily';
+    if (kind === 'weekday') return 'Every weekday (Monday to Friday)';
+    if (kind === 'weekly') return every > 1 ? many(every, 'week') + ' on ' + planLongDay(startKey) : 'Weekly on ' + planLongDay(startKey);
+    if (kind === 'monthly') {
+      var ms = calMs(startKey);
+      if (ms === null) return 'Monthly';
+      return 'Monthly on the ' + planOrdinal(Math.ceil(new Date(ms).getDate() / 7)) + ' ' + planLongDay(startKey);
+    }
+    if (kind === 'yearly') return 'Annually on ' + planLongMonth(startKey);
+    if (unit === 'week') {
+      var days = (rule.days || []).length;
+      return (every > 1 ? many(every, 'week') : 'Weekly') + ' on ' + (days > 1 ? days + ' days' : planLongDay(startKey));
+    }
+    if (unit === 'month') return many(every, 'month') + ' on day ' + Number(String(startKey || '').slice(8));
+    if (unit === 'year') return many(every, 'year') + ' on ' + planLongMonth(startKey);
+    return many(every, 'day');
+  }
+
+  function planRepeatHit(item, key) {
+    var rule = planRepeatOf(item);
+    var start = planRepeatStart(item);
+    if (!rule || !start || !key || key === start) return false;
+    var a = calMs(start);
+    var b = calMs(key);
+    if (a === null || b === null || b < a) return false;
+    if (rule.until && key > rule.until) return false;
+    var every = Math.max(1, Math.round(Number(rule.every) || 1));
+    var days = Math.round((b - a) / 86400000);
+    var weekday = planWeekdayOf(key);
+    var mine = (rule.days && rule.days.length ? rule.days : [planWeekdayOf(start)]);
+    var weekBlock = Math.floor(days / 7) % every === 0;
+    if (rule.kind === 'daily') return days % every === 0;
+    if (rule.kind === 'weekday') return weekday >= 1 && weekday <= 5;
+    if (rule.kind === 'weekly') return mine.indexOf(weekday) >= 0 && weekBlock;
+    if (rule.kind === 'monthly') {
+      var months = planMonthOf(key) - planMonthOf(start);
+      return months > 0 && months % every === 0 && weekday === planWeekdayOf(start) && Math.ceil(Number(key.slice(8)) / 7) === Math.ceil(Number(start.slice(8)) / 7);
+    }
+    if (rule.kind === 'yearly') return key.slice(5) === start.slice(5) && (Number(key.slice(0, 4)) - Number(start.slice(0, 4))) % every === 0;
+    var unit = PLAN_REPEAT_UNITS.indexOf(rule.unit) >= 0 ? rule.unit : 'day';
+    if (unit === 'day') return days % every === 0;
+    if (unit === 'week') return mine.indexOf(weekday) >= 0 && weekBlock;
+    if (unit === 'month') {
+      var gap = planMonthOf(key) - planMonthOf(start);
+      return gap > 0 && gap % every === 0 && Number(key.slice(8)) === Number(start.slice(8));
+    }
+    return key.slice(5) === start.slice(5) && (Number(key.slice(0, 4)) - Number(start.slice(0, 4))) % every === 0;
+  }
+
   function planTitle(item) {
     if (item.data && item.data.text) return planPlain(item.data.text);
     if (item.data && item.data.planner) return '';
@@ -3404,7 +3518,19 @@ function richItemOf(box) {
     board.plans.forEach(function (item) {
       if (item.data && planKeysOf(item).indexOf(key) >= 0) out.push({ board: false, key: key, item: item, boardId: PLAN_BOARD, title: planLabelOf(item) });
     });
-    return out;
+    // A repeated block is stored once and stands in for every day its rule names, so one row keeps all of them up to date.
+    var seen = {};
+    out.forEach(function (entry) { if (entry.item) seen[entry.item.id] = true; });
+    var repeats = [];
+    var offer = function (item, isBoard, foreign, boardId) {
+      if (!item || seen[item.id] || !planRepeatHit(item, key)) return;
+      seen[item.id] = true;
+      repeats.push({ board: isBoard, foreign: !!foreign, key: key, item: item, boardId: boardId, repeat: true, title: planTitle(item) || planLabelOf(item) });
+    };
+    board.items.forEach(function (item) { offer(item, true, false, BOARD_ID); });
+    planScope().forEach(function (item) { offer(item, true, true, item.board_id); });
+    board.plans.forEach(function (item) { offer(item, false, false, PLAN_BOARD); });
+    return out.concat(repeats);
   }
 
   function kindRank(kind) {
@@ -3817,7 +3943,8 @@ function richItemOf(box) {
     var to = item.data && item.data.spanTo ? item.data.spanTo : '';
     var day = from ? calRangeLabel(from, to) : (planKeyOf(item) ? calShort(planKeyOf(item)) : 'When');
     var time = planEventClock(item, isBoard);
-    return time ? time + ' \u00b7 ' + day : day;
+    var line = time ? time + ' \u00b7 ' + day : day;
+    return planRepeatOf(item) ? line + ' \u00b7 repeats' : line;
   }
 
   // A repaint tears down the node the pointer just landed on, so a dialog that closes under a press waits for the gesture to end.
@@ -3840,148 +3967,25 @@ function richItemOf(box) {
     if (!planPressed) window.setTimeout(fire, 60);
   }
 
-  function planWhenClose() {
-    Array.prototype.forEach.call(document.querySelectorAll('.bd-plan__whenform'), function (form) {
-      if (form.parentNode) form.parentNode.removeChild(form);
-    });
-  }
-
-  // A card clips its own children, so the panel lives on the page and is placed under the chip.
-  function planWhenForm(item, isBoard, button) {
-    var from = item.data && item.data.spanFrom ? item.data.spanFrom : '';
-    var to = item.data && item.data.spanTo ? item.data.spanTo : '';
-    var form = node('div', 'bd-plan__whenform');
-    var chip = button.getBoundingClientRect();
-    form.style.left = Math.max(8, Math.round(chip.right - 306)) + 'px';
-    form.style.top = Math.round(chip.bottom + 6) + 'px';
-    var time = node('input', 'bd-plan__time');
-    time.type = 'time';
-    time.value = planTimeOf(item, isBoard);
-    time.title = 'Time';
-    time.setAttribute('aria-label', 'Time');
-    var stop = node('input', 'bd-plan__time');
-    stop.type = 'time';
-    stop.value = planEndOf(item, isBoard);
-    stop.title = 'End time';
-    stop.setAttribute('aria-label', 'End time');
-    var start = node('input', 'bd-plan__rangedate');
-    start.type = 'date';
-    start.value = from || planKeyOf(item) || '';
-    start.title = 'First day';
-    start.setAttribute('aria-label', 'First day of the range');
-    var end = node('input', 'bd-plan__rangedate');
-    end.type = 'date';
-    end.value = to || from || planKeyOf(item) || '';
-    end.title = 'Last day';
-    end.setAttribute('aria-label', 'Last day of the range');
-    [time, stop, start, end].forEach(function (input) {
-      input.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
-    });
-    var apply = node('button', 'bd-plan__rangego', 'Save');
-    apply.type = 'button';
-    apply.addEventListener('click', function (event) {
-      event.stopPropagation();
-      if (start.value && !planSetRange(item, start.value, end.value || start.value)) util.toast('Pick a first and a last day');
-      if (!item.data) item.data = {};
-      if (isBoard) { item.data.planTime = time.value; item.data.planEnd = stop.value; } else { item.data.time = time.value; item.data.end = stop.value; }
-      savePlanItem(item);
-      planWhenClose();
-      paintPlanner();
-    });
-    var remove = node('button', 'bd-plan__rangego is-quiet bd-plan__whendel', 'Delete');
-    remove.type = 'button';
-    remove.title = 'Delete this block';
-    remove.addEventListener('click', function (event) {
-      event.stopPropagation();
-      planWhenClose();
-      removePlannerItem(item);
-    });
-    var cancel = node('button', 'bd-plan__rangego is-quiet', 'Cancel');
-    cancel.type = 'button';
-    cancel.title = 'Close without saving';
-    cancel.addEventListener('click', function (event) {
-      event.stopPropagation();
-      planWhenClose();
-    });
-    var clockRow = node('div', 'bd-plan__whenclock');
-    clockRow.appendChild(time);
-    clockRow.appendChild(node('span', 'bd-plan__rangedash', '-'));
-    clockRow.appendChild(stop);
-    var rangeRow = node('div', 'bd-plan__whenrange');
-    rangeRow.appendChild(start);
-    rangeRow.appendChild(node('span', 'bd-plan__rangedash', 'to'));
-    rangeRow.appendChild(end);
-    var head = node('div', 'bd-plan__whenhead');
-    var sum = node('div', 'bd-plan__whensum', '');
-    var refreshSum = function () {
-      sum.textContent = planWhenSumText(start.value, end.value, time.value, stop.value);
-    };
-    [time, stop, start, end].forEach(function (input) {
-      input.addEventListener('change', refreshSum);
-      input.addEventListener('input', refreshSum);
-    });
-    refreshSum();
-    head.appendChild(sum);
-    var whenActs = node('div', 'bd-plan__whenacts');
-    whenActs.appendChild(remove);
-    whenActs.appendChild(cancel);
-    whenActs.appendChild(apply);
-    form.appendChild(head);
-    form.appendChild(node('span', 'bd-plan__whenlabel', 'Time'));
-    form.appendChild(clockRow);
-    form.appendChild(node('span', 'bd-plan__whenlabel', 'Days'));
-    form.appendChild(rangeRow);
-    form.appendChild(whenActs);
-    requestAnimationFrame(function () {
-      if (!form.parentNode) return;
-      var size = form.getBoundingClientRect();
-      var chipBox = button.getBoundingClientRect();
-      form.style.left = Math.max(8, Math.min(Math.round(chipBox.right - size.width), Math.round(window.innerWidth - size.width - 8))) + 'px';
-      // The form is as tall as its fields, so it goes above the block when the block sits near the bottom of the window.
-      if (chipBox.bottom + 6 + size.height > window.innerHeight - 8 && chipBox.top - 6 - size.height >= 8) {
-        form.style.top = '';
-        form.style.bottom = Math.round(window.innerHeight - chipBox.top + 6) + 'px';
-        return;
-      }
-      form.style.bottom = '';
-      form.style.top = Math.round(Math.min(chipBox.bottom + 6, Math.max(8, window.innerHeight - size.height - 8))) + 'px';
-    });
-    return form;
-  }
-
   function planWhenTools(item, isBoard) {
     var wrap = node('div', 'bd-plan__when');
     var from = item.data && item.data.spanFrom ? item.data.spanFrom : '';
     var timed = !!planTimeOf(item, isBoard);
     var button = node('button', 'bd-plan__whenbtn' + (from || timed ? ' is-on' : ''), planWhenLabel(item, isBoard));
     button.type = 'button';
-    button.title = 'Set the time and the days for this block';
+    button.title = 'Set the time, the days and the repeat for this block';
     button.setAttribute('aria-label', button.title);
     button.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
     button.addEventListener('click', function (event) {
       event.stopPropagation();
-      var open = document.querySelector('.bd-plan__whenform');
-      if (open) { planWhenClose(); return; }
-      var form = planWhenForm(item, isBoard, button);
-      var close = function () {
-        window.removeEventListener('pointerdown', away, true);
-        window.removeEventListener('wheel', away, true);
-        window.removeEventListener('keydown', onKey, true);
-        if (form.parentNode) form.parentNode.removeChild(form);
-      };
-      var away = function (event) {
-        if (event.type === 'pointerdown' && (form.contains(event.target) || button.contains(event.target))) return;
-        close();
-      };
-      var onKey = function (event) { if (event.key === 'Escape') close(); };
-      window.addEventListener('pointerdown', away, true);
-      window.addEventListener('wheel', away, true);
-      window.addEventListener('keydown', onKey, true);
-      document.body.appendChild(form);
+      if (document.querySelector('.bd-cal__quick')) { planQuickClose(); return; }
+      var day = planRepeatStart(item) || planKeyOf(item) || (board.planner && board.planner.date) || calKey(Date.now());
+      planQuickAdd(item, day, planQuickAt(event), button, isBoard);
     });
     wrap.appendChild(button);
     return wrap;
   }
+
   function savePlanItem(item) {
     if (item.__planDraft) return;
     item.updated_at = util.nowIso();
@@ -4291,23 +4295,141 @@ function richItemOf(box) {
     row.appendChild(from);
     row.appendChild(dash);
     row.appendChild(to);
+    dayRow.appendChild(node('span', 'bd-cal__quicktag', 'From'));
     dayRow.appendChild(day);
+    var lastRow = node('div', 'bd-cal__quickday');
+    lastRow.appendChild(node('span', 'bd-cal__quicktag', 'To'));
+    var last = node('input', 'bd-plan__rangedate');
+    last.type = 'date';
+    last.title = 'Last day';
+    last.setAttribute('aria-label', 'Last day');
+    lastRow.appendChild(last);
+    var keepLast = item.data && item.data.spanTo && item.data.spanTo !== day.value ? item.data.spanTo : '';
+    last.value = keepLast;
     group.appendChild(groupHead);
     group.appendChild(dayRow);
     group.appendChild(row);
+    group.appendChild(lastRow);
     var subtitle = node('div', 'bd-cal__quicksub');
     var sum = function () {
       subtitle.textContent = planQuickLine(day.value || key, all.checked, from.value, to.value);
     };
     sum();
+    var rule = planRepeatDraft(item);
+    var repeat = node('div', 'bd-cal__repeat');
+    var repeatHead = node('div', 'bd-cal__repeathead');
+    repeatHead.appendChild(node('span', 'bd-cal__quicklabel', 'Repeat'));
+    var repeatBtn = node('button', 'bd-cal__repeatbtn');
+    repeatBtn.type = 'button';
+    repeatBtn.setAttribute('aria-haspopup', 'true');
+    var menu = node('div', 'bd-cal__repmenu');
+    menu.hidden = true;
+    var custom = node('div', 'bd-cal__repcustom');
+    custom.hidden = true;
+    var startKey = function () { return day.value || key; };
+    var everyIn = node('input', 'bd-cal__repnum');
+    everyIn.type = 'number';
+    everyIn.min = '1';
+    everyIn.max = '99';
+    everyIn.title = 'How often';
+    everyIn.setAttribute('aria-label', 'How often');
+    var unitSel = node('select', 'bd-cal__repunit');
+    unitSel.title = 'Repeat unit';
+    unitSel.setAttribute('aria-label', 'Repeat unit');
+    [['day', 'days'], ['week', 'weeks'], ['month', 'months'], ['year', 'years']].forEach(function (pair) {
+      var opt = node('option', '', pair[1]);
+      opt.value = pair[0];
+      unitSel.appendChild(opt);
+    });
+    var unitRow = node('div', 'bd-cal__reprow');
+    unitRow.appendChild(node('span', 'bd-cal__quicktag', 'Every'));
+    unitRow.appendChild(everyIn);
+    unitRow.appendChild(unitSel);
+    var chips = CAL_DAYS.map(function (name, index) {
+      var chip = node('button', 'bd-cal__repday', name.slice(0, 2));
+      chip.type = 'button';
+      chip.title = name;
+      chip.setAttribute('aria-label', name);
+      chip.addEventListener('click', function (event) {
+        event.stopPropagation();
+        var at = rule.days.indexOf(index);
+        if (at >= 0) rule.days.splice(at, 1);
+        else rule.days.push(index);
+        paint();
+      });
+      return chip;
+    });
+    var chipRow = node('div', 'bd-cal__repdays');
+    chips.forEach(function (chip) { chipRow.appendChild(chip); });
+    var untilIn = node('input', 'bd-cal__repuntil');
+    untilIn.type = 'date';
+    untilIn.title = 'Last day of the repeat';
+    untilIn.setAttribute('aria-label', 'This repeats until');
+    var untilRow = node('div', 'bd-cal__reprow');
+    untilRow.appendChild(node('span', 'bd-cal__quicktag', 'Until'));
+    untilRow.appendChild(untilIn);
+    var chipHint = node('span', 'bd-cal__rephint', 'On these days');
+    custom.appendChild(unitRow);
+    custom.appendChild(chipHint);
+    custom.appendChild(chipRow);
+    custom.appendChild(untilRow);
+    var paint = function () {
+      repeatBtn.textContent = planRepeatText(rule, startKey());
+      repeatBtn.appendChild(node('span', 'bd-cal__repcaret', ''));
+      custom.hidden = rule.kind !== 'custom';
+      everyIn.value = String(rule.every || 1);
+      unitSel.value = rule.unit || 'day';
+      untilIn.value = rule.until || '';
+      chips.forEach(function (chip, index) { chip.classList.toggle('is-on', rule.days.indexOf(index) >= 0); });
+      chipHint.textContent = rule.unit === 'week' ? 'On these days' : 'Repeat unit';
+      chipRow.hidden = rule.unit !== 'week';
+    };
+    var fillMenu = function () {
+      menu.innerHTML = '';
+      [{ kind: 'none' }, { kind: 'daily' }, { kind: 'weekly' }, { kind: 'monthly' }, { kind: 'yearly' }, { kind: 'weekday' }, { kind: 'custom', text: 'Custom...' }].forEach(function (opt) {
+        var pick = node('button', 'bd-cal__repopt' + (rule.kind === opt.kind ? ' is-on' : ''), opt.text || planRepeatText({ kind: opt.kind, every: 1, days: [] }, startKey()));
+        pick.type = 'button';
+        pick.addEventListener('click', function (event) {
+          event.stopPropagation();
+          rule.kind = opt.kind;
+          if (opt.kind !== 'custom') { rule.every = 1; rule.until = ''; }
+          if (opt.kind === 'weekly' && !rule.days.length) rule.days = [];
+          menu.hidden = true;
+          paint();
+        });
+        menu.appendChild(pick);
+      });
+    };
+    repeatBtn.addEventListener('click', function (event) {
+      event.stopPropagation();
+      if (menu.hidden) fillMenu();
+      menu.hidden = !menu.hidden;
+    });
+    everyIn.addEventListener('input', function () {
+      rule.every = Math.max(1, Math.round(Number(everyIn.value) || 1));
+      paint();
+    });
+    unitSel.addEventListener('change', function () {
+      rule.unit = unitSel.value;
+      paint();
+    });
+    untilIn.addEventListener('change', function () {
+      rule.until = untilIn.value || '';
+      paint();
+    });
+    repeat.appendChild(repeatHead);
+    repeat.appendChild(repeatBtn);
+    repeat.appendChild(menu);
+    repeat.appendChild(custom);
+    paint();
     var acts = node('div', 'bd-cal__quickacts');
     // Nothing reaches the block until Save, so Cancel can put the dialog away without leaving half an edit behind.
     var write = function () {
       delete item.__planDraft;
       if (!item.data) item.data = {};
-      var next = day.value || key;
-      item.data.plans = [next];
-      if (item.data.planner) item.data.planner = next;
+      var first = day.value || key;
+      var stop = last.value && calMs(last.value) !== null && calMs(last.value) > calMs(first) ? last.value : first;
+      planSetRange(item, first, stop);
       planQuickName(item, title.value);
       var timed = !all.checked && !!from.value;
       if (isBoard) {
@@ -4317,6 +4439,9 @@ function richItemOf(box) {
         item.data.time = timed ? from.value : '';
         item.data.end = timed ? (to.value || '') : '';
       }
+      var saved = planRepeatValue(rule);
+      if (saved) item.data.repeat = saved;
+      else delete item.data.repeat;
       savePlanItem(item);
     };
     var shut = function () {
@@ -4347,6 +4472,7 @@ function richItemOf(box) {
     box.appendChild(subtitle);
     box.appendChild(title);
     box.appendChild(group);
+    box.appendChild(repeat);
     box.appendChild(acts);
     document.body.appendChild(box);
     var stamp = function () {
@@ -4369,8 +4495,15 @@ function richItemOf(box) {
       stamp();
       sum();
     });
-    day.addEventListener('change', sum);
-    day.addEventListener('input', sum);
+    var syncRange = function () {
+      if (last.value && calMs(last.value) !== null && calMs(last.value) <= calMs(day.value || key)) last.value = '';
+      sum();
+      paint();
+    };
+    day.addEventListener('change', syncRange);
+    day.addEventListener('input', syncRange);
+    last.addEventListener('change', sum);
+    last.addEventListener('input', sum);
     var outside = function (event) {
       if (box.contains(event.target)) return;
       planPressed = true;
@@ -4410,20 +4543,6 @@ function richItemOf(box) {
   function planLengthText(minutes) {
     if (!(minutes > 0)) return '';
     return minutes >= 60 ? Math.floor(minutes / 60) + 'h' + (minutes % 60 ? ' ' + minutes % 60 + 'm' : '') : minutes + 'm';
-  }
-
-  function planWhenSumText(first, last, from, to) {
-    var a = calMs(first);
-    var b = calMs(last);
-    var day = '';
-    if (a !== null && b !== null && b > a) day = calShort(first) + ' - ' + calShort(last) + ' - ' + (Math.round((b - a) / 86400000) + 1) + ' days';
-    else if (a !== null) day = CAL_DAYS[new Date(a).getDay()] + ', ' + calShort(first);
-    var begin = planClock(from);
-    var end = planClock(to);
-    if (begin === null) return day ? day + ' - all day' : 'All day';
-    var clock = planTimeLabel(planStamped(begin)) + (end !== null && end > begin ? ' - ' + planTimeLabel(planStamped(end)) : '');
-    var length = planLengthText(end !== null ? end - begin : 0);
-    return (day ? day + ' - ' : '') + clock + (length ? ' (' + length + ')' : '');
   }
 
   function planQuickLine(key, allDay, from, to) {
@@ -6272,7 +6391,7 @@ function richItemOf(box) {
   }
 
   function paintPlanner() {
-    planWhenClose();
+    planQuickClose();
     planQuickClose();
     var shell = plannerEl();
     if (!shell.__planReveal) {
