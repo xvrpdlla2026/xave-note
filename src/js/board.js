@@ -6555,7 +6555,6 @@ column.addEventListener('dragover', function (event) {
     draw: 'Sketch by hand',
   };
 
-  var PLAN_KIND_ORDER = ['note', 'todo', 'comment', 'link', 'image', 'table', 'column', 'draw'];
 
   // Which kind it is matters, so a new block is picked rather than assumed to be a note.
   function planAddKind(plan) {
