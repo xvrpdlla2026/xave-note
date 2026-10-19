@@ -4676,12 +4676,56 @@ function richItemOf(box) {
     if (bottom) grid.style.height = Math.max(60, Math.round(bottom)) + 'px';
   }
 
-  function planCanvasBox(item, key, index) {
+  // A new block takes the next place that is actually free, so moving blocks around never leaves a fresh one on top of another.
+  function planCanvasFree(taken, w, h, index) {
+    var gap = 24;
+    var colStep = 330;
+    var rowStep = 310;
+    var clash = function (x, y) {
+      return taken.some(function (box) {
+        return x < box.x + box.w + gap && x + w + gap > box.x && y < box.y + box.h + gap && y + h + gap > box.y;
+      });
+    };
+    var el = board.plannerEl && board.plannerEl.querySelector('.bd-cal__list');
+    var area = null;
+    if (el && board.planner && board.planner.full) {
+      var box = el.getBoundingClientRect();
+      var view = planView(board.planner);
+      area = { x: (box.left - view.x) / view.z + 24, y: (box.top - view.y) / view.z + 24, w: box.width / view.z, h: box.height / view.z };
+    }
+    var seen = function (x, y) {
+      return !area || (x >= area.x - 24 && y >= area.y - 24 && x < area.x + area.w && y < area.y + area.h);
+    };
+    var first = { x: 30 + (index % 3) * colStep, y: 30 + Math.floor(index / 3) * rowStep };
+    if (!clash(first.x, first.y) && seen(first.x, first.y)) return first;
+    if (area) {
+      for (var line = 0; line * rowStep < area.h; line++) {
+        for (var slot = 0; slot * colStep < area.w; slot++) {
+          var nearX = Math.round(area.x + slot * colStep);
+          var nearY = Math.round(area.y + line * rowStep);
+          if (!clash(nearX, nearY)) return { x: nearX, y: nearY };
+        }
+      }
+    }
+    for (var row = 0; row < 14; row++) {
+      for (var col = 0; col < 12; col++) {
+        var x = 30 + col * colStep;
+        var y = 30 + row * rowStep;
+        if (!clash(x, y)) return { x: x, y: y };
+      }
+    }
+    var low = 30;
+    taken.forEach(function (box) { low = Math.max(low, box.y + box.h + 30); });
+    return { x: 30, y: low };
+  }
+
+  function planCanvasBox(item, key, index, taken) {
     var saved = item.data && item.data.planCanvas ? item.data.planCanvas[key] : null;
     if (saved && typeof saved.x === 'number') return { x: saved.x, y: saved.y, w: saved.w, h: saved.h };
     var w = Math.max(230, Math.round(item.w || 268));
     var h = Math.max(150, Math.round(item.h || 176));
-    return { x: 30 + (index % 3) * 330, y: 30 + Math.floor(index / 3) * 310, w: w, h: h };
+    var spot = planCanvasFree(taken || [], w, h, index);
+    return { x: spot.x, y: spot.y, w: w, h: h };
   }
 
   function planCanvasApply(card, box) {
@@ -4774,8 +4818,14 @@ function richItemOf(box) {
 
   // Reordering the day slides blocks up and down the list, so a block takes its place on the canvas
   // once and keeps it, because the canvas is laid out by hand and the list is laid out by order.
-  function planCanvasCard(card, entry, key, index) {
-    var box = planCanvasBox(entry.item, key, index);
+  function planCanvasCard(card, entry, key, index, entries) {
+    var taken = [];
+    (entries || []).forEach(function (other) {
+      if (!other || other === entry || !other.item || !other.item.data || !other.item.data.planCanvas) return;
+      var row = other.item.data.planCanvas[key];
+      if (row && typeof row.x === 'number') taken.push(row);
+    });
+    var box = planCanvasBox(entry.item, key, index, taken);
     var stored = entry.item.data && entry.item.data.planCanvas ? entry.item.data.planCanvas[key] : null;
     if (!stored) planCanvasKeep(entry.item, key, box);
     card.__planCanvas = box;
@@ -6316,7 +6366,7 @@ function richItemOf(box) {
     if (plan.full && !plan.view) plan.__fitPending = true;
     dayEntries.forEach(function (entry, index) {
       var card = planCard(entry);
-      if (plan.full) planCanvasCard(card, entry, plan.date, index);
+      if (plan.full) planCanvasCard(card, entry, plan.date, index, dayEntries);
       if (board.planFresh && board.planFresh.id === entry.item.id) card.classList.add('is-fresh', 'is-selected');
       list.appendChild(card);
       var ink = card.querySelector('.bd-draw__canvas');
