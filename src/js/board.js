@@ -1383,6 +1383,9 @@ function richItemOf(box) {
     var rect = ctx.range.getBoundingClientRect();
     if (!rect || (!rect.width && !rect.height)) { richHide(); return; }
     if (!richBar) richBar = buildRichBar();
+    var layer = ctx.box.closest ? ctx.box.closest('dialog[open]') : null;
+    if (layer && richBar.parentNode !== layer) layer.appendChild(richBar);
+    else if (!layer && richBar.parentNode !== document.body) document.body.appendChild(richBar);
     richPlace(rect);
     var field = richBar.querySelector('.bd-rich__size');
     if (field && document.activeElement !== field) field.value = richSizeNow();
@@ -3342,7 +3345,7 @@ function richItemOf(box) {
   }
 
   function planTitle(item) {
-    if (item.data && item.data.text) return String(item.data.text);
+    if (item.data && item.data.text) return planPlain(item.data.text);
     if (item.data && item.data.planner) return '';
     try { return barLabel(item).textContent; } catch (e) { return item.kind; }
   }
@@ -6995,6 +6998,7 @@ column.addEventListener('dragover', function (event) {
     var body = node('div', 'bd-item__body');
     card.appendChild(body);
     view.node = card;
+    card.__planView = view;
     body.appendChild(bodyFor(view));
     if (kind === 'link') { try { renderLinkCard(view); } catch (e) { } }
     var wrap = node('div', 'bd-plan__compose');
