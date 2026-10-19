@@ -7645,6 +7645,23 @@ column.addEventListener('dragover', function (event) {
       wrap.classList.add('is-link');
       wrap.appendChild(node('p', 'bd-plan__hint', 'Paste an address and the card fills in by itself.'));
     }
+    // The box is bigger than one line, so a click on its empty grey has to mean "type here".
+    wrap.addEventListener('pointerdown', function (event) {
+      var target = event.target;
+      if (!target || !target.closest) return;
+      if (target.closest('.bd-text, .bd-title, input, textarea, button, a, [contenteditable="true"]')) return;
+      var editor = wrap.querySelector('.bd-text, .bd-title, textarea');
+      if (!editor) return;
+      event.preventDefault();
+      editor.focus();
+      if (!editor.isContentEditable) return;
+      var caret = document.createRange();
+      caret.selectNodeContents(editor);
+      caret.collapse(false);
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(caret);
+    });
     var ms = calMs(key);
     var when = new Date(ms === null ? Date.now() : ms);
     App.ui.dialog({

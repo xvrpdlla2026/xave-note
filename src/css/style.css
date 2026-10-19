@@ -4519,6 +4519,7 @@ html.is-board-boot body > *:not(.board) { display: none; }
 /* A link card sizes itself to its preview after every unfurl, so the dialog has to outrank that. */
 .bd-plan__compose .bd-item { position: relative; width: 100% !important; height: auto !important; min-height: 0; border: 0; border-radius: 0; background: none; box-shadow: none; overflow: visible; }
 .bd-plan__compose .bd-item__body { padding: 0; overflow: visible; }
+.bd-plan__compose .bd-text { min-height: 96px; }
 .bd-plan__compose .bd-image__empty { width: 100%; padding: 6px 0; }
 .bd-plan__compose.is-link { min-height: 0; }
 .bd-plan__compose .bd-item--link .bd-linkcard { height: auto; gap: 9px; }
