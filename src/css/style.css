@@ -4368,7 +4368,7 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__nowline::before { content: ''; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 999px; background: #e5484d; }
 /* A block is booked by pressing a lane, so the lane shows the range before you let go, and the quick add takes its title where you drew it. */
 .bd-cal__tdrag { position: absolute; left: 2px; right: 2px; z-index: 3; display: flex; align-items: flex-start; padding: 3px 6px; border: 1px solid var(--accent-ring); border-radius: 6px; background: var(--accent-soft); color: var(--accent); font-size: 10.5px; font-variant-numeric: tabular-nums; pointer-events: none; }
-.bd-cal__quick { position: fixed; z-index: 1002; display: flex; flex-direction: column; gap: 9px; width: 336px; padding: 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: 0 16px 40px rgba(0, 0, 0, 0.42); }
+.bd-cal__quick { position: fixed; z-index: 1002; display: flex; flex-direction: column; gap: 10px; width: 352px; padding: 13px; border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: 0 16px 40px rgba(0, 0, 0, 0.42); }
 .bd-cal__quicktitle { width: 100%; height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg); color: var(--text); font: inherit; font-size: 13.5px; }
 .bd-cal__quicktitle::placeholder { color: var(--text-faint); }
 .bd-cal__quicktitle:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
@@ -4378,6 +4378,15 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__quickicon { display: inline-flex; flex: none; color: var(--text-faint); }
 .bd-cal__quickrow { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; }
 .bd-cal__quickrow .bd-plan__time { width: 100%; min-width: 0; }
+.bd-cal__quickhead { display: flex; align-items: center; gap: 8px; }
+.bd-cal__quickkind { display: inline-flex; align-items: center; gap: 7px; color: var(--text-muted); font-size: 10.5px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; }
+.bd-cal__quickkill { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; margin-left: auto; padding: 0; border: 1px solid transparent; border-radius: 7px; background: none; color: var(--text-faint); cursor: pointer; }
+.bd-cal__quickkill:hover { border-color: var(--border); background: var(--bg-sunken); color: var(--danger); }
+.bd-cal__quickwhen { display: flex; flex-direction: column; gap: 8px; padding: 9px 10px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-sunken); }
+.bd-cal__quickwhenhead { display: flex; align-items: center; gap: 8px; }
+.bd-cal__quicklabel { color: var(--text-faint); font-size: 10.5px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; }
+.bd-cal__quickwhenhead .bd-cal__quickall { margin-left: auto; font-size: 11.5px; }
+.bd-cal__quickacts { justify-content: flex-end; }
 .bd-cal__quick .bd-plan__rangedate, .bd-cal__quick .bd-plan__time { height: 34px; padding: 0 9px; border-radius: 9px; background: var(--bg); color: var(--text); font-size: 13px; font-variant-numeric: tabular-nums; }
 .bd-cal__quick .bd-plan__rangedate:focus, .bd-cal__quick .bd-plan__time:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
 .bd-cal__quick .bd-plan__rangedash { flex: none; color: var(--text-faint); font-size: 12px; }

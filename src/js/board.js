@@ -4164,7 +4164,29 @@ function richItemOf(box) {
     title.placeholder = 'Add title';
     title.setAttribute('aria-label', 'Block title');
     var when = planTimeOf(item, !!isBoard);
-    var row = node('div', 'bd-cal__quickrow');
+    var kind = kindText(planKindOf(item));
+    var head = node('div', 'bd-cal__quickhead');
+    var badge = node('span', 'bd-cal__quickkind');
+    var kindGlyph = App.ui.icon(kind.icon, 13);
+    if (kindGlyph) badge.appendChild(kindGlyph);
+    badge.appendChild(node('span', '', kind.label));
+    head.appendChild(badge);
+    var kill = node('button', 'bd-cal__quickkill');
+    kill.type = 'button';
+    kill.title = 'Delete block';
+    kill.setAttribute('aria-label', 'Delete block');
+    kill.appendChild(App.ui.icon('trash', 14));
+    head.appendChild(kill);
+    var group = node('div', 'bd-cal__quickwhen');
+    var groupHead = node('div', 'bd-cal__quickwhenhead');
+    groupHead.appendChild(node('span', 'bd-cal__quicklabel', 'When'));
+    var allRow = node('label', 'bd-cal__quickall');
+    var all = node('input', '');
+    all.type = 'checkbox';
+    all.checked = !when;
+    allRow.appendChild(all);
+    allRow.appendChild(node('span', '', 'All day'));
+    groupHead.appendChild(allRow);
     var glyph = node('span', 'bd-cal__quickicon');
     var glyphIcon = App.ui.icon('calendar', 13);
     if (glyphIcon) glyph.appendChild(glyphIcon);
@@ -4186,27 +4208,22 @@ function richItemOf(box) {
     to.value = planEndOf(item, !!isBoard);
     to.title = 'End time';
     to.setAttribute('aria-label', 'End time');
+    var row = node('div', 'bd-cal__quickrow');
     row.appendChild(from);
     row.appendChild(dash);
     row.appendChild(to);
-    var allRow = node('label', 'bd-cal__quickall');
-    var all = node('input', '');
-    all.type = 'checkbox';
-    all.checked = !when;
-    allRow.appendChild(all);
-    allRow.appendChild(node('span', '', 'All day'));
-    var subtitle = node('div', 'bd-cal__quicksub', planSubLabel(item, key));
+    dayRow.appendChild(day);
+    group.appendChild(groupHead);
+    group.appendChild(dayRow);
+    group.appendChild(row);
+    var subtitle = node('div', 'bd-cal__quicksub', planQuickSummary(item, key, !!isBoard));
     var acts = node('div', 'bd-cal__quickacts');
     var done = calButton('Done', function () { close(true); }, 'is-primary');
-    var kill = calButton('Delete', function () { removePlannerItem(item); }, 'is-quiet');
     acts.appendChild(done);
-    acts.appendChild(kill);
-    box.appendChild(title);
+    box.appendChild(head);
     box.appendChild(subtitle);
-    dayRow.appendChild(day);
-    box.appendChild(dayRow);
-    box.appendChild(row);
-    box.appendChild(allRow);
+    box.appendChild(title);
+    box.appendChild(group);
     box.appendChild(acts);
     document.body.appendChild(box);
     var commit = function () {
@@ -4216,17 +4233,25 @@ function richItemOf(box) {
       if (isBoard) { item.data.planTime = time; item.data.planEnd = stop; }
       else { item.data.time = time; item.data.end = stop; }
       planQuickName(item, title.value);
+      subtitle.textContent = planQuickSummary(item, key, !!isBoard);
     };
     var close = function (redraw) {
       commit();
       planQuickClose();
       if (redraw) paintPlanner();
     };
+    // The day and All day both change how the block lands on the clock, so the panel repaints and the dialog comes back with it.
+    var reopen = function () {
+      paintPlanner();
+      if (item.removed) return;
+      planQuickAdd(item, key, at, anchor, isBoard);
+    };
     var stamp = function () {
       if (all.checked) return;
       if (from.value && !to.value) to.value = planStamped(Math.min(1439, planClock(from.value) + QUICK_HOUR));
       if (to.value && !from.value) from.value = planStamped(Math.max(0, planClock(to.value) - QUICK_HOUR));
     };
+    kill.addEventListener('click', function () { removePlannerItem(item); });
     title.addEventListener('input', function () { planQuickName(item, title.value); });
     from.addEventListener('change', function () { stamp(); commit(); });
     to.addEventListener('change', function () { stamp(); commit(); });
@@ -4235,7 +4260,7 @@ function richItemOf(box) {
       if (!all.checked && !to.value) to.value = planStamped(Math.min(1439, planClock(from.value) + QUICK_HOUR));
       stamp();
       commit();
-      paintPlanner();
+      reopen();
     });
     day.addEventListener('change', function () {
       var next = day.value || key;
@@ -4243,7 +4268,8 @@ function richItemOf(box) {
       item.data.plans = [next];
       if (item.data.planner) item.data.planner = next;
       commit();
-      paintPlanner();
+      key = next;
+      reopen();
     });
     var outside = function (event) {
       if (box.contains(event.target)) return;
@@ -4278,11 +4304,15 @@ function richItemOf(box) {
     return item;
   }
 
-  function planSubLabel(item, key) {
-    var when = planClock((item.data && item.data.time) || '');
-    var where = planKeyOf(item) ? calShort(planKeyOf(item)) : '';
-    if (when === null) return 'All day' + (where ? ' - ' + where : '');
-    return 'Scheduled' + (where ? ' - ' + where : '');
+  function planQuickSummary(item, key, isBoard) {
+    var name = key || planKeyOf(item);
+    var ms = calMs(name);
+    var day = ms === null ? '' : CAL_DAYS[new Date(ms).getDay()] + ', ' + calShort(name);
+    var clock = planEventClock(item, isBoard);
+    if (!clock) return day ? day + ' - all day' : 'All day';
+    var span = planClock(planEndOf(item, isBoard)) - planClock(planTimeOf(item, isBoard));
+    var len = span > 0 ? (span >= 60 ? Math.floor(span / 60) + 'h' + (span % 60 ? ' ' + span % 60 + 'm' : '') : span + 'm') : '';
+    return day + ' - ' + clock + (len ? ' (' + len + ')' : '');
   }
 
   function removePlannerItem(item) {
