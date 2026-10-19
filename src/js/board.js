@@ -3720,14 +3720,6 @@ function richItemOf(box) {
     return true;
   }
 
-  function planClearRange(item) {
-    if (!item || !item.data) return;
-    var keys = planKeysOf(item);
-    delete item.data.spanFrom;
-    delete item.data.spanTo;
-    if (keys.length > 1) planSync(item, [keys[0]]);
-    else savePlanItem(item);
-  }
 
   function calRangeLabel(from, to) {
     if (!from) return 'Range';
@@ -3828,7 +3820,7 @@ function richItemOf(box) {
     [time, stop, start, end].forEach(function (input) {
       input.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
     });
-    var apply = node('button', 'bd-plan__rangego', 'Apply');
+    var apply = node('button', 'bd-plan__rangego', 'Save');
     apply.type = 'button';
     apply.addEventListener('click', function (event) {
       event.stopPropagation();
@@ -3836,15 +3828,23 @@ function richItemOf(box) {
       if (!item.data) item.data = {};
       if (isBoard) { item.data.planTime = time.value; item.data.planEnd = stop.value; } else { item.data.time = time.value; item.data.end = stop.value; }
       savePlanItem(item);
+      planWhenClose();
       paintPlanner();
     });
-    var clear = node('button', 'bd-plan__rangego is-quiet', 'Clear');
-    clear.type = 'button';
-    clear.title = 'Keep the first day only';
-    clear.addEventListener('click', function (event) {
+    var remove = node('button', 'bd-plan__rangego is-quiet bd-plan__whendel', 'Delete');
+    remove.type = 'button';
+    remove.title = 'Delete this block';
+    remove.addEventListener('click', function (event) {
       event.stopPropagation();
-      planClearRange(item);
-      paintPlanner();
+      planWhenClose();
+      removePlannerItem(item);
+    });
+    var cancel = node('button', 'bd-plan__rangego is-quiet', 'Cancel');
+    cancel.type = 'button';
+    cancel.title = 'Close without saving';
+    cancel.addEventListener('click', function (event) {
+      event.stopPropagation();
+      planWhenClose();
     });
     var clockRow = node('div', 'bd-plan__whenclock');
     clockRow.appendChild(time);
@@ -3865,8 +3865,9 @@ function richItemOf(box) {
     });
     refreshSum();
     head.appendChild(sum);
-    head.appendChild(clear);
     var whenActs = node('div', 'bd-plan__whenacts');
+    whenActs.appendChild(remove);
+    whenActs.appendChild(cancel);
     whenActs.appendChild(apply);
     form.appendChild(head);
     form.appendChild(node('span', 'bd-plan__whenlabel', 'Time'));
@@ -4166,8 +4167,9 @@ function richItemOf(box) {
   }
 
   // A block asks for its title and its time right where it sits, whether it is new or already there.
-  function planQuickAdd(item, key, at, anchor, isBoard) {
+  function planQuickAdd(item, key, at, anchor, isBoard, opts) {
     planQuickClose();
+    var fresh = !!(opts && opts.isNew);
     var box = node('div', 'bd-cal__quick');
     box.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
     var title = node('input', 'bd-cal__quicktitle');
@@ -4183,12 +4185,6 @@ function richItemOf(box) {
     if (kindGlyph) badge.appendChild(kindGlyph);
     badge.appendChild(node('span', '', kind.label));
     head.appendChild(badge);
-    var kill = node('button', 'bd-cal__quickkill');
-    kill.type = 'button';
-    kill.title = 'Delete block';
-    kill.setAttribute('aria-label', 'Delete block');
-    kill.appendChild(App.ui.icon('trash', 14));
-    head.appendChild(kill);
     var group = node('div', 'bd-cal__quickwhen');
     var groupHead = node('div', 'bd-cal__quickwhenhead');
     groupHead.appendChild(node('span', 'bd-cal__quicklabel', 'When'));
@@ -4228,81 +4224,95 @@ function richItemOf(box) {
     group.appendChild(groupHead);
     group.appendChild(dayRow);
     group.appendChild(row);
-    var subtitle = node('div', 'bd-cal__quicksub', planQuickSummary(item, key, !!isBoard));
+    var subtitle = node('div', 'bd-cal__quicksub');
+    var sum = function () {
+      subtitle.textContent = planQuickLine(day.value || key, all.checked, from.value, to.value);
+    };
+    sum();
     var acts = node('div', 'bd-cal__quickacts');
-    var done = calButton('Done', function () { close(true); }, 'is-primary');
-    acts.appendChild(done);
+    // Nothing reaches the block until Save, so Cancel can put the dialog away without leaving half an edit behind.
+    var write = function () {
+      if (!item.data) item.data = {};
+      var next = day.value || key;
+      item.data.plans = [next];
+      if (item.data.planner) item.data.planner = next;
+      planQuickName(item, title.value);
+      var timed = !all.checked && !!from.value;
+      if (isBoard) {
+        item.data.planTime = timed ? from.value : '';
+        item.data.planEnd = timed ? (to.value || '') : '';
+      } else {
+        item.data.time = timed ? from.value : '';
+        item.data.end = timed ? (to.value || '') : '';
+      }
+      savePlanItem(item);
+    };
+    var shut = function () {
+      planQuickClose();
+      paintPlanner();
+    };
+    if (!fresh) {
+      var kill = calButton('Delete', function () {
+        planQuickClose();
+        removePlannerItem(item);
+      }, 'is-quiet bd-cal__quickdel');
+      var killIcon = App.ui.icon('trash', 13);
+      if (killIcon) kill.insertBefore(killIcon, kill.firstChild);
+      acts.appendChild(kill);
+    }
+    var bail = calButton('Cancel', function () {
+      planQuickClose();
+      if (fresh) removePlannerItem(item);
+      else paintPlanner();
+    }, 'is-quiet');
+    var keep = calButton(fresh ? 'Create' : 'Save', function () {
+      write();
+      shut();
+    }, 'is-primary');
+    acts.appendChild(bail);
+    acts.appendChild(keep);
     box.appendChild(head);
     box.appendChild(subtitle);
     box.appendChild(title);
     box.appendChild(group);
     box.appendChild(acts);
     document.body.appendChild(box);
-    var commit = function () {
-      if (!item.data) item.data = {};
-      if (!all.checked && !from.value && !to.value) all.checked = true;
-      var time = all.checked ? '' : from.value;
-      var stop = all.checked ? '' : (to.value || '');
-      if (isBoard) { item.data.planTime = time; item.data.planEnd = stop; }
-      else { item.data.time = time; item.data.end = stop; }
-      planQuickName(item, title.value);
-      subtitle.textContent = planQuickSummary(item, key, !!isBoard);
-    };
-    var close = function (redraw) {
-      commit();
-      planQuickClose();
-      if (redraw) paintPlanner();
-    };
-    // The day and All day both change how the block lands on the clock, so the panel repaints and the dialog comes back with it.
-    var reopen = function () {
-      paintPlanner();
-      if (item.removed) return;
-      planQuickAdd(item, key, at, anchor, isBoard);
-    };
     var stamp = function () {
       if (all.checked) return;
       if (from.value && !to.value) to.value = planStamped(Math.min(1439, planClock(from.value) + QUICK_HOUR));
       if (to.value && !from.value) from.value = planStamped(Math.max(0, planClock(to.value) - QUICK_HOUR));
     };
-    kill.addEventListener('click', function () { removePlannerItem(item); });
-    title.addEventListener('input', function () { planQuickName(item, title.value); });
     // A typed time means a timed block, so the all day box clears itself instead of swallowing the clock.
     var wake = function () {
-      if (!all.checked) return;
-      all.checked = false;
+      if (all.checked) all.checked = false;
     };
-    from.addEventListener('change', function () { wake(); stamp(); commit(); });
-    to.addEventListener('change', function () { wake(); stamp(); commit(); });
+    title.addEventListener('input', sum);
+    from.addEventListener('change', function () { wake(); stamp(); sum(); });
+    to.addEventListener('change', function () { wake(); stamp(); sum(); });
+    from.addEventListener('input', sum);
+    to.addEventListener('input', sum);
     all.addEventListener('change', function () {
       if (!all.checked && !from.value) from.value = '09:00';
       if (!all.checked && !to.value) to.value = planStamped(Math.min(1439, planClock(from.value) + QUICK_HOUR));
       stamp();
-      commit();
-      reopen();
+      sum();
     });
-    day.addEventListener('change', function () {
-      var next = day.value || key;
-      if (!item.data) item.data = {};
-      item.data.plans = [next];
-      if (item.data.planner) item.data.planner = next;
-      commit();
-      key = next;
-      reopen();
-    });
+    day.addEventListener('change', sum);
+    day.addEventListener('input', sum);
     var outside = function (event) {
       if (box.contains(event.target)) return;
-      close(true);
+      keep.click();
     };
     var keys = function (event) {
       if (event.key === 'Escape') {
         event.stopPropagation();
         event.preventDefault();
-        close(true);
+        bail.click();
         return;
       }
       if (event.key === 'Enter') {
         event.preventDefault();
-        close(true);
+        keep.click();
       }
     };
     window.addEventListener('pointerdown', outside, true);
@@ -4341,14 +4351,15 @@ function richItemOf(box) {
     return (day ? day + ' - ' : '') + clock + (length ? ' (' + length + ')' : '');
   }
 
-  function planQuickSummary(item, key, isBoard) {
-    var name = key || planKeyOf(item);
-    var ms = calMs(name);
-    var day = ms === null ? '' : CAL_DAYS[new Date(ms).getDay()] + ', ' + calShort(name);
-    var clock = planEventClock(item, isBoard);
-    if (!clock) return day ? day + ' - all day' : 'All day';
-    var len = planLengthText(planClock(planEndOf(item, isBoard)) - planClock(planTimeOf(item, isBoard)));
-    return day + ' - ' + clock + (len ? ' (' + len + ')' : '');
+  function planQuickLine(key, allDay, from, to) {
+    var ms = calMs(key);
+    var day = ms === null ? '' : CAL_DAYS[new Date(ms).getDay()] + ', ' + calShort(key);
+    var begin = allDay ? null : planClock(from);
+    if (begin === null) return day ? day + ' - all day' : 'All day';
+    var end = planClock(to);
+    var clock = planTimeLabel(planStamped(begin)) + (end !== null && end > begin ? ' - ' + planTimeLabel(planStamped(end)) : '');
+    var len = planLengthText(end !== null ? end - begin : 0);
+    return (day ? day + ' - ' : '') + clock + (len ? ' (' + len + ')' : '');
   }
 
   function removePlannerItem(item) {
@@ -5582,7 +5593,7 @@ function richItemOf(box) {
         if (ghost.parentNode) ghost.remove();
         if (cancelled) return;
         var made = addPlannerItem('note', key, planStamped(from), planStamped(to));
-        if (made) planQuickAdd(made, key, { left: event.clientX + 12, top: event.clientY - 26 }, planQuickNode(made));
+        if (made) planQuickAdd(made, key, { left: event.clientX + 12, top: event.clientY - 26 }, planQuickNode(made), null, { isNew: true });
       };
       var move = function (event) { pointerY = event.clientY; paint(event.clientY); };
       var up = function (event) { stop(event, false); };
@@ -5623,7 +5634,7 @@ function richItemOf(box) {
           if (board.planDrag || board.planDragSources) return;
           event.preventDefault();
           var made = addPlannerItem('note', useKey, '', '');
-          if (made) planQuickAdd(made, useKey, { left: event.clientX + 12, top: event.clientY + 6 }, planQuickNode(made));
+          if (made) planQuickAdd(made, useKey, { left: event.clientX + 12, top: event.clientY + 6 }, planQuickNode(made), null, { isNew: true });
         };
       })(key));
       planSort(planFiltered(planEntries(key)), key).forEach(function (entry) {
