@@ -4495,3 +4495,8 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-plan__compose .bd-item { position: relative; width: 100%; height: auto; min-height: 0; border: 0; border-radius: 0; background: none; box-shadow: none; overflow: visible; }
 .bd-plan__compose .bd-item__body { padding: 0; overflow: visible; }
 .bd-plan__compose .bd-image__empty { width: 100%; padding: 6px 0; }
+
+/* A finished block stays readable but steps back everywhere it appears. */
+.bd-item.is-done { opacity: 0.5; }
+.bd-item.is-done:hover, .bd-item.is-done:focus-within { opacity: 0.82; }
+.bd-item.is-done .bd-text, .bd-item.is-done .bd-title { color: var(--text-muted); }

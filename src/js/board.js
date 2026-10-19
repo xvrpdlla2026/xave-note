@@ -2121,6 +2121,7 @@ function richItemOf(box) {
   function paintItem(item) {
     if (item.node && item.node.closest && item.node.closest('.bd-cal')) return;
     var box = node('div', 'bd-item bd-item--' + item.kind);
+    if (planDoneOf(item)) box.classList.add('is-done');
     box.setAttribute('data-board-id', item.id);
     var bar = node('div', 'bd-item__bar');
     var planLabel = barLabel(item);
@@ -3522,7 +3523,7 @@ function richItemOf(box) {
   function planResultRow(entry) {
     var text = kindText(planKindOf(entry.item));
     var title = planPlain(entry.title) || text.label;
-    var row = node('button', 'bd-cal__row' + (planDoneOf(entry.item, entry.board) ? ' is-done' : ''));
+    var row = node('button', 'bd-cal__row' + (planDoneOf(entry.item) ? ' is-done' : ''));
     row.type = 'button';
     row.setAttribute('data-result-key', entry.key);
     row.title = 'Open ' + entry.key;
@@ -4069,8 +4070,8 @@ function richItemOf(box) {
     paintPlanner();
   }
 
-  function planDoneOf(item, isBoard) {
-    if (isBoard || !item.data) return false;
+  function planDoneOf(item) {
+    if (!item.data) return false;
     if (item.kind === 'todo') {
       var rows = item.data.items || [];
       var done = 0;
@@ -4085,6 +4086,7 @@ function richItemOf(box) {
     if (item.kind === 'todo') (item.data.items || []).forEach(function (row) { row.done = done; });
     else item.data.done = done;
     savePlanItem(item);
+    if (item.node) item.node.classList.toggle('is-done', done);
   }
 
   function queuePlanSave(item) {
@@ -4608,6 +4610,7 @@ function richItemOf(box) {
     var box = node('div', 'bd-item bd-item--' + item.kind + ' bd-item--in-plan');
     box.setAttribute('data-plan-id', item.id);
     if (isBoard) box.classList.add('is-linked');
+    if (planDoneOf(item)) box.classList.add('is-done');
     view.node = box;
     box.__planView = view;
     var bar = node('div', 'bd-item__bar');
@@ -4653,20 +4656,19 @@ function richItemOf(box) {
     bar.appendChild(label);
     var tools = node('div', 'bd-item__tools');
     tools.appendChild(planWhenTools(item, isBoard));
-    if (!isBoard && (item.kind === 'todo' || item.kind === 'note')) {
-      var done = planDoneOf(item, false);
-      var toggle = node('button', 'bd-item__lock' + (done ? ' is-on' : ''), '');
-      toggle.type = 'button';
-      toggle.title = done ? 'Mark not done' : 'Mark done';
-      toggle.setAttribute('aria-label', toggle.title);
-      toggle.appendChild(App.ui.icon('check', 12));
-      toggle.addEventListener('click', function (event) {
-        event.stopPropagation();
-        planSetDone(item, !planDoneOf(item, false));
-        paintPlanner();
-      });
-      tools.appendChild(toggle);
-    }
+    var done = planDoneOf(item);
+    box.classList.toggle('is-done', done);
+    var mark = node('button', 'bd-item__lock' + (done ? ' is-on' : ''), '');
+    mark.type = 'button';
+    mark.title = done ? 'Mark as not done' : 'Mark as done';
+    mark.setAttribute('aria-label', mark.title);
+    mark.appendChild(App.ui.icon('check', 12));
+    mark.addEventListener('click', function (event) {
+      event.stopPropagation();
+      planSetDone(item, !planDoneOf(item));
+      paintPlanner();
+    });
+    tools.appendChild(mark);
     var kill = node('button', 'bd-item__x', '×');
     kill.type = 'button';
     kill.setAttribute('aria-label', isBoard ? 'Remove from planner' : 'Delete this block');
@@ -5678,12 +5680,12 @@ function richItemOf(box) {
       })(key));
       planSort(planFiltered(planEntries(key)), key).forEach(function (entry) {
         if (planTimed(entry)) return;
-        var chip = node('button', 'bd-cal__tdchip' + (planDoneOf(entry.item, entry.board) ? ' is-done' : ''));
+        var chip = node('button', 'bd-cal__tdchip' + (planDoneOf(entry.item) ? ' is-done' : ''));
         chip.type = 'button';
         chip.title = planGridName(entry, key);
         chip.appendChild(App.ui.icon(kindText(planKindOf(entry.item)).icon, 11));
         chip.appendChild(node('span', 'bd-cal__tdchiptext', planGridName(entry, key)));
-        if (planDoneOf(entry.item, entry.board)) chip.classList.add('is-done');
+        if (planDoneOf(entry.item)) chip.classList.add('is-done');
         chip.setAttribute('data-plan-id', entry.item.id);
         chip.addEventListener('click', function (event) {
           planGridPick(plan, key, entry.item.id);
@@ -5720,7 +5722,7 @@ function richItemOf(box) {
       planSort(planFiltered(planEntries(key)), key).forEach(function (entry) {
         var span = planTimed(entry);
         if (!span) return;
-        var bar = node('button', 'bd-cal__tevent' + (planDoneOf(entry.item, entry.board) ? ' is-done' : ''));
+        var bar = node('button', 'bd-cal__tevent' + (planDoneOf(entry.item) ? ' is-done' : ''));
         bar.type = 'button';
         bar.setAttribute('data-plan-id', entry.item.id);
         bar.style.top = (span.start / 60 * PLAN_HOUR) + 'px';
@@ -5933,7 +5935,7 @@ function richItemOf(box) {
       return wrap;
     }
     entries.forEach(function (entry) {
-      var row = node('button', 'bd-cal__olrow' + (planDoneOf(entry.item, entry.board) ? ' is-done' : ''));
+      var row = node('button', 'bd-cal__olrow' + (planDoneOf(entry.item) ? ' is-done' : ''));
       row.type = 'button';
       row.title = 'Show this block on the canvas';
       row.setAttribute('data-ol-id', entry.item.id);
@@ -6392,7 +6394,7 @@ function richItemOf(box) {
       num.appendChild(node('span', key === todayKey ? 'bd-cal__num is-today' : 'bd-cal__num', String(day.getDate())));
       if (key < todayKey) {
         var late = 0;
-        entries.forEach(function (entry) { if (!planDoneOf(entry.item, entry.board)) late++; });
+        entries.forEach(function (entry) { if (!planDoneOf(entry.item)) late++; });
         if (late) num.appendChild(node('span', 'bd-cal__nlate', late + ' late'));
         monthLate += late;
       }
@@ -6562,7 +6564,7 @@ function richItemOf(box) {
     var list = node('div', 'bd-cal__list');
     var dayEntries = planSort(planFiltered(planEntries(plan.date)), plan.date);
     var dayDone = 0;
-    dayEntries.forEach(function (entry) { if (planDoneOf(entry.item, entry.board)) dayDone++; });
+    dayEntries.forEach(function (entry) { if (planDoneOf(entry.item)) dayDone++; });
     dayCountNode.textContent = dayEntries.length
       ? dayEntries.length + (dayEntries.length === 1 ? ' block' : ' blocks') + (dayDone ? ' \u00b7 ' + dayDone + ' done' : '')
       : 'Nothing planned';
