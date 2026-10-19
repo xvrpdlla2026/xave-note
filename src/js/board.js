@@ -6037,10 +6037,9 @@ function richItemOf(box) {
     dayInfo.appendChild(dayCountNode);
     dayTop.appendChild(dayInfo);
     var dayActs = node('div', 'bd-cal__dayacts');
-    var blockLabel = plan.full ? 'Choose what to add to this day' : 'Add a block to this day';
+    var blockLabel = 'Choose what to add to this day';
     var blockButton = calButton('+ Block', function () {
-      if (plan.full) { planAddKind(plan); return; }
-      addPlannerItem('note', plan.date, '');
+      planAddKind(plan, plan.full ? PLAN_KIND_ORDER : PLAN_ADD_KINDS);
     }, 'is-quiet');
     blockButton.title = blockLabel;
     blockButton.setAttribute('aria-label', blockLabel);
@@ -6489,12 +6488,14 @@ planRevealFresh(plan);
     draw: 'Sketch by hand',
   };
 
-  // Fullscreen takes a block of any kind, so it asks which one instead of assuming a note.
-  function planAddKind(plan) {
+  var PLAN_KIND_ORDER = ['note', 'todo', 'comment', 'link', 'image', 'table', 'column', 'draw'];
+
+  // Which kind it is matters, so a new block is picked rather than assumed to be a note.
+  function planAddKind(plan, kinds) {
     var grid = node('div', 'bd-cal__kinds');
     var tiles = [];
     var close = null;
-    ['note', 'todo', 'comment', 'link', 'image', 'table', 'column', 'draw'].forEach(function (kind) {
+    (kinds || PLAN_ADD_KINDS).forEach(function (kind) {
       var text = kindText(kind);
       var tile = node('button', 'bd-cal__kindtile');
       tile.type = 'button';
