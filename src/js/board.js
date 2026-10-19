@@ -3330,6 +3330,7 @@ function richItemOf(box) {
       list.forEach(function (key) { if (key && out.indexOf(key) < 0) out.push(key); });
     }
     if (item.data.plan && out.indexOf(item.data.plan) < 0) out.push(item.data.plan);
+    if (item.data.planner && out.indexOf(item.data.planner) < 0) out.push(item.data.planner);
     return out;
   }
 
@@ -3395,7 +3396,7 @@ function richItemOf(box) {
       if (planKeysOf(item).indexOf(key) >= 0) out.push({ board: true, foreign: true, key: key, item: item, boardId: item.board_id, title: planTitle(item) || item.kind });
     });
     board.plans.forEach(function (item) {
-      if (item.data && item.data.planner === key) out.push({ board: false, key: key, item: item, boardId: PLAN_BOARD, title: planLabelOf(item) });
+      if (item.data && planKeysOf(item).indexOf(key) >= 0) out.push({ board: false, key: key, item: item, boardId: PLAN_BOARD, title: planLabelOf(item) });
     });
     return out;
   }
@@ -3663,6 +3664,7 @@ function richItemOf(box) {
   function planSync(item, keys) {
     if (keys.length) { item.data.plans = keys; item.data.plan = keys[0]; }
     else { delete item.data.plans; delete item.data.plan; }
+    if (item.data.planner) item.data.planner = keys.length ? keys[0] : '';
     item.updated_at = util.nowIso();
     try { App.db.boardAddItem(item); } catch (e) { }
     paintPlan(item);
