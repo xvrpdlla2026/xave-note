@@ -7635,6 +7635,9 @@ column.addEventListener('dragover', function (event) {
     card.__planView = view;
     body.appendChild(bodyFor(view));
     if (kind === 'link') { try { renderLinkCard(view); } catch (e) { } }
+    // A link card sizes itself to its own preview on the board; in the dialog it fills the form.
+    card.style.width = '100%';
+    card.style.height = 'auto';
     var wrap = node('div', 'bd-plan__compose');
     wrap.appendChild(card);
     // A link is one line of text, so the dialog says what the one line is for instead of leaving a hole.

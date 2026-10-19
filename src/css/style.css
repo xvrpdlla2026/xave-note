@@ -4516,7 +4516,8 @@ html.is-board-boot body > *:not(.board) { display: none; }
 /* One field surface for every kind, so the four dialogs share the same shape. */
 .bd-plan__compose { display: flex; flex-direction: column; margin: 0 18px 2px; padding: 12px 14px; min-height: 118px; max-height: 46vh; overflow-y: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-sunken); transition: border-color var(--fast); }
 .bd-plan__compose:focus-within { border-color: var(--accent-ring); }
-.bd-plan__compose .bd-item { position: relative; width: 100%; height: auto; min-height: 0; border: 0; border-radius: 0; background: none; box-shadow: none; overflow: visible; }
+/* A link card sizes itself to its preview after every unfurl, so the dialog has to outrank that. */
+.bd-plan__compose .bd-item { position: relative; width: 100% !important; height: auto !important; min-height: 0; border: 0; border-radius: 0; background: none; box-shadow: none; overflow: visible; }
 .bd-plan__compose .bd-item__body { padding: 0; overflow: visible; }
 .bd-plan__compose .bd-image__empty { width: 100%; padding: 6px 0; }
 .bd-plan__compose.is-link { min-height: 0; }
