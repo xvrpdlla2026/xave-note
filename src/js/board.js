@@ -3855,6 +3855,12 @@ function richItemOf(box) {
     form.appendChild(end);
     form.appendChild(apply);
     form.appendChild(clear);
+    requestAnimationFrame(function () {
+      if (!form.parentNode) return;
+      var wide = form.getBoundingClientRect().width;
+      var chipBox = button.getBoundingClientRect();
+      form.style.left = Math.max(8, Math.min(Math.round(chipBox.right - wide), Math.round(window.innerWidth - wide - 8))) + 'px';
+    });
     return form;
   }
 
