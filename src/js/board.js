@@ -5102,27 +5102,55 @@ function richItemOf(box) {
       var stamp = node('span', 'bd-cal__tdragtext');
       ghost.appendChild(stamp);
       col.appendChild(ghost);
-      var reach = anchor + QUICK_HOUR;
+      var scroller = col.closest ? col.closest('.bd-cal__tbody') : null;
+      var from = anchor;
+      var to = Math.min(1440, anchor + QUICK_HOUR);
       var moved = false;
       var paint = function (clientY) {
         var at = planSnapped(planMinutesAt(col, clientY));
         if (Math.abs(at - anchor) >= 15) moved = true;
-        reach = moved ? Math.max(at, anchor + 15) : anchor + QUICK_HOUR;
-        ghost.style.top = (anchor / 60 * PLAN_HOUR) + 'px';
-        ghost.style.height = Math.max(14, (reach - anchor) / 60 * PLAN_HOUR) + 'px';
-        stamp.textContent = planTimeLabel(planStamped(anchor)) + ' - ' + planTimeLabel(planStamped(reach));
+        if (moved) {
+          from = Math.min(anchor, at);
+          to = Math.max(anchor, at);
+          if (to - from < 15) to = from + 15;
+        }
+        ghost.style.top = (from / 60 * PLAN_HOUR) + 'px';
+        ghost.style.height = Math.max(14, (to - from) / 60 * PLAN_HOUR) + 'px';
+        stamp.textContent = planTimeLabel(planStamped(from)) + ' - ' + planTimeLabel(planStamped(to));
       };
       paint(event.clientY);
+      // Holding the pointer past an edge walks the grid, so a range can run from any hour to any other.
+      var holding = true;
+      var frame = 0;
+      var pointerY = event.clientY;
+      var edge = function () {
+        if (!holding) return;
+        var step = 0;
+        if (scroller) {
+          var box = scroller.getBoundingClientRect();
+          if (pointerY < box.top + 46) step = -Math.min(26, (box.top + 46 - pointerY) / 1.4);
+          else if (pointerY > box.bottom - 46) step = Math.min(26, (pointerY - (box.bottom - 46)) / 1.4);
+        }
+        if (step) {
+          var before = scroller.scrollTop;
+          scroller.scrollTop = before + step;
+          if (scroller.scrollTop !== before) paint(pointerY);
+        }
+        frame = window.requestAnimationFrame(edge);
+      };
+      frame = window.requestAnimationFrame(edge);
       var stop = function (event, cancelled) {
+        holding = false;
+        if (frame) window.cancelAnimationFrame(frame);
         window.removeEventListener('pointermove', move);
         window.removeEventListener('pointerup', up);
         window.removeEventListener('pointercancel', gone);
         if (ghost.parentNode) ghost.remove();
         if (cancelled) return;
-        var made = addPlannerItem('note', key, planStamped(anchor), planStamped(reach));
+        var made = addPlannerItem('note', key, planStamped(from), planStamped(to));
         if (made) planQuickAdd(made, key, { left: event.clientX + 12, top: event.clientY - 26 });
       };
-      var move = function (event) { paint(event.clientY); };
+      var move = function (event) { pointerY = event.clientY; paint(event.clientY); };
       var up = function (event) { stop(event, false); };
       var gone = function (event) { stop(event, true); };
       window.addEventListener('pointermove', move);
