@@ -4152,8 +4152,8 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-mark__text { position: absolute; left: 0; top: 18px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 3px; max-width: 210px; }
 .bd-mark__name { max-width: 210px; padding: 2px 7px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-raised); color: var(--text); font-size: 11px; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bd-mark__edit { position: absolute; left: 0; top: 18px; width: 150px; transform: translateX(-50%); padding: 2px 7px; border: 1px solid var(--accent); border-radius: 999px; background: var(--bg); color: var(--text); font: inherit; font-size: 11px; }
-.board__stage.is-marking, .board__stage.is-marking * { cursor: crosshair; }
-.board__stage.is-moving, .board__stage.is-moving * { cursor: crosshair; }
+.board__stage.is-marking, .board__stage.is-marking * { cursor: default; }
+.board__stage.is-moving, .board__stage.is-moving * { cursor: default; }
 .board__stage.is-moving .bd-mark, .board__stage.is-moving .bd-mark * { cursor: move; }
 .board__stage .bd-mark.is-dragging, .board__stage .bd-mark.is-dragging * { cursor: move; }
 .bd-mark.is-armed { z-index: 940; }
@@ -4601,7 +4601,7 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__day:not(.is-full) .bd-cal__daytop { flex-direction: column; align-items: stretch; gap: 10px; }
 .bd-cal__day:not(.is-full) .bd-cal__dayacts { justify-content: flex-end; margin-left: 0; }
 .bd-cal__day.is-full .bd-cal__daytop { flex-wrap: wrap; row-gap: 8px; }
-.bd-cal__list.is-canvas.is-select-mode { cursor: crosshair; }
+.bd-cal__list.is-canvas.is-select-mode { cursor: default; }
 .bd-cal__list.is-canvas:not(.is-select-mode):not(.is-grabbing) { cursor: move; }
 /* A drag owns the pointer, so the cursor does not fall back to an arrow over the blocks it crosses. */
 .bd-cal__list.is-canvas.is-grabbing,
@@ -4609,7 +4609,7 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__list.is-canvas.is-grabbing .bd-item * { cursor: move; }
 .bd-cal__list.is-canvas.is-select-mode,
 .bd-cal__list.is-canvas.is-select-mode .bd-item,
-.bd-cal__list.is-canvas.is-select-mode .bd-item * { cursor: crosshair; }
+.bd-cal__list.is-canvas.is-select-mode .bd-item * { cursor: default; }
 .bd-cal__list.is-canvas.is-select-mode .bd-item [contenteditable="true"],
 .bd-cal__list.is-canvas.is-select-mode .bd-item input,
 .bd-cal__list.is-canvas.is-select-mode .bd-item textarea { cursor: text; }
