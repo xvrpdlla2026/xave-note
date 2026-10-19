@@ -5069,6 +5069,240 @@ function richItemOf(box) {
     return plan.view;
   }
 
+  var PLAN_MAP = { w: 200, h: 132 };
+
+  function planMapState() {
+    var plan = board.planner;
+    if (!plan) return null;
+    if (!plan.map) plan.map = { el: null, canvas: null, ctx: null, frame: null, hover: null, hidden: false, fit: null, toggle: null };
+    return plan.map;
+  }
+
+  function planMapHide(plan, on) {
+    var map = planMapState();
+    if (!map) return;
+    map.hidden = !!on;
+    try { App.prefs.set('planner.mapHidden', map.hidden); } catch (e) { }
+    if (map.el) map.el.classList.toggle('is-maphidden', map.hidden);
+    var button = map.toggle;
+    if (button) {
+      var text = map.hidden ? 'Show the minimap' : 'Hide the minimap';
+      button.title = text;
+      button.setAttribute('aria-label', text);
+      button.setAttribute('aria-pressed', map.hidden ? 'true' : 'false');
+      button.textContent = '';
+      var mark = App.ui.icon(map.hidden ? 'eye' : 'eyeOff', 14);
+      if (mark) button.appendChild(mark);
+    }
+    planMapDraw(plan);
+  }
+
+  function planMapCards(plan) {
+    var list = plannerEl().querySelector('.bd-cal__list');
+    if (!list) return [];
+    return Array.prototype.filter.call(list.querySelectorAll('.bd-item[data-plan-canvas]'), function (card) { return !!card.__planCanvas; });
+  }
+
+  function planMapFit(plan) {
+    var list = plannerEl().querySelector('.bd-cal__list');
+    var view = planView(plan);
+    var rect = list ? list.getBoundingClientRect() : { width: 900, height: 600 };
+    var box = { x: -view.x / view.z, y: -view.y / view.z, w: Math.max(rect.width / view.z, 1), h: Math.max(rect.height / view.z, 1) };
+    var grow = function (x, y, w, h) {
+      var x2 = Math.max(box.x + box.w, x + w);
+      var y2 = Math.max(box.y + box.h, y + h);
+      box.x = Math.min(box.x, x);
+      box.y = Math.min(box.y, y);
+      box.w = x2 - box.x;
+      box.h = y2 - box.y;
+    };
+    planMapCards(plan).forEach(function (card) {
+      grow(card.__planCanvas.x, card.__planCanvas.y, Math.max(card.__planCanvas.w, 1), Math.max(card.__planCanvas.h, 1));
+    });
+    var pad = Math.max(box.w, box.h) * 0.08 + 24;
+    box.x -= pad;
+    box.y -= pad;
+    box.w += pad * 2;
+    box.h += pad * 2;
+    var k = Math.min(PLAN_MAP.w / box.w, PLAN_MAP.h / box.h);
+    return { x: box.x, y: box.y, w: box.w, h: box.h, k: k, ox: (PLAN_MAP.w - box.w * k) / 2 - box.x * k, oy: (PLAN_MAP.h - box.h * k) / 2 - box.y * k };
+  }
+
+  function planMapPaint(plan) {
+    var map = planMapState();
+    if (!map || !map.ctx || !map.canvas) return;
+    var fit = planMapFit(plan);
+    map.fit = fit;
+    var canvas = map.canvas;
+    var ctx = map.ctx;
+    var dpr = window.devicePixelRatio || 1;
+    var wide = Math.round(PLAN_MAP.w * dpr);
+    var tall = Math.round(PLAN_MAP.h * dpr);
+    if (canvas.width !== wide || canvas.height !== tall) {
+      canvas.width = wide;
+      canvas.height = tall;
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, PLAN_MAP.w, PLAN_MAP.h);
+    var mx = function (x) { return fit.ox + x * fit.k; };
+    var my = function (y) { return fit.oy + y * fit.k; };
+    planMapCards(plan).forEach(function (card) {
+      var box = card.__planCanvas;
+      ctx.fillStyle = card.__planItem && planKindOf(card.__planItem) === 'draw' ? 'rgba(255, 255, 255, 0.22)' : 'rgba(125, 141, 255, 0.32)';
+      ctx.fillRect(mx(box.x), my(box.y), Math.max(box.w * fit.k, 2), Math.max(box.h * fit.k, 2));
+    });
+    var view = planView(plan);
+    var list = plannerEl().querySelector('.bd-cal__list');
+    var rect = list ? list.getBoundingClientRect() : { width: 900, height: 600 };
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(mx(-view.x / view.z), my(-view.y / view.z), Math.max((rect.width / view.z) * fit.k, 3), Math.max((rect.height / view.z) * fit.k, 3));
+    if (map.hover) {
+      var hx = map.hover.x;
+      var hy = map.hover.y;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(hx + 0.5, 0);
+      ctx.lineTo(hx + 0.5, PLAN_MAP.h);
+      ctx.moveTo(0, hy + 0.5);
+      ctx.lineTo(PLAN_MAP.w, hy + 0.5);
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(hx, hy, 2.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+      ctx.beginPath();
+      ctx.arc(hx, hy, 4.2, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  function planMapDraw(plan) {
+    var map = planMapState();
+    if (!map || !map.ctx || map.hidden || !plan || !plan.full) return;
+    if (map.frame) return;
+    map.frame = window.requestAnimationFrame(function () {
+      map.frame = null;
+      planMapPaint(plan);
+    });
+  }
+
+  function planMapToCanvas(plan, event) {
+    var map = planMapState();
+    if (!map || !map.canvas) return { x: 0, y: 0 };
+    var fit = map.fit || planMapFit(plan);
+    var rect = map.canvas.getBoundingClientRect();
+    var scale = PLAN_MAP.w / Math.max(rect.width, 1);
+    return {
+      x: (event.clientX - rect.left) * scale / fit.k + (0 - fit.ox) / fit.k,
+      y: (event.clientY - rect.top) * scale / fit.k + (0 - fit.oy) / fit.k,
+    };
+  }
+
+  function planMapHover(plan, event) {
+    var map = planMapState();
+    if (!map || !map.canvas) return;
+    var rect = map.canvas.getBoundingClientRect();
+    map.hover = {
+      x: (event.clientX - rect.left) * (PLAN_MAP.w / Math.max(rect.width, 1)),
+      y: (event.clientY - rect.top) * (PLAN_MAP.h / Math.max(rect.height, 1)),
+    };
+    planMapDraw(plan);
+  }
+
+  function planMapCenter(plan, event) {
+    var at = planMapToCanvas(plan, event);
+    var list = plannerEl().querySelector('.bd-cal__list');
+    if (!list) return;
+    var view = planView(plan);
+    var rect = list.getBoundingClientRect();
+    view.x = Math.round(rect.width / 2 - at.x * view.z);
+    view.y = Math.round(rect.height / 2 - at.y * view.z);
+    planPaintView(plan);
+  }
+
+  function planMapBuild(plan, host) {
+    var map = planMapState();
+    if (!map || !host) return;
+    try { map.hidden = !!App.prefs.get('planner.mapHidden', false); } catch (e) { map.hidden = false; }
+    var wrap = node('div', 'bd-cal__map');
+    var box = node('div', 'board__map');
+    var canvas = node('canvas', 'board__map-canvas');
+    canvas.title = 'Click or drag to move the view';
+    canvas.setAttribute('aria-label', 'Day minimap, click or drag to move the view');
+    var bar = node('div', 'board__map-bar');
+    var zoom = node('div', 'board__zoom');
+    var out = node('button', 'board__zoom-btn', '\u2212');
+    out.type = 'button';
+    out.title = 'Zoom out';
+    out.addEventListener('click', function () { planZoomBy(plan, 1 / STEP); });
+    var label = node('button', 'board__zoom-btn board__zoom-label', Math.round(planView(plan).z * 100) + '%');
+    label.type = 'button';
+    label.title = 'Reset zoom';
+    label.addEventListener('click', function () { planZoomBy(plan, 1 / (planView(plan).z || 1)); });
+    var inside = node('button', 'board__zoom-btn', '+');
+    inside.type = 'button';
+    inside.title = 'Zoom in';
+    inside.addEventListener('click', function () { planZoomBy(plan, STEP); });
+    zoom.appendChild(out);
+    zoom.appendChild(label);
+    zoom.appendChild(inside);
+    var toggle = node('button', 'board__map-toggle');
+    toggle.type = 'button';
+    toggle.addEventListener('click', function () { planMapHide(plan, !map.hidden); });
+    bar.appendChild(zoom);
+    bar.appendChild(toggle);
+    box.appendChild(canvas);
+    box.appendChild(bar);
+    wrap.appendChild(box);
+    box.addEventListener('wheel', function (event) { event.stopPropagation(); }, { passive: true });
+    canvas.addEventListener('pointerdown', function (event) {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      try { canvas.setPointerCapture(event.pointerId); } catch (e) { }
+      planMapHover(plan, event);
+      planMapCenter(plan, event);
+    });
+    canvas.addEventListener('pointermove', function (event) {
+      planMapHover(plan, event);
+      try { if (!canvas.hasPointerCapture(event.pointerId)) return; } catch (e) { return; }
+      planMapCenter(plan, event);
+    });
+    canvas.addEventListener('pointerleave', function () {
+      map.hover = null;
+      planMapDraw(plan);
+    });
+    var release = function (event) {
+      try { if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId); } catch (e) { }
+    };
+    canvas.addEventListener('pointerup', release);
+    canvas.addEventListener('pointercancel', release);
+    var old = map.el;
+    map.el = wrap;
+    map.canvas = canvas;
+    map.ctx = canvas.getContext('2d');
+    map.toggle = toggle;
+    map.fit = null;
+    host.appendChild(wrap);
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+    planMapHide(plan, map.hidden);
+  }
+
+  function planMapSync(plan) {
+    var map = planMapState();
+    if (!map) return;
+    if (!plan.full) {
+      if (map.el) map.el.hidden = true;
+      return;
+    }
+    if (!map.el || map.el.parentNode !== document.body) planMapBuild(plan, document.body);
+    if (map.el) map.el.hidden = false;
+    planMapDraw(plan);
+  }
+
   function planPaintView(plan) {
     if (!plan) return;
     var list = plannerEl().querySelector('.bd-cal__list');
@@ -5082,6 +5316,7 @@ function richItemOf(box) {
     });
     var label = plannerEl().querySelector('.bd-cal__zoomlabel');
     if (label) label.textContent = Math.round(view.z * 100) + '%';
+    planMapDraw(plan);
   }
 
   function planPaintInk() {
@@ -6385,6 +6620,7 @@ column.addEventListener('dragover', function (event) {
     planChrome(plan);
     planSheetZoomPaint(plan);
     if (plan.full) planPaintView(plan);
+    planMapSync(plan);
     if (keepScroll) {
       var after = el.querySelector('.bd-cal__list');
       if (after) after.scrollTop = keepScroll;
