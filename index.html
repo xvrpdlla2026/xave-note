@@ -19685,6 +19685,8 @@ function richItemOf(box) {
     planPaintInk();
     var zoomLabel = plannerEl().querySelector('.bd-cal__zoomlabel');
     if (zoomLabel) zoomLabel.textContent = planZoomLabel(plan);
+    var mapLabel = plannerEl().querySelector('.bd-cal__map .board__zoom-label');
+    if (mapLabel) mapLabel.textContent = planZoomLabel(plan);
   }
 
   function planFitView(plan) {
