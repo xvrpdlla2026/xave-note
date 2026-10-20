@@ -3959,8 +3959,14 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__mtcaret { flex: 0 0 auto; font-size: 8px; line-height: 1; color: var(--text-faint); }
 .bd-cal__msum { flex: 0 0 auto; padding: 0 2px; color: var(--text-faint); font-size: 12px; letter-spacing: 0.005em; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .bd-cal__msum:empty { display: none; }
-.bd-cal__top > .bd-cal__btn.bd-cal__today { padding: 0 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-raised); color: var(--text-muted); }
-.bd-cal__top > .bd-cal__btn.bd-cal__today:hover { border-color: var(--border-strong); background: var(--bg-hover); color: var(--text); }
+.bd-cal__top > .bd-cal__btn.bd-cal__today, .bd-cal__daytop > .bd-cal__btn.bd-cal__today { padding: 0 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-raised); color: var(--text-muted); }
+.bd-cal__top > .bd-cal__btn.bd-cal__today:hover, .bd-cal__daytop > .bd-cal__btn.bd-cal__today:hover { border-color: var(--border-strong); background: var(--bg-hover); color: var(--text); }
+/* Adding a block is the one thing the day surface is for, so it is the only accented control there. */
+.bd-cal__dayacts > .bd-cal__btn.bd-cal__addblock { border: 1px solid var(--accent-ring); background: var(--accent-soft); color: var(--accent); }
+.bd-cal__dayacts > .bd-cal__btn.bd-cal__addblock:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+/* The rail stacks three sections; a hairline between them says where one ends. */
+.bd-cal__day.is-full .bd-cal__railpanel > .bd-cal__mini { padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.bd-cal__day.is-full .bd-cal__railpanel > .bd-cal__week.is-rail { padding-bottom: 12px; border-bottom: 1px solid var(--border); }
 .bd-cal__mtitle.bd-cal__mtjump.is-open .bd-cal__mtcaret { color: var(--accent); }
 .bd-cal__top > .bd-cal__btn { height: 30px; padding: 0 11px; border-color: transparent; background: none; color: var(--text-muted); font-size: 12.5px; }
 .bd-cal__top > .bd-cal__btn:hover { background: var(--bg-hover); color: var(--text); }
@@ -4543,6 +4549,8 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__emptytitle { color: var(--text); font-size: 15px; font-weight: 600; }
 .bd-cal__emptyhint { color: var(--text-faint); font-size: 12.5px; line-height: 1.5; }
 .bd-cal__emptygestures { margin-top: 2px; padding: 5px 11px; border: 1px solid var(--border); border-radius: 999px; color: var(--text-faint); font-size: 11px; }
+.bd-cal__empty .bd-cal__btn.bd-cal__emptyadd { height: 30px; margin-top: 4px; padding: 0 13px; border: 1px solid var(--accent-ring); border-radius: 9px; background: var(--accent-soft); color: var(--accent); }
+.bd-cal__empty .bd-cal__btn.bd-cal__emptyadd:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
 
 /* The block is set up in a card of its own before it lands on a day. */
 /* One field surface for every kind, so the four dialogs share the same shape. */

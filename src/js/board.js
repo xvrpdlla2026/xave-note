@@ -5609,14 +5609,8 @@ function richItemOf(box) {
     window.addEventListener('pointercancel', up);
     event.preventDefault();
   }
-  function planDayNav(plan, todayKey) {
+  function planDayNav(plan) {
     var nav = node('div', 'bd-cal__daynav');
-    var jump = function (key) {
-      plan.date = key;
-      plan.month = monthStart(calMs(key));
-      plan.calMonth = plan.month;
-      paintPlanner();
-    };
     var stepDay = function (delta) {
       var ms = calMs(plan.date);
       if (ms === null) return;
@@ -5628,15 +5622,27 @@ function richItemOf(box) {
     var back = calButton('\u2039', function () { stepDay(-1); }, 'is-icon');
     back.title = 'Previous day';
     back.setAttribute('aria-label', 'Previous day');
-    var today = calButton('Today', function () { jump(todayKey); }, 'is-quiet');
-    today.title = 'Go to today';
     var next = calButton('\u203a', function () { stepDay(1); }, 'is-icon');
     next.title = 'Next day';
     next.setAttribute('aria-label', 'Next day');
     nav.appendChild(back);
-    nav.appendChild(today);
     nav.appendChild(next);
     return nav;
+  }
+
+  // Today sits beside the stepper for the same reason it does in the planner header: it moves the
+  // date, so it belongs with the arrows instead of inside them.
+  function planTodayButton(todayKey) {
+    var button = calButton('Today', function () {
+      var plan = board.planner;
+      if (!plan) return;
+      plan.date = todayKey;
+      plan.month = monthStart(calMs(todayKey));
+      plan.calMonth = plan.month;
+      paintPlanner();
+    }, 'is-quiet bd-cal__today');
+    button.title = 'Go to today';
+    return button;
   }
 
   // A block that is focused stays in view through the repaint its own focus causes, so the wish to
@@ -7199,7 +7205,7 @@ function richItemOf(box) {
     var blockLabel = 'Choose what to add to this day';
     var blockButton = calButton('+ Block', function () {
       planAddKind(plan);
-    }, 'is-quiet');
+    }, 'is-quiet bd-cal__addblock');
     blockButton.title = blockLabel;
     blockButton.setAttribute('aria-label', blockLabel);
     dayActs.appendChild(blockButton);
@@ -7208,8 +7214,10 @@ function richItemOf(box) {
     drawButton.setAttribute('aria-label', 'Draw on this day');
     drawButton.appendChild(App.ui.icon('pencil', 15));
     dayActs.appendChild(drawButton);
-    if (plan.full) dayActs.appendChild(planToolButton(plan));
-    dayActs.appendChild(node('span', 'bd-cal__sep'));
+    if (plan.full) {
+      dayActs.appendChild(node('span', 'bd-cal__sep'));
+      dayActs.appendChild(planToolButton(plan));
+    }
     dayActs.appendChild(node('div', 'bd-cal__zoomslot'));
     var dayClose = node('button', 'bd-cal__dayclose');
     dayClose.type = 'button';
@@ -7222,7 +7230,6 @@ function richItemOf(box) {
       paintPlanner();
     });
     if (plan.full) {
-      dayActs.appendChild(node('span', 'bd-cal__sep'));
       var fitButton = calButton('Fit', function () { planFitView(plan); }, 'is-quiet');
       fitButton.title = 'Frame every block on this day (F)';
       fitButton.setAttribute('aria-label', 'Frame every block on this day');
@@ -7239,7 +7246,10 @@ function richItemOf(box) {
     }, 'is-quiet'));
     dayActs.appendChild(dayClose);
     dayTop.appendChild(dayActs);
-    if (plan.full) dayTop.insertBefore(planDayNav(plan, todayKey), dayActs);
+    if (plan.full) {
+      dayTop.insertBefore(planDayNav(plan), dayActs);
+      dayTop.insertBefore(planTodayButton(todayKey), dayActs);
+    }
     column.appendChild(dayTop);
     var railPanel = null;
     if (plan.full) {
@@ -7288,9 +7298,13 @@ function richItemOf(box) {
       : 'Nothing planned';
     if (!dayEntries.length) {
       if (plan.full) {
+        var filtered = !!(plan.query || planTypes(plan).length);
         var blank = node('div', 'bd-cal__empty is-center');
-        blank.appendChild(node('div', 'bd-cal__emptytitle', plan.query || planTypes(plan).length ? 'Nothing matches the filter' : 'Nothing planned on this day'));
-        blank.appendChild(node('div', 'bd-cal__emptyhint', 'Add a block from the toolbar, or schedule one from the board.'));
+        blank.appendChild(node('div', 'bd-cal__emptytitle', filtered ? 'Nothing matches the filter' : 'Nothing planned on this day'));
+        blank.appendChild(node('div', 'bd-cal__emptyhint', filtered
+          ? 'Clear the search or the type filter to see the whole day.'
+          : 'Schedule one from the board, or add it right here.'));
+        if (!filtered) blank.appendChild(calButton('+ Add a block', function () { planAddKind(plan); }, 'is-quiet bd-cal__emptyadd'));
         blank.appendChild(node('div', 'bd-cal__emptygestures', 'Drag to pan \u00b7 Ctrl + wheel to zoom \u00b7 F to frame'));
         list.appendChild(blank);
       } else {
