@@ -4012,11 +4012,13 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__grp:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
 .bd-cal__grp .bd-cal__search { flex: 1 1 auto; min-width: 0; max-width: none; height: 100%; padding: 0 4px 0 10px; border: 0; border-radius: 0; background: none; box-shadow: none; }
 .bd-cal__grp .bd-cal__search:hover, .bd-cal__grp .bd-cal__search:focus-within { border: 0; box-shadow: none; }
-.bd-cal__grp .bd-cal__type { flex: 0 0 auto; gap: 6px; min-width: 0; max-width: none; height: 100%; padding: 0 9px 0 11px; border: 0; border-left: 1px solid var(--border); border-radius: 0; background: none; color: var(--text-muted); font-size: 12.5px; }
+/* The label changes with every pick, so the segment holds one width: nothing beside it may move while filtering. */
+.bd-cal__grp .bd-cal__type { flex: 0 0 138px; gap: 6px; min-width: 0; max-width: none; height: 100%; padding: 0 9px 0 11px; border: 0; border-left: 1px solid var(--border); border-radius: 0; background: none; color: var(--text-muted); font-size: 12.5px; }
 .bd-cal__grp .bd-cal__type:hover { background: var(--bg-hover); color: var(--text); }
 .bd-cal__grp .bd-cal__type:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--accent); }
 .bd-cal__grp .bd-cal__type.is-on { background: var(--accent-soft); border-left-color: var(--accent-ring); color: var(--accent); }
-.bd-cal__grp .bd-cal__typelabel { max-width: 148px; }
+.bd-cal__grp .bd-cal__typelabel { flex: 1 1 auto; min-width: 0; max-width: none; text-align: left; }
+.bd-cal__grp .bd-cal__caret { flex: none; }
 .bd-cal__filter { flex: 1 1 auto; min-width: 0; height: 100%; background: none; border: 0; }
 .bd-cal__dow span { padding: 0 9px; font-size: 10px; color: var(--text-faint); text-align: left; text-transform: uppercase; letter-spacing: 0.09em; }
 .bd-cal__grid { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(7, 1fr); grid-auto-rows: minmax(78px, 1fr); gap: 8px; }
