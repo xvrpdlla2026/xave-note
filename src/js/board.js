@@ -6171,14 +6171,13 @@ function richItemOf(box) {
   }
 
   function planSumLabel(plan, mode, monthTotal, monthLate) {
+    var plural = function (count) { return count + (count === 1 ? ' block' : ' blocks'); };
     if (mode === 'day') {
       var onDay = planFiltered(planEntries(plan.date)).length;
-      return onDay ? onDay + (onDay === 1 ? ' block' : ' blocks') + ' on this day' : 'Nothing planned on this day';
+      return onDay ? plural(onDay) : '';
     }
     if (mode !== 'week' && mode !== 'year') {
-      return monthTotal
-        ? monthTotal + (monthTotal === 1 ? ' block' : ' blocks') + ' this month' + (monthLate ? ' \u00b7 ' + monthLate + ' late' : '')
-        : 'Nothing planned this month';
+      return monthTotal ? plural(monthTotal) + (monthLate ? ' \u00b7 ' + monthLate + ' late' : '') : '';
     }
     var counts = planCountIndex(plan);
     var ms = calMs(plan.date);
@@ -6189,12 +6188,12 @@ function richItemOf(box) {
       start.setHours(0, 0, 0, 0);
       var total = 0;
       for (var i = 0; i < 7; i++) total += counts[calKey(start.getTime() + i * 86400000)] || 0;
-      return total ? total + (total === 1 ? ' block' : ' blocks') + ' this week' : 'Nothing planned this week';
+      return total ? plural(total) : '';
     }
     var year = String(day.getFullYear());
     var all = 0;
     Object.keys(counts).forEach(function (key) { if (key.slice(0, 4) === year) all += counts[key]; });
-    return all ? all + (all === 1 ? ' block' : ' blocks') + ' in ' + year : 'Nothing planned in ' + year;
+    return all ? plural(all) : '';
   }
 
   var PLAN_HOUR = 46;
