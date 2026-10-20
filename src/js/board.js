@@ -2661,7 +2661,7 @@ function richItemOf(box) {
   }
 
   function addItem(kind, payload) {
-    pushUndo('add');
+    if (!(payload && payload.quiet)) pushUndo('add');
     var now = util.nowIso();
     var size = SIZES[kind] || SIZES.note;
     var at = payload && payload.at ? payload.at : centerOfView(board.items.length);
@@ -9079,7 +9079,6 @@ return function () {
   }
 
   function pasteFromClipboard() {
-    var at = board.menuAt || centerOfView(board.items.length);
     if (!navigator.clipboard || !navigator.clipboard.readText) {
       util.toast('Press Ctrl+V to paste');
       return;
@@ -9089,8 +9088,7 @@ return function () {
         util.toast('Clipboard is empty');
         return;
       }
-      pushUndo('paste');
-      addItem('note', { at: at, data: { text: util.escapeHtml(text).replace(/\n/g, '<br>') } });
+      pasteText(text);
     }).catch(function () {
       util.toast('Press Ctrl+V to paste');
     });
@@ -9139,8 +9137,48 @@ return function () {
     var text = data.getData('text/plain');
     if (!text) return;
     event.preventDefault();
+    pasteText(text);
+  }
+
+  // A pasted address is a link card, a pasted list is a card a line, and a paragraph stays one note.
+  var PASTE_MOST = 40;
+  var PASTE_URL = /^(?:https?:\/\/|www\.)\S+$/i;
+  var PASTE_BULLET = /^(?:[-*\u2022\u00b7]|\d{1,2}[.)])\s+/;
+
+  function pasteLines(text) {
+    var raw = String(text || '').split(/\r?\n/).map(function (line) { return line.trim(); }).filter(Boolean);
+    if (!raw.length) return null;
+    var lines = raw.map(function (line) { return line.replace(PASTE_BULLET, '').trim(); }).filter(Boolean);
+    if (!lines.length) return null;
+    if (lines.length === 1) return lines;
+    // A paragraph wraps into lines of its own, so a list has to be short lines that do not read as prose.
+    var short = lines.every(function (line) { return line.length <= 72; });
+    var bulleted = raw.some(function (line) { return PASTE_BULLET.test(line); });
+    var endsSentence = /[.,;:!?]$/.test(lines[lines.length - 1]);
+    if (!short || (endsSentence && !bulleted)) return null;
+    return lines;
+  }
+
+  function pasteText(text) {
+    var at = board.menuAt || centerOfView(board.items.length);
+    var lines = pasteLines(text);
+    if (!lines) {
+      addItem('note', { at: at, data: { text: util.escapeHtml(String(text || '')).replace(/\n/g, '<br>') } });
+      return;
+    }
+    var shown = lines.slice(0, PASTE_MOST);
     pushUndo('paste');
-    addItem('note', { at: at, data: { text: util.escapeHtml(text).replace(/\n/g, '<br>') } });
+    var stepX = SIZES.note[0] + 20;
+    var stepY = SIZES.note[1] + 20;
+    shown.forEach(function (line, index) {
+      var kind = PASTE_URL.test(line) ? 'link' : 'note';
+      addItem(kind, {
+        at: { x: at.x + (index % 4) * stepX, y: at.y + Math.floor(index / 4) * stepY },
+        data: kind === 'link' ? { title: '', url: line } : { text: util.escapeHtml(line) },
+        quiet: true,
+      });
+    });
+    if (lines.length > shown.length) util.toast('Pasted the first ' + PASTE_MOST + ' lines.', 'info');
   }
 
   function activeBoardId() {
