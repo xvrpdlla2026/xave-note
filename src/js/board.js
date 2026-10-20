@@ -5349,6 +5349,7 @@ function richItemOf(box) {
     bar.addEventListener('dragend', function () {
       board.planDrag = null;
       board.planDropIndex = null;
+      planDropBandClear();
       Array.prototype.forEach.call(document.querySelectorAll('.bd-cal__dropmark'), function (mark) { mark.remove(); });
       Array.prototype.forEach.call(document.querySelectorAll('.bd-cal__list.is-over'), function (over) { over.classList.remove('is-over'); });
       Array.prototype.forEach.call(document.querySelectorAll('.bd-item.is-dragging'), function (card) { card.classList.remove('is-dragging'); });
@@ -6334,6 +6335,33 @@ function richItemOf(box) {
     return (clientY - box.top) / box.height * 1440;
   }
 
+  // A dragged block shows the slot it will land in, the size of the block and not the size of the day.
+  function planDropBand(col, event) {
+    var drag = board.planDrag;
+    if (!drag) return false;
+    var item = planRow(drag.id);
+    if (!item) return false;
+    var isBoard = !!drag.board;
+    var at = planSnapped(planMinutesAt(col, event.clientY));
+    var band = col.querySelector('.bd-cal__dropband');
+    Array.prototype.forEach.call(document.querySelectorAll('.bd-cal__dropband'), function (other) { if (other !== band) other.remove(); });
+    if (!band) {
+      band = node('div', 'bd-cal__dropband');
+      band.setAttribute('aria-hidden', 'true');
+      col.appendChild(band);
+    }
+    var top = at / 60 * PLAN_HOUR;
+    var height = Math.max(16, planSpanOf(item, isBoard) / 60 * PLAN_HOUR);
+    if (height + top > 24 * PLAN_HOUR) top = 24 * PLAN_HOUR - height;
+    band.style.top = Math.round(top) + 'px';
+    band.style.height = Math.round(height) + 'px';
+    return true;
+  }
+
+  function planDropBandClear() {
+    Array.prototype.forEach.call(document.querySelectorAll('.bd-cal__dropband'), function (band) { band.remove(); });
+  }
+
   function planSnapped(minutes) {
     return Math.max(0, Math.min(1425, Math.round(minutes / 15) * 15));
   }
@@ -6568,12 +6596,15 @@ function richItemOf(box) {
       col.addEventListener('dragover', function (event) {
         if (!board.planDrag && !planDragHas(event)) return;
         event.preventDefault();
+        // A block that carries a time range only marks the range it will take, never the whole day.
+        if (board.planDrag && planDropBand(col, event)) return;
         col.classList.add('is-over');
       });
       col.addEventListener('dragleave', function () { col.classList.remove('is-over'); });
       col.addEventListener('drop', (function (useKey, useCol) {
         return function (event) {
           col.classList.remove('is-over');
+          planDropBandClear();
           if (board.planDrag) {
             event.preventDefault();
             var at = planStamped(planSnapped(planMinutesAt(useCol, event.clientY)));
