@@ -4473,6 +4473,14 @@ function richItemOf(box) {
 
   function closePlanner() {
     if (board.plannerEl) board.plannerEl.hidden = true;
+    // The fullscreen minimap hangs off the body, so closing the planner has to take it down too.
+    var map = board.planner && board.planner.map;
+    if (map && map.el) {
+      map.el.remove();
+      map.el = null;
+      map.canvas = null;
+      map.ctx = null;
+    }
     board.planner = null;
     board.planForeign = null;
   }
