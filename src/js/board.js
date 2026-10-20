@@ -6906,60 +6906,25 @@ function richItemOf(box) {
     cal.appendChild(head);
     cal.appendChild(dow);
     cal.appendChild(grid);
-    var rail = node('div', 'bd-qnav__years');
     var total = node('span', 'bd-qnav__total', '');
     var foot = node('div', 'bd-qnav__foot');
     foot.appendChild(calButton('Today', function () { pick(todayKey); }, 'is-quiet bd-qnav__today'));
     foot.appendChild(total);
+    var monthHead = node('div', 'bd-qnav__monthhead');
+    monthHead.appendChild(node('div', 'bd-qnav__sect', 'Month'));
+    var yearBar = node('div', 'bd-qnav__yearbar');
+    monthHead.appendChild(yearBar);
     var left = node('div', 'bd-qnav__left');
-    left.appendChild(node('div', 'bd-qnav__sect', 'Month'));
+    left.appendChild(monthHead);
     left.appendChild(months);
     left.appendChild(cal);
-    var railWrap = node('div', 'bd-qnav__railwrap');
-    railWrap.appendChild(rail);
-    var right = node('div', 'bd-qnav__right');
-    right.appendChild(node('div', 'bd-qnav__sect', 'Year'));
-    right.appendChild(railWrap);
     var wrap = node('div', 'bd-qnav__body');
     wrap.appendChild(left);
-    wrap.appendChild(right);
     body.appendChild(jump);
     body.appendChild(wrap);
     body.appendChild(foot);
     var railFrom = 0;
     var railTo = 0;
-    var paintRail = function () {
-      var year = shown().getFullYear();
-      var from = Math.min(1960, year - 40);
-      var to = Math.max(2060, year + 40);
-      if (from !== railFrom || to !== railTo) {
-        railFrom = from;
-        railTo = to;
-        rail.textContent = '';
-        for (var value = from; value <= to; value++) {
-          var row = node('button', 'bd-qnav__year');
-          row.type = 'button';
-          row.setAttribute('data-qnav-year', String(value));
-          row.appendChild(node('span', null, String(value)));
-          if (busy[value]) row.appendChild(node('span', 'bd-qnav__ydot'));
-          row.addEventListener('click', (function (picked) {
-            return function () { gotoMonth(new Date(picked, shown().getMonth(), 1).getTime()); };
-          })(value));
-          rail.appendChild(row);
-        }
-      }
-      var on = null;
-      Array.prototype.forEach.call(rail.children, function (row) {
-        var match = row.getAttribute('data-qnav-year') === String(year);
-        row.classList.toggle('is-sel', match);
-        row.setAttribute('aria-pressed', match ? 'true' : 'false');
-        if (match) on = row;
-      });
-      if (on && rail.getAttribute('data-qnav-at') !== String(year) && rail.clientHeight) {
-        rail.setAttribute('data-qnav-at', String(year));
-        rail.scrollTop = on.offsetTop - (rail.clientHeight - on.offsetHeight) / 2;
-      }
-    };
     var stepButton = function (glyph, tip, run) {
       var button = node('button', 'bd-qnav__step', glyph);
       button.type = 'button';
@@ -6990,6 +6955,16 @@ function richItemOf(box) {
         })(index));
         months.appendChild(chip);
       }
+      yearBar.textContent = '';
+      var backYear = stepButton('\u2039', 'Previous year', function () { gotoMonth(new Date(year - 1, month, 1).getTime()); });
+      backYear.classList.add('is-compact');
+      yearBar.appendChild(backYear);
+      var yearSum = node('span', 'bd-qnav__yearsum', String(year));
+      if (busy[year]) yearSum.appendChild(node('span', 'bd-qnav__ydot'));
+      yearBar.appendChild(yearSum);
+      var aheadYear = stepButton('\u203a', 'Next year', function () { gotoMonth(new Date(year + 1, month, 1).getTime()); });
+      aheadYear.classList.add('is-compact');
+      yearBar.appendChild(aheadYear);
       head.textContent = '';
       head.appendChild(stepButton('\u2039', 'Previous month', function () { gotoMonth(calShift(state, -1)); }));
       var label = node('div', 'bd-qnav__label');
@@ -7021,7 +6996,6 @@ function richItemOf(box) {
       var when = new Date(calMs(sel));
       total.textContent = CAL_DAYS[when.getDay()] + ', ' + CAL_MONTHS[when.getMonth()] + ' '
         + when.getDate() + ', ' + when.getFullYear();
-      paintRail();
       if (wantFocus) {
         wantFocus = false;
         var cursor = grid.querySelector('.bd-qnav__day.is-sel');
@@ -7117,7 +7091,6 @@ function richItemOf(box) {
       onOpen: function (api) {
         close = api.close;
         api.root.addEventListener('keydown', onKey);
-        paintRail();
       },
     });
   }
