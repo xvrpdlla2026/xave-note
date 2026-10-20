@@ -5734,9 +5734,10 @@ function richItemOf(box) {
     var view = body.getBoundingClientRect();
     var spot = bar.getBoundingClientRect();
     var room = 30;
-    if (spot.top >= view.top + room && spot.bottom <= view.bottom - room) return;
+    if (spot.top >= view.top + room && spot.bottom <= view.bottom - room) return false;
     var shift = spot.top < view.top + room ? spot.top - (view.top + room) : spot.bottom - (view.bottom - room);
     body.scrollTop = Math.max(0, Math.round(body.scrollTop + shift));
+    return true;
   }
 
   // The month grid scrolls on its own, so the cell a block landed in is brought up the same way a bar is.
@@ -5744,9 +5745,10 @@ function richItemOf(box) {
     var view = scroller.getBoundingClientRect();
     var spot = cell.getBoundingClientRect();
     var room = 6;
-    if (spot.top >= view.top + room && spot.bottom <= view.bottom - room) return;
+    if (spot.top >= view.top + room && spot.bottom <= view.bottom - room) return false;
     var shift = spot.top < view.top + room ? spot.top - (view.top + room) : spot.bottom - (view.bottom - room);
     scroller.scrollTop = Math.max(0, Math.round(scroller.scrollTop + shift));
+    return true;
   }
 
   // Bringing a fresh block's card up keeps it clear of the panel edge, the way the clock reveal keeps its bar clear.
@@ -5756,21 +5758,37 @@ function richItemOf(box) {
     var room = 14;
     var shift = spot.bottom > view.bottom - room ? spot.bottom - (view.bottom - room) : 0;
     if (spot.top - shift < view.top + room) shift = spot.top - (view.top + room);
-    if (shift) list.scrollTop = Math.max(0, Math.round(list.scrollTop + shift));
+    if (!shift) return false;
+    list.scrollTop = Math.max(0, Math.round(list.scrollTop + shift));
+    return true;
   }
 
   function planRevealFresh(plan) {
     var fresh = board.planFresh;
     if (!fresh || Date.now() > fresh.until) return;
     board.planFresh = null;
+    // The paint returns before the new rows have the height they end up with, and opening the panel
+    // sizes the grid again, so the reveal is repeated over the next few frames until it stops moving.
+    var tries = 0;
+    var step = function () {
+      if (!board.planner) return;
+      var moved = planShowFresh(board.planner, fresh);
+      tries++;
+      if (moved && tries < 5) setTimeout(step, tries < 3 ? 60 : 140);
+    };
+    requestAnimationFrame(function () { requestAnimationFrame(step); });
+  }
+
+  function planShowFresh(plan, fresh) {
+    var moved = false;
     var grid = plannerEl().querySelector('.bd-cal__grid');
     if (fresh.key && grid && grid.clientHeight) {
       var cell = grid.querySelector('.bd-cal__cell[data-key="' + fresh.key + '"]');
-      if (cell) planCellIntoView(grid, cell);
+      if (cell) moved = planCellIntoView(grid, cell) || moved;
     }
     var list = plannerEl().querySelector('.bd-cal__list');
     var card = list ? list.querySelector('[data-plan-id="' + fresh.id + '"]') : null;
-    if (!list || !card) return;
+    if (!list || !card) return moved;
     if (plan.full && card.__planCanvas) {
       var box = card.__planCanvas;
       var view = planView(plan);
@@ -5778,12 +5796,27 @@ function richItemOf(box) {
       view.y = Math.round(list.clientHeight / 2 - (box.y + box.h / 2) * view.z);
       planPaintView(plan);
     } else {
-      planCardIntoView(list, card);
+      moved = planCardIntoView(list, card) || moved;
     }
-    if (!plan.full) planReveal(fresh.id);
+    if (!plan.full) moved = planRectIntoView(plan, fresh.id) || moved;
     // The block is shown, not edited: taking the caret would pull the next keystroke into a field nobody asked for.
     card.classList.remove('is-selected');
-    setTimeout(function () { card.classList.remove('is-fresh'); }, 1400);
+    if (!board.planFreshFade) {
+      board.planFreshFade = setTimeout(function () {
+        board.planFreshFade = null;
+        Array.prototype.forEach.call(plannerEl().querySelectorAll('.bd-item.is-fresh'), function (node) { node.classList.remove('is-fresh'); });
+      }, 1400);
+    }
+    return moved;
+  }
+
+  function planRectIntoView(plan, id) {
+    if (!id) return false;
+    var body = plannerEl().querySelector('.bd-cal__tbody');
+    if (!body) return false;
+    var before = body.scrollTop;
+    planReveal(id);
+    return body.scrollTop !== before;
   }
 
   // The day canvas doubles as the drawing surface: in fullscreen a draw block is sketched anywhere on
