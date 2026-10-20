@@ -418,7 +418,53 @@ window.NoteApp = window.NoteApp || {};
     return img;
   }
 
+  function loadPicture(source) {
+    return new Promise(function (resolve, reject) {
+      var url = typeof source === 'string' ? source : URL.createObjectURL(source);
+      var img = new Image();
+      img.onload = function () {
+        resolve({
+          img: img,
+          width: img.naturalWidth || img.width,
+          height: img.naturalHeight || img.height,
+          release: function () { if (url !== source) URL.revokeObjectURL(url); },
+        });
+      };
+      img.onerror = function () {
+        if (url !== source) URL.revokeObjectURL(url);
+        reject(new Error('That picture will not decode'));
+      };
+      img.src = url;
+    });
+  }
+
+  // A card is 288 pixels wide, so it shows a thumbnail and the board never decodes a
+  // multi megabyte photograph just to paint that box.
+  function imageThumb(source, max) {
+    var limit = Math.max(64, max || 480);
+    return loadPicture(source).then(function (shot) {
+      var width = shot.width || 1;
+      var height = shot.height || 1;
+      var scale = Math.min(1, limit / Math.max(width, height));
+      var canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(width * scale));
+      canvas.height = Math.max(1, Math.round(height * scale));
+      var ctx = canvas.getContext('2d');
+      ctx.drawImage(shot.img, 0, 0, canvas.width, canvas.height);
+      shot.release();
+      var out = '';
+      try { out = canvas.toDataURL('image/webp', 0.82); } catch (e) { out = ''; }
+      if (out.indexOf('data:image/webp') !== 0) {
+        try { out = canvas.toDataURL('image/jpeg', 0.82); } catch (err) { out = ''; }
+      }
+      if (!out) return '';
+      if (typeof source === 'string' && source.length && out.length >= source.length) return '';
+      return out;
+    }).catch(function () { return ''; });
+  }
+
   App.util = {
+    imageThumb: imageThumb,
     uuid: uuid,
     nowIso: nowIso,
     debounce: debounce,

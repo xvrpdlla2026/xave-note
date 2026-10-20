@@ -735,6 +735,10 @@ window.NoteApp = window.NoteApp || {};
     if (placeholder) box.setAttribute('data-placeholder', placeholder);
     var value = (item.data && item.data[key]) || '';
     box.innerHTML = util.isRichHtml(value) ? util.sanitizeRichHtml(value) : util.escapeHtml(value);
+    Array.prototype.forEach.call(box.querySelectorAll('img'), function (img) {
+      img.setAttribute('loading', 'lazy');
+      img.setAttribute('decoding', 'async');
+    });
     box.addEventListener('input', function () {
       if (lockOf(item)) return;
       item.data[key] = box.innerHTML;
@@ -2360,6 +2364,15 @@ function richItemOf(box) {
       repaintBody(item);
       paintKind(item);
       if (board.planner) paintPlanner();
+      if (filePreviewKind(item.data) === 'image') {
+        util.imageThumb(file, 480).then(function (thumb) {
+          if (!thumb) return;
+          item.data.thumb = thumb;
+          saveItem(item);
+          repaintBody(item);
+          if (board.planner) paintPlanner();
+        });
+      }
       return item;
     });
   }
@@ -2386,10 +2399,49 @@ function richItemOf(box) {
     util.toast(list.length === 1 ? 'Added \u201c' + list[0].name + '\u201d to the board' : 'Added ' + list.length + ' files to the board');
   }
 
+  function thumbPicture(item) {
+    var data = item.data || {};
+    var img = node('img', 'bd-image__img');
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.alt = data.name || data.filename || '';
+    img.src = data.thumb;
+    return img;
+  }
+
+  // A card without a thumbnail draws its picture and quietly makes one for the next paint.
+  function warmThumb(item) {
+    if (item.thumbBusy || item.thumbTried || !item.data) return;
+    var data = item.data;
+    if (data.thumb) return;
+    if (!data.fileId && !data.src) return;
+    if (data.fileId && filePreviewKind(data) !== 'image') return;
+    item.thumbBusy = true;
+    var source = data.fileId
+      ? App.db.getFileBlob(data.fileId).then(function (res) { return res && res.blob ? res.blob : null; })
+      : Promise.resolve(data.src);
+    source.then(function (given) {
+      if (!given) return '';
+      return util.imageThumb(given, 480);
+    }).then(function (thumb) {
+      item.thumbBusy = false;
+      if (!thumb) { item.thumbTried = true; return; }
+      data.thumb = thumb;
+      saveItem(item);
+      repaintBody(item);
+      if (board.planner) paintPlanner();
+    }, function () { item.thumbBusy = false; item.thumbTried = true; });
+  }
+
   function imageBody(item) {
     var wrap = node('div', 'bd-image');
     var data = item.data || {};
     if (data.fileId) {
+      if (data.thumb && filePreviewKind(data) === 'image') {
+        wrap.appendChild(thumbPicture(item));
+        return wrap;
+      }
+      warmThumb(item);
       var shown = filePreviewKind(data);
       if (shown && App.ui.filePreviewContent) {
         var classes = { pdfChrome: false };
@@ -2407,7 +2459,14 @@ function richItemOf(box) {
       return wrap;
     }
     if (data.src) {
+      if (data.thumb) {
+        wrap.appendChild(thumbPicture(item));
+        return wrap;
+      }
+      warmThumb(item);
       var img = node('img', 'bd-image__img');
+      img.loading = 'lazy';
+      img.decoding = 'async';
       img.src = data.src;
       img.alt = data.name || '';
       wrap.appendChild(img);
