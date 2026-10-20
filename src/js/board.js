@@ -6870,9 +6870,26 @@ function richItemOf(box) {
     return wrap;
   }
 
+  // The clock scrolls, so its scrollbar eats into the row of columns while the day headers and the all day
+  // lanes above it keep the full width. Handing that width back keeps the week one set of columns.
+  function planWeekSync(el) {
+    var grid = (el || plannerEl()).querySelector('.bd-cal__tgrid');
+    if (!grid) return;
+    var body = grid.querySelector('.bd-cal__tbody');
+    var head = grid.querySelector('.bd-cal__thead');
+    var all = grid.querySelector('.bd-cal__tall');
+    if (!body || !head || !all) return;
+    var gap = Math.round(body.offsetWidth - body.clientWidth);
+    if (!(gap > 0)) gap = 0;
+    var value = gap + 'px';
+    if (head.style.paddingRight !== value) head.style.paddingRight = value;
+    if (all.style.paddingRight !== value) all.style.paddingRight = value;
+  }
+
   function planChrome(plan) {
     if (!plan) return;
     var el = plannerEl();
+    planWeekSync(el);
     var day = el.querySelector('.bd-cal__day');
     if (!el.__planWheel) {
       el.__planWheel = true;
