@@ -4700,6 +4700,26 @@ function richItemOf(box) {
     if (kindGlyph) badge.appendChild(kindGlyph);
     badge.appendChild(node('span', '', kind.label));
     head.appendChild(badge);
+    // A block can be finished from the card, so the editor for it can finish it too.
+    var doneNow = planDoneOf(item);
+    var mark = node('button', 'bd-cal__quickdone' + (doneNow ? ' is-on' : ''));
+    mark.type = 'button';
+    mark.title = doneNow ? 'Mark as not done' : 'Mark as done';
+    mark.setAttribute('aria-label', mark.title);
+    mark.setAttribute('aria-pressed', doneNow ? 'true' : 'false');
+    var markIcon = App.ui.icon('check', 13);
+    if (markIcon) mark.appendChild(markIcon);
+    mark.addEventListener('click', function (event) {
+      event.stopPropagation();
+      planSetDone(item, !planDoneOf(item));
+      var finished = planDoneOf(item);
+      mark.classList.toggle('is-on', finished);
+      mark.title = finished ? 'Mark as not done' : 'Mark as done';
+      mark.setAttribute('aria-label', mark.title);
+      mark.setAttribute('aria-pressed', finished ? 'true' : 'false');
+      subtitle.classList.toggle('is-done', finished);
+    });
+    head.appendChild(mark);
     var group = node('div', 'bd-cal__quickwhen');
     var groupHead = node('div', 'bd-cal__quickwhenhead');
     groupHead.appendChild(node('span', 'bd-cal__quicklabel', 'When'));
@@ -4751,6 +4771,7 @@ function richItemOf(box) {
     group.appendChild(row);
     group.appendChild(lastRow);
     var subtitle = node('div', 'bd-cal__quicksub');
+    subtitle.classList.toggle('is-done', doneNow);
     var sum = function () {
       subtitle.textContent = planQuickLine(day.value || key, all.checked, from.value, to.value);
     };

@@ -4389,6 +4389,11 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__quicktitle::placeholder { color: var(--text-faint); }
 .bd-cal__quicktitle:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
 .bd-cal__quicksub { margin-top: -2px; color: var(--text-faint); font-size: 11px; }
+.bd-cal__quicksub.is-done { text-decoration: line-through; }
+.bd-cal__quickdone { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; margin-left: auto; padding: 0; border: 1px solid var(--border); border-radius: 8px; background: none; color: var(--text-faint); cursor: pointer; }
+.bd-cal__quickdone:hover { border-color: var(--border-strong); background: var(--bg-hover); color: var(--text); }
+.bd-cal__quickdone.is-on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.bd-cal__quickdone:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-ring); }
 .bd-cal__quickday { display: flex; align-items: center; gap: 8px; }
 .bd-cal__quickday .bd-plan__rangedate { flex: 1 1 auto; min-width: 0; }
 .bd-cal__quickicon { display: inline-flex; flex: none; color: var(--text-faint); }
