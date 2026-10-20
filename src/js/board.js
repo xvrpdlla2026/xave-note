@@ -6511,20 +6511,26 @@ function richItemOf(box) {
   }
   function planYearView(plan, todayKey) {
     var counts = planCountIndex(plan);
-    var wrap = node('div', 'bd-cal__yearview');
     var ms = calMs(plan.date);
     var base = new Date(ms === null ? Date.now() : ms);
     var year = base.getFullYear();
+    var picked = monthStart(ms === null ? Date.now() : ms);
+    var wrap = node('div', 'bd-cal__yearview');
     for (var m = 0; m < 12; m++) {
-      var card = node('div', 'bd-cal__ymonth');
+      var first = new Date(year, m, 1);
       var stamp = year + '-' + String(m + 1).padStart(2, '0');
       var booked = Object.keys(counts).reduce(function (total, one) {
         return one.slice(0, 7) === stamp ? total + counts[one] : total;
       }, 0);
+      var card = node('div', 'bd-cal__ymonth'
+        + (first.getTime() === picked ? ' is-sel' : '')
+        + (booked ? '' : ' is-empty'));
       var title = node('button', 'bd-cal__ytitle');
       title.type = 'button';
       title.title = 'Open ' + CAL_MONTHS[m] + ' ' + year;
-      title.appendChild(node('span', 'bd-cal__ymonthname', CAL_MONTHS[m] + ' ' + year));
+      title.setAttribute('aria-label', CAL_MONTHS[m] + ' ' + year
+        + (booked ? ', ' + booked + (booked === 1 ? ' block' : ' blocks') : ', no blocks'));
+      title.appendChild(node('span', 'bd-cal__ymonthname', CAL_MONTHS[m]));
       if (booked) title.appendChild(node('span', 'bd-cal__ycount', String(booked)));
       title.addEventListener('click', (function (useMonth) {
         return function () {
@@ -6536,7 +6542,6 @@ function richItemOf(box) {
       card.appendChild(title);
       var grid = node('div', 'bd-cal__ygrid');
       CAL_DOW.forEach(function (text) { grid.appendChild(node('span', 'bd-cal__ydow', text)); });
-      var first = new Date(year, m, 1);
       var cursor = new Date(year, m, 1 - first.getDay());
       for (var i = 0; i < 42; i++) {
         var day = new Date(cursor.getTime());
@@ -6550,13 +6555,14 @@ function richItemOf(box) {
           + (count ? ' has-plan' : ''));
         cell.type = 'button';
         cell.title = CAL_DAYS[day.getDay()] + ', ' + CAL_MONTHS[day.getMonth()] + ' ' + day.getDate() + (count ? ', ' + count + (count === 1 ? ' block' : ' blocks') : '');
-        cell.appendChild(node('span', '', String(day.getDate())));
+        cell.appendChild(node('span', null, String(day.getDate())));
         if (count) cell.appendChild(node('span', 'bd-cal__ydot'));
         cell.setAttribute('data-year-key', key);
         cell.addEventListener('click', function () {
           var use = this.getAttribute('data-year-key');
           plan.date = use;
           plan.month = monthStart(calMs(use));
+          plan.calMonth = plan.month;
           plan.dayOpen = true;
           paintPlanner();
         });
@@ -6743,8 +6749,8 @@ function richItemOf(box) {
     return monthStart(d.getTime());
   }
 
-  // The month arrows alone make a far date a chore, so the month title opens a jump panel that walks
-  // year, then month, then days, replacing the grid it stands in rather than stacking another surface.
+  // The month arrows alone make a far date a chore, so the month title opens one dialog that walks a
+  // year, then a month, then a day, instead of pushing an inline picker into the middle of the grid.
   function planMiniGrid(plan, first, todayKey) {
     var grid = node('div', 'bd-cal__minigrid');
     var start = new Date(first.getTime());
@@ -6770,7 +6776,6 @@ function richItemOf(box) {
         plan.date = use;
         plan.month = monthStart(calMs(use));
         plan.calMonth = plan.month;
-        plan.jump = 0;
         paintPlanner();
       });
       grid.appendChild(cell);
@@ -6778,103 +6783,88 @@ function richItemOf(box) {
     return grid;
   }
 
-  function planJumpPanel(plan, todayKey, wide) {
-    var level = plan.jump === 'year' || plan.jump === 'day' ? plan.jump : 'month';
-    var base = new Date(plan.calMonth || plan.month);
-    var now = new Date();
-    var year = base.getFullYear();
-    var month = base.getMonth();
-    var jumpYear = function (nextYear) {
-      plan.calMonth = monthStart(new Date(nextYear, month, 1).getTime());
-      plan.jump = 'month';
+  function planQuickNav(plan) {
+    var state = monthStart(plan.calMonth || plan.month || Date.now());
+    var counts = planCountIndex(plan);
+    var todayKey = calKey(Date.now());
+    var body = node('div', 'bd-qnav');
+    var head = node('div', 'bd-qnav__head');
+    var label = node('span', 'bd-qnav__label');
+    var dow = node('div', 'bd-qnav__dow');
+    var grid = node('div', 'bd-qnav__grid');
+    var foot = node('div', 'bd-qnav__foot');
+    var total = node('span', 'bd-qnav__total');
+    var close = null;
+    var pick = function (key) {
+      if (!key) return;
+      plan.date = key;
+      plan.month = monthStart(calMs(key));
+      plan.calMonth = plan.month;
+      plan.dayOpen = true;
+      if (close) close(null);
       paintPlanner();
     };
-    var wrap = node('div', 'bd-cal__jump' + (wide ? ' is-wide' : ''));
-    var head = node('div', 'bd-cal__jumphead');
-    var back = calButton('\u2039', function () {
-      plan.calMonth = monthStart(new Date(year - (level === 'year' ? 12 : 1), month, 1).getTime());
-      paintPlanner();
-    }, 'is-icon');
-    back.title = 'Earlier';
-    back.setAttribute('aria-label', 'Earlier');
-    head.appendChild(back);
-    var title = node('button', 'bd-cal__jumptitle', String(year));
-    title.type = 'button';
-    title.title = level === 'year' ? 'Pick a month' : 'Pick a year';
-    title.addEventListener('click', function () {
-      plan.jump = level === 'year' ? 'month' : 'year';
-      paintPlanner();
-    });
-    head.appendChild(title);
-    var next = calButton('\u203a', function () {
-      plan.calMonth = monthStart(new Date(year + (level === 'year' ? 12 : 1), month, 1).getTime());
-      paintPlanner();
-    }, 'is-icon');
-    next.title = 'Later';
-    next.setAttribute('aria-label', 'Later');
-    head.appendChild(next);
-    wrap.appendChild(head);
-    if (level === 'day') {
-      var months = node('div', 'bd-cal__jumpmonths');
-      var backMonth = calButton('\u2039', function () {
-        plan.calMonth = calShift(plan.calMonth || plan.month, -1);
-        plan.jump = 'day';
-        paintPlanner();
-      }, 'is-icon');
-      backMonth.title = 'Previous month';
-      backMonth.setAttribute('aria-label', 'Previous month');
-      months.appendChild(backMonth);
-      var monthTitle = node('button', 'bd-cal__jumptitle', CAL_MONTHS[month]);
-      monthTitle.type = 'button';
-      monthTitle.title = 'Pick a month';
-      monthTitle.addEventListener('click', function () {
-        plan.jump = 'month';
-        paintPlanner();
+    var draw = function () {
+      var shown = new Date(state);
+      label.textContent = CAL_MONTHS[shown.getMonth()] + ' ' + shown.getFullYear();
+      grid.textContent = '';
+      var booked = 0;
+      var start = new Date(state);
+      start.setDate(1 - start.getDay());
+      for (var i = 0; i < 42; i++) {
+        var day = new Date(start.getTime());
+        day.setDate(start.getDate() + i);
+        var key = calKey(day.getTime());
+        var count = counts[key] || 0;
+        if (day.getMonth() === shown.getMonth()) booked += count;
+        var cell = node('button', 'bd-qnav__day'
+          + (day.getMonth() === shown.getMonth() ? '' : ' is-out')
+          + (key === todayKey ? ' is-today' : '')
+          + (key === plan.date ? ' is-sel' : ''));
+        cell.type = 'button';
+        cell.title = CAL_DAYS[day.getDay()] + ', ' + CAL_MONTHS[day.getMonth()] + ' ' + day.getDate()
+          + (count ? ', ' + count + (count === 1 ? ' block' : ' blocks') : '');
+        cell.appendChild(node('span', null, String(day.getDate())));
+        if (count) cell.appendChild(node('span', 'bd-qnav__dot'));
+        cell.setAttribute('data-qnav-key', key);
+        cell.addEventListener('click', function () { pick(this.getAttribute('data-qnav-key')); });
+        grid.appendChild(cell);
+      }
+      total.textContent = booked ? booked + (booked === 1 ? ' block' : ' blocks') : 'No blocks';
+    };
+    var step = function (glyph, tip, months) {
+      var button = node('button', 'bd-qnav__step', glyph);
+      button.type = 'button';
+      button.title = tip;
+      button.setAttribute('aria-label', tip);
+      button.addEventListener('click', function () {
+        state = calShift(state, months);
+        draw();
       });
-      months.appendChild(monthTitle);
-      var nextMonth = calButton('\u203a', function () {
-        plan.calMonth = calShift(plan.calMonth || plan.month, 1);
-        plan.jump = 'day';
-        paintPlanner();
-      }, 'is-icon');
-      nextMonth.title = 'Next month';
-      nextMonth.setAttribute('aria-label', 'Next month');
-      months.appendChild(nextMonth);
-      wrap.appendChild(months);
-    }
-    var grid = node('div', 'bd-cal__jumpgrid');
-    var pick = function (label, selected, onPick) {
-      var cell = node('button', 'bd-cal__jumpcell' + (selected ? ' is-sel' : ''));
-      cell.type = 'button';
-      cell.textContent = label;
-      cell.addEventListener('click', onPick);
-      grid.appendChild(cell);
+      return button;
     };
-    if (level === 'year') {
-      var from = year - 5;
-      for (var i = 0; i < 12; i++) {
-        (function (value) {
-          pick(String(value), value === year, function () { jumpYear(value); });
-        })(from + i);
-      }
-    } else if (level === 'month') {
-      for (var m = 0; m < 12; m++) {
-        (function (value) {
-          pick(wide ? CAL_MONTHS[value] : CAL_MONTHS[value].slice(0, 3), value === month, function () {
-            plan.calMonth = monthStart(new Date(year, value, 1).getTime());
-            plan.jump = 'day';
-            paintPlanner();
-          });
-        })(m);
-      }
-    } else {
-      wrap.appendChild(planMiniGrid(plan, base, todayKey));
-      return wrap;
-    }
-    wrap.appendChild(grid);
-    return wrap;
+    head.appendChild(step('\u00ab', 'Previous year', -12));
+    head.appendChild(step('\u2039', 'Previous month', -1));
+    head.appendChild(label);
+    head.appendChild(step('\u203a', 'Next month', 1));
+    head.appendChild(step('\u00bb', 'Next year', 12));
+    CAL_DOW.forEach(function (text) { dow.appendChild(node('span', null, text)); });
+    foot.appendChild(calButton('Today', function () { pick(todayKey); }, 'is-quiet bd-qnav__today'));
+    foot.appendChild(total);
+    draw();
+    body.appendChild(head);
+    body.appendChild(dow);
+    body.appendChild(grid);
+    body.appendChild(foot);
+    App.ui.dialog({
+      title: 'Go to a date',
+      icon: 'calendar',
+      body: body,
+      hideFooter: true,
+      focus: '.bd-qnav__day.is-sel',
+      onOpen: function (api) { close = api.close; },
+    });
   }
-
   function planMiniCal(plan, todayKey) {
     var wrap = node('div', 'bd-cal__mini');
     var head = node('div', 'bd-cal__minihead');
@@ -6894,21 +6884,14 @@ function richItemOf(box) {
     step('\u00ab', 'Previous year', -12);
     step('\u2039', 'Previous month', -1);
     var miniTitle = calButton(CAL_MONTHS[first.getMonth()] + ' ' + first.getFullYear(), function () {
-      plan.jump = plan.jump ? 0 : 'month';
-      paintPlanner();
+      planQuickNav(plan);
     }, 'is-quiet bd-cal__minititle');
-    miniTitle.title = 'Jump to a month, a year or a day';
-    miniTitle.setAttribute('aria-haspopup', 'true');
-    miniTitle.setAttribute('aria-expanded', plan.jump ? 'true' : 'false');
-    miniTitle.classList.toggle('is-open', !!plan.jump);
+    miniTitle.title = 'Go to a date';
+    miniTitle.setAttribute('aria-haspopup', 'dialog');
     head.appendChild(miniTitle);
     step('\u203a', 'Next month', 1);
     step('\u00bb', 'Next year', 12);
     wrap.appendChild(head);
-    if (plan.jump) {
-      wrap.appendChild(planJumpPanel(plan, todayKey, false));
-      return wrap;
-    }
     var dow = node('div', 'bd-cal__minidow');
     CAL_DOW.forEach(function (text) { dow.appendChild(node('span', '', text)); });
     wrap.appendChild(dow);
@@ -6972,7 +6955,6 @@ function richItemOf(box) {
     el.textContent = '';
     el.classList.toggle('is-day-open', !!plan.dayOpen);
     var main = node('div', 'bd-cal__main');
-    main.classList.toggle('is-jumping', !!plan.jump);
     var top = node('div', 'bd-cal__top');
     top.classList.toggle('is-assign', plan.mode !== 'browse');
     var titles = {
@@ -6987,14 +6969,10 @@ function richItemOf(box) {
     previous.setAttribute('aria-label', previous.title);
     nav.appendChild(previous);
     var monthTitle = calButton(planNavLabel(plan), function () {
-      plan.jump = plan.jump ? 0 : 'month';
-      paintPlanner();
-    }, 'is-quiet bd-cal__mtitle');
-    monthTitle.title = 'Jump to a month, a year or a day';
-    monthTitle.setAttribute('aria-haspopup', 'true');
-    monthTitle.setAttribute('aria-expanded', plan.jump ? 'true' : 'false');
-    monthTitle.classList.toggle('is-open', !!plan.jump);
-    monthTitle.classList.add('bd-cal__mtjump');
+      planQuickNav(plan);
+    }, 'is-quiet bd-cal__mtitle bd-cal__mtjump');
+    monthTitle.title = 'Go to a date';
+    monthTitle.setAttribute('aria-haspopup', 'dialog');
     monthTitle.appendChild(node('span', 'bd-cal__mtcaret', '\u25be'));
     nav.appendChild(monthTitle);
     var following = calButton('\u203a', function () { planShift(plan, 1); }, 'is-icon');
@@ -7093,7 +7071,6 @@ function richItemOf(box) {
     if (sheetDay) main.appendChild(planDayView(plan, calKey(Date.now())));
     var dow = node('div', 'bd-cal__dow');
     CAL_DOW.forEach(function (day) { dow.appendChild(node('span', '', day)); });
-    if (plan.jump) main.appendChild(planJumpPanel(plan, calKey(Date.now()), true));
     main.appendChild(dow);
     var grid = node('div', 'bd-cal__grid');
     var monthTotal = 0;
@@ -7465,12 +7442,6 @@ column.addEventListener('dragover', function (event) {
   window.addEventListener('keydown', function (event) {
     if (event.key !== 'Escape' || !board.planner) return;
     if (document.querySelector('dialog[open]')) return;
-      if (board.planner.jump) {
-        board.planner.jump = 0;
-        paintPlanner();
-        event.preventDefault();
-        return;
-      }
     closePlanner();
   });
 
