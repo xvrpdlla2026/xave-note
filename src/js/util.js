@@ -480,6 +480,63 @@ window.NoteApp = window.NoteApp || {};
     }).catch(function () { return ''; });
   }
 
+  var saveState = { pending: 0, dirty: false, failed: false, at: 0 };
+  var saveNode = null;
+  var saveHome = null;
+
+  function saveStatus() {
+    if (saveState.failed) return 'error';
+    if (saveState.pending || saveState.dirty) return 'saving';
+    return 'saved';
+  }
+
+  function savePaint() {
+    if (!saveNode) {
+      saveNode = document.getElementById('save-state');
+      if (!saveNode) return;
+      saveHome = saveNode.parentNode;
+    }
+    var status = saveStatus();
+    saveNode.classList.toggle('is-saving', status === 'saving');
+    saveNode.classList.toggle('is-error', status === 'error');
+    var label = saveNode.querySelector('.save-state__text');
+    if (label) {
+      label.textContent = status === 'error' ? 'Not saved' : status === 'saving' ? 'Saving\u2026' : 'Saved';
+    }
+    var when = saveState.at
+      ? new Date(saveState.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : '';
+    saveNode.title = status === 'error'
+      ? 'The last change could not be written. Export a backup before closing.'
+      : status === 'saving'
+        ? 'Writing to this device'
+        : when ? 'Saved at ' + when : 'Everything is saved';
+    saveNode.setAttribute('aria-label', saveNode.title);
+  }
+
+  // Closing the tab is only safe if the last keystroke reached the database, so every write
+  // says when it starts, when it lands, and when it fails.
+  App.save = {
+    status: saveStatus,
+    paint: savePaint,
+    begin: function () { saveState.pending += 1; saveState.failed = false; savePaint(); },
+    end: function () { saveState.pending = Math.max(0, saveState.pending - 1); saveState.dirty = false; saveState.at = Date.now(); savePaint(); },
+    fail: function () { saveState.pending = 0; saveState.failed = true; savePaint(); },
+    dirty: function () { if (saveState.dirty && !saveState.failed) return; saveState.dirty = true; saveState.failed = false; savePaint(); },
+    mount: function (host) {
+      savePaint();
+      if (!saveNode) return;
+      if (host) {
+        if (saveNode.parentNode !== host) host.appendChild(saveNode);
+        return;
+      }
+      if (!saveHome) return;
+      var divider = saveHome.querySelector('.topbar__divider');
+      if (divider) { if (saveNode.nextSibling !== divider) saveHome.insertBefore(saveNode, divider); }
+      else if (saveNode.parentNode !== saveHome) saveHome.appendChild(saveNode);
+    },
+  };
+
   App.util = {
     imageThumb: imageThumb,
     uuid: uuid,

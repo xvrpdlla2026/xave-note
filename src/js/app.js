@@ -486,6 +486,7 @@ window.NoteApp = window.NoteApp || {};
     state.currentNote.content = body.innerHTML;
     state.editorDirty = true;
     setStatus('Unsaved\u2026');
+    App.save.dirty();
     paintTabDirty();
     saveOpenNote();
     return true;
@@ -5107,6 +5108,7 @@ window.NoteApp = window.NoteApp || {};
         state.currentNote.title = target.value;
         state.editorDirty = true;
         setStatus('Unsaved\u2026');
+        App.save.dirty();
         paintTabDirty();
         saveOpenNote();
       } else if (target.id === 'note-body'

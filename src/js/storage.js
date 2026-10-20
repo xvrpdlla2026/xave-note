@@ -160,6 +160,17 @@ window.NoteApp = window.NoteApp || {};
 
     save: function (bytes) {
       if (!bytes || !bytes.length) return Promise.reject(new Error('refusing to store an empty snapshot'));
+      App.save.begin();
+      return Storage.writeSnapshot(bytes).then(function (out) {
+        App.save.end();
+        return out;
+      }, function (err) {
+        App.save.fail();
+        throw err;
+      });
+    },
+
+    writeSnapshot: function (bytes) {
 
       if (!idbRefused) {
         return openIdb()
@@ -186,11 +197,18 @@ window.NoteApp = window.NoteApp || {};
     },
 
     putBlob: function (id, blob) {
+      App.save.begin();
       return openIdb().then(function (db) {
         return idbRequest(db, 'readwrite', function (store) { return store.put(blob, id); }, IDB_BLOBS);
       }, function (err) {
         idbRefused = true;
         idbHandle = null;
+        throw err;
+      }).then(function (out) {
+        App.save.end();
+        return out;
+      }, function (err) {
+        App.save.fail();
         throw err;
       });
     },

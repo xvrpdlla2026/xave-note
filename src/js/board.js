@@ -107,6 +107,7 @@ window.NoteApp = window.NoteApp || {};
 
   function queueItemSave(item) {
     if (item.saveTimer) clearTimeout(item.saveTimer);
+    App.save.dirty();
     item.saveTimer = setTimeout(function () { item.saveTimer = null; saveItem(item); }, 400);
   }
 
@@ -11296,6 +11297,8 @@ if (wrap.closest && wrap.closest('.bd-cal')) openDrawPad(item);
     planToggle.addEventListener('click', function () { openPlanner('browse', [], null); });
     board.planButton = planToggle;
     top.appendChild(planToggle);
+    board.topBar = top;
+    App.save.mount(top);
     board.root = root;
     board.stage = stage;
     board.canvas = canvas;
@@ -11813,6 +11816,7 @@ if (wrap.closest && wrap.closest('.bd-cal')) openDrawPad(item);
     if (board.stage) board.stage.classList.remove('is-moving');
     if (board.root) board.root.classList.remove('is-moving');
     if (!board.root) document.body.appendChild(buildRoot());
+    if (board.topBar) App.save.mount(board.topBar);
     board.root.classList.add('is-open');
     board.root.classList.toggle('is-maphidden', !!board.mapHidden);
     document.body.classList.add('is-board');
@@ -11848,6 +11852,7 @@ if (wrap.closest && wrap.closest('.bd-cal')) openDrawPad(item);
 
   function close() {
     if (!board.open) return;
+    if (App.save) App.save.mount(null);
     cancelViewGlide();
     board.items.forEach(flushItem);
     closePicker();

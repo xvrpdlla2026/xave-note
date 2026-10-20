@@ -514,9 +514,11 @@ window.NoteApp = window.NoteApp || {};
     };
 
     pendingWrites += 1;
+    App.save.begin();
     var result = (writeQueue || Promise.resolve()).then(task, task);
-    var settle = function () { pendingWrites -= 1; };
-    result.then(settle, settle);
+    var settle = function () { pendingWrites -= 1; App.save.end(); };
+    var failed = function () { pendingWrites -= 1; App.save.fail(); };
+    result.then(settle, failed);
     writeQueue = result.catch(function () {  });
     return result;
   }
