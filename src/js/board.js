@@ -7029,7 +7029,8 @@ function richItemOf(box) {
       browse: 'Planner',
       assign: 'Choose a date for ' + plan.rows.length + (plan.rows.length === 1 ? ' block' : ' blocks'),
     };
-    top.appendChild(node('div', 'bd-cal__label', titles[plan.mode] || 'Planner'));
+    var lead = node('div', 'bd-cal__lead');
+    lead.appendChild(node('span', 'bd-cal__label', titles[plan.mode] || 'Planner'));
     var nav = node('div', 'bd-cal__nav');
     var stepped = planViewMode(plan) || 'month';
     var previous = calButton('\u2039', function () { planShift(plan, -1); }, 'is-icon');
@@ -7047,7 +7048,7 @@ function richItemOf(box) {
     following.title = 'Next ' + stepped;
     following.setAttribute('aria-label', following.title);
     nav.appendChild(following);
-    top.appendChild(nav);
+    lead.appendChild(nav);
     var toToday = calButton('Today', function () {
       plan.date = calKey(Date.now());
       plan.month = monthStart(Date.now());
@@ -7056,11 +7057,12 @@ function richItemOf(box) {
     }, 'is-quiet bd-cal__today');
     toToday.title = 'Go to today';
     if (!planOnToday(plan)) toToday.classList.add('is-off');
-    top.appendChild(toToday);
-    top.appendChild(planViewSwitch(plan));
-    var sum = node('span', 'bd-cal__msum', '');
-    top.appendChild(sum);
+    lead.appendChild(toToday);
+    top.appendChild(lead);
     top.appendChild(node('div', 'bd-cal__spacer'));
+    var trail = node('div', 'bd-cal__trail');
+    trail.appendChild(planViewSwitch(plan));
+    var sum = node('span', 'bd-cal__msum', '');
     var search = node('div', 'bd-cal__search');
     var glyph = App.ui.icon('search', 14);
     if (glyph) search.appendChild(glyph);
@@ -7102,17 +7104,25 @@ function richItemOf(box) {
       board.plannerFilter = false;
     }
     if (plan.mode === 'assign') {
-      top.appendChild(calButton('Remove from planner', function () {
+      trail.appendChild(calButton('Remove from planner', function () {
         plan.rows.forEach(function (item) { setPlan(item, null); });
         closePlanner();
         util.toast('Removed from the planner');
       }, 'is-quiet'));
     }
-    top.appendChild(calButton('Day', function () {
+    var dayToggle = node('button', 'bd-cal__btn is-quiet is-icon bd-cal__sheetbtn');
+    dayToggle.type = 'button';
+    dayToggle.title = plan.dayOpen ? 'Hide the day panel' : 'Show the day panel';
+    dayToggle.setAttribute('aria-label', dayToggle.title);
+    dayToggle.setAttribute('aria-pressed', plan.dayOpen ? 'true' : 'false');
+    var dayGlyph = App.ui.icon('panel', 15);
+    if (dayGlyph) dayToggle.appendChild(dayGlyph);
+    dayToggle.addEventListener('click', function () {
       plan.dayOpen = !plan.dayOpen;
       if (!plan.dayOpen) plan.full = false;
       paintPlanner();
-    }, 'is-quiet bd-cal__sheetbtn'));
+    });
+    trail.appendChild(dayToggle);
     var shut = node('button', 'bd-cal__btn is-quiet is-icon bd-cal__close');
     shut.type = 'button';
     shut.title = 'Close the planner';
@@ -7120,7 +7130,8 @@ function richItemOf(box) {
     var shutmark = App.ui.icon('close', 15);
     if (shutmark) shut.appendChild(shutmark);
     shut.addEventListener('click', function () { closePlanner(); });
-    top.appendChild(shut);
+    trail.appendChild(shut);
+    top.appendChild(trail);
     main.appendChild(top);
     var rail = node('div', 'bd-cal__find');
     rail.appendChild(search);
@@ -7128,6 +7139,7 @@ function richItemOf(box) {
       var types = planTypeBar();
       if (types) rail.appendChild(types);
     }
+    rail.appendChild(sum);
     main.appendChild(rail);
     var viewMode = planViewMode(plan);
     var sheetDay = viewMode === 'day' && !plan.full;

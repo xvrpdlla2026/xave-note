@@ -3947,16 +3947,22 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__btn:hover { background: var(--bg-hover); color: var(--text); }
 .bd-cal__btn.is-quiet { background: none; }
 .bd-cal__btn.is-icon { padding: 0; font-size: 13px; }
-.bd-cal__mtitle { font-size: 15px; font-weight: 600; color: var(--text); }
 .bd-cal__msum { font-size: 11.5px; color: var(--text-faint); }
 .bd-cal__dow { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px;  border-bottom: 1px solid var(--border); padding-bottom: 8px; }
-.bd-cal__nav { display: inline-flex; align-items: center; gap: 0; height: 32px; padding: 0; border: 0; background: none; }
-.bd-cal__nav .bd-cal__btn { height: 24px; min-width: 24px; padding: 0; border: 0; background: none; color: var(--text-muted); border-radius: 7px; font-size: 13px; }
+.bd-cal__nav { display: inline-flex; align-items: center; gap: 3px; flex: 0 0 auto; height: 32px; padding: 0 2px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-raised); }
+.bd-cal__nav .bd-cal__btn { height: 26px; min-width: 26px; padding: 0; border: 0; background: none; color: var(--text-muted); border-radius: 6px; font-size: 14px; }
 .bd-cal__nav .bd-cal__btn:hover { background: var(--bg-hover); color: var(--text); }
-.bd-cal__mtitle { display: inline-flex; align-items: center; justify-content: center; gap: 5px; flex: 1 1 auto; width: auto; min-width: 0; padding: 0 6px; border: 0; background: none; color: var(--text); font-size: 16px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; text-align: center; overflow: hidden; text-overflow: ellipsis; }
+.bd-cal__lead { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.bd-cal__lead > .bd-cal__label { margin-right: 8px; }
+.bd-cal__lead > .bd-cal__btn { height: 32px; padding: 0 12px; color: var(--text-muted); font-size: 12.5px; }
+.bd-cal__lead > .bd-cal__btn:hover { background: var(--bg-hover); color: var(--text); }
+.bd-cal__trail { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
+.bd-cal__trail > .bd-cal__btn { height: 30px; padding: 0 11px; border-color: transparent; background: none; color: var(--text-muted); font-size: 12.5px; }
+.bd-cal__trail > .bd-cal__btn:hover { background: var(--bg-hover); color: var(--text); }
+.bd-cal__trail > .bd-cal__btn.is-icon { width: 30px; padding: 0; }
+.bd-cal__mtitle { display: inline-flex; align-items: center; justify-content: center; gap: 5px; flex: 0 1 auto; min-width: 138px; height: 26px; padding: 0 4px; border: 0; background: none; color: var(--text); font-size: 15px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bd-cal__nav .bd-cal__mtitle:hover { color: var(--accent); }
 /* The stepper label holds one width so the tabs, the count and the search never shift between views. */
-.bd-cal__nav { flex: 0 0 auto; width: 196px; }
-.bd-cal__nav .bd-cal__btn { min-width: 22px; }
 /* The label carries a small caret so the middle of the stepper reads as a jump, not as a heading. */
 .bd-cal__mtcaret { flex: 0 0 auto; font-size: 8px; line-height: 1; color: var(--text-faint); }
 .bd-cal__msum { flex: 0 0 auto; padding: 0 2px; color: var(--text-faint); font-size: 12px; letter-spacing: 0.005em; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -3971,12 +3977,11 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__day.is-full .bd-cal__railpanel > .bd-cal__mini { padding-bottom: 12px; border-bottom: 1px solid var(--border); }
 .bd-cal__day.is-full .bd-cal__railpanel > .bd-cal__week.is-rail { padding-bottom: 12px; border-bottom: 1px solid var(--border); }
 
-.bd-cal__top > .bd-cal__btn { height: 30px; padding: 0 11px; border-color: transparent; background: none; color: var(--text-muted); font-size: 12.5px; }
-.bd-cal__top > .bd-cal__btn:hover { background: var(--bg-hover); color: var(--text); }
+.bd-cal__find .bd-cal__msum { margin-left: auto; padding: 0 2px; }
 .bd-cal__find { display: flex; align-items: center; flex: 0 0 auto; gap: 8px; width: 100%; height: auto; min-height: 32px; overflow: visible; border: 0; background: none; }
 .bd-cal__find .bd-cal__search { flex: 0 1 340px; max-width: 340px; height: 32px; }
-.bd-cal__find .bd-cal__type { flex: 0 0 auto; min-width: 0; max-width: none; height: 32px; padding: 0 9px; border: 1px solid transparent; border-radius: var(--radius); background: none; color: var(--text-muted); }
-.bd-cal__find .bd-cal__type:hover { border-color: var(--border); background: var(--bg-raised); color: var(--text); }
+.bd-cal__find .bd-cal__type { flex: 0 0 auto; min-width: 0; max-width: none; height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-raised); color: var(--text-muted); font-size: 12.5px; }
+.bd-cal__find .bd-cal__type:hover { border-color: var(--border-strong); background: var(--bg-hover); color: var(--text); }
 .bd-cal__find .bd-cal__type.is-on { border-color: var(--accent-ring); background: var(--accent-soft); color: var(--accent); }
 .bd-cal__find .bd-cal__type:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
 .bd-cal__filter { flex: 1 1 auto; min-width: 0; height: 100%; background: none; border: 0; }
@@ -4301,9 +4306,13 @@ button.bd-qnav__label:hover { background: var(--bg-hover); color: var(--accent);
 .bd-cal__list .bd-item .bd-item__body [contenteditable="true"],
 .bd-cal__list .bd-item .bd-item__body input,
 .bd-cal__list .bd-item .bd-item__body textarea { cursor: text; }
-.bd-cal__mtitle.bd-cal__btn, .bd-cal__minititle.bd-cal__btn {
+.bd-cal__minititle.bd-cal__btn {
   height: auto; min-width: 0; padding: 3px 9px; border: 0; background: none; border-radius: 7px;
   color: var(--text); font-size: 13px; font-weight: 600;
+}
+.bd-cal__mtitle.bd-cal__btn {
+  height: 26px; min-width: 140px; padding: 0 4px; border: 0; background: none; border-radius: 6px;
+  color: var(--text); font-size: 14.5px; font-weight: 600; letter-spacing: -0.015em;
 }
 .bd-cal__mtitle.bd-cal__btn:hover, .bd-cal__minititle.bd-cal__btn:hover { background: var(--bg-hover); }
 
