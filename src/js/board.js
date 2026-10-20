@@ -6486,8 +6486,11 @@ function richItemOf(box) {
         var bar = node('button', 'bd-cal__tevent' + (planDoneOf(entry.item) ? ' is-done' : ''));
         bar.type = 'button';
         bar.setAttribute('data-plan-id', entry.item.id);
+        var length = (span.end - span.start) / 60 * PLAN_HOUR;
         bar.style.top = (span.start / 60 * PLAN_HOUR) + 'px';
-        bar.style.height = Math.max(16, (span.end - span.start) / 60 * PLAN_HOUR) + 'px';
+        bar.style.height = Math.max(16, length) + 'px';
+        if (length < 34) bar.classList.add('is-short');
+        if (length < 24) bar.classList.add('is-tiny');
         bar.title = planEventClock(entry.item, entry.board) + ' \u00b7 ' + planGridName(entry, key);
         bar.appendChild(node('span', 'bd-cal__teventtime', planEventClock(entry.item, entry.board)));
         var line = node('span', 'bd-cal__teventname');
