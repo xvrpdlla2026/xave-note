@@ -3161,6 +3161,7 @@ function richItemOf(box) {
       board.items = board.items.filter(function (other) { return doomed.indexOf(other) < 0; });
       setSelection([], null);
       paintLinks();
+      afterRemoval(doomed.length);
     };
     if (ask === false) { run(); return; }
     askRemove([item], run);
@@ -3186,10 +3187,29 @@ function richItemOf(box) {
       board.items = board.items.filter(function (other) { return doomed.indexOf(other) < 0; });
       setSelection([], null);
       paintLinks();
+      afterRemoval(doomed.length);
       if (free.length < rows.length) util.toast('Locked cards were kept');
     };
     if (ask === false) { run(); return; }
     askRemove(free, run);
+  }
+
+  // The toast holds the step that removed these cards, so its Undo cannot step over a later change.
+  function undoStep(entry) {
+    if (!entry) { undoLast(); return; }
+    var at = board.undo.indexOf(entry);
+    if (at < 0) return;
+    board.undo.splice(at, 1);
+    board.redo.push({ label: entry.label, snap: snapshotBoard() });
+    trimHistory(board.redo);
+    applySnap(entry.snap);
+  }
+
+  function afterRemoval(count) {
+    var entry = board.undo.length ? board.undo[board.undo.length - 1] : null;
+    util.toastAction(count > 1 ? count + ' cards removed' : 'Card removed', 'Undo', function () {
+      undoStep(entry);
+    });
   }
 
   function binButton() {
@@ -5541,8 +5561,28 @@ function richItemOf(box) {
     kill.title = isBoard ? 'Remove from planner' : 'Delete this block';
     kill.addEventListener('click', function (event) {
       event.stopPropagation();
-      if (isBoard) { planRemove(item, entry.key || plan.date); paintPlanner(); }
-      else removePlannerItem(item);
+      if (isBoard) {
+        var wasKeys = planKeysOf(item).slice();
+        var wasFrom = item.data.spanFrom;
+        var wasTo = item.data.spanTo;
+        planRemove(item, entry.key || plan.date);
+        paintPlanner();
+        util.toastAction('Removed from the calendar', 'Undo', function () {
+          planSync(item, wasKeys);
+          if (wasFrom) item.data.spanFrom = wasFrom;
+          if (wasTo) item.data.spanTo = wasTo;
+          savePlanItem(item);
+          paintPlanner();
+        });
+      } else {
+        var gone = item;
+        removePlannerItem(item);
+        util.toastAction('Block deleted', 'Undo', function () {
+          board.plans.push(gone);
+          try { App.db.boardAddItem(gone); } catch (err) {  }
+          planLater();
+        });
+      }
     });
     tools.appendChild(kill);
     bar.appendChild(tools);
@@ -7624,9 +7664,20 @@ function richItemOf(box) {
     }
     if (plan.mode === 'assign') {
       trail.appendChild(calButton('Remove from planner', function () {
+        var was = plan.rows.map(function (item) {
+          return { item: item, keys: planKeysOf(item).slice(), from: item.data.spanFrom, to: item.data.spanTo };
+        });
         plan.rows.forEach(function (item) { setPlan(item, null); });
         closePlanner();
-        util.toast('Removed from the planner');
+        util.toastAction(was.length > 1 ? 'Removed ' + was.length + ' blocks from the planner' : 'Removed from the planner', 'Undo', function () {
+          was.forEach(function (row) {
+            planSync(row.item, row.keys);
+            if (row.from) row.item.data.spanFrom = row.from;
+            if (row.to) row.item.data.spanTo = row.to;
+            savePlanItem(row.item);
+          });
+          paintPlanner();
+        });
       }, 'is-quiet'));
     }
     var dayToggle = node('button', 'bd-cal__btn is-quiet is-icon bd-cal__sheetbtn');

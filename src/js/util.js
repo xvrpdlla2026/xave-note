@@ -359,12 +359,15 @@ window.NoteApp = window.NoteApp || {};
 
   var toastHost = null;
 
-  function toast(message, kind, timeout) {
+  function toast(message, kind, timeout, action) {
     if (!toastHost) {
       document.addEventListener('DOMContentLoaded', function () { toastHost = toastHost || ensureToastHost(); });
       toastHost = ensureToastHost();
     }
-    var node = el('div', { class: 'toast toast--' + (kind || 'info'), role: 'status' }, [
+    var node = el('div', {
+      class: 'toast toast--' + (kind || 'info') + (action && action.label ? ' toast--action' : ''),
+      role: 'status',
+    }, [
       el('span', { class: 'toast__msg', text: String(message) }),
     ]);
     toastHost.appendChild(node);
@@ -375,7 +378,7 @@ window.NoteApp = window.NoteApp || {};
       } catch (err) {
       }
     }
-    var life = timeout || (kind === 'error' ? 7000 : 3200);
+    var life = timeout || (kind === 'error' ? 7000 : action && action.label ? 9000 : 3200);
     var hideTimer = setTimeout(remove, life);
 
     function remove() {
@@ -390,7 +393,21 @@ window.NoteApp = window.NoteApp || {};
         }
       }, 180);
     }
+    if (action && action.label) {
+      var act = el('button', { class: 'toast__act', type: 'button', text: String(action.label) });
+      act.addEventListener('click', function (event) {
+        event.preventDefault();
+        remove();
+        try { action.act(); } catch (err) {  }
+      });
+      node.appendChild(act);
+    }
     return remove;
+  }
+
+  // A change worth warning about gets its way back inside the warning itself.
+  function toastAction(message, label, act, kind) {
+    return toast(message, kind || 'info', 9000, { label: label, act: act });
   }
 
   function ensureToastHost() {
@@ -488,5 +505,6 @@ window.NoteApp = window.NoteApp || {};
     isImageMime: isImageMime,
     fileGlyph: fileGlyph,
     toast: toast,
+    toastAction: toastAction,
   };
 })(window.NoteApp);

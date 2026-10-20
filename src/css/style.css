@@ -2553,6 +2553,22 @@ dialog:not([open]) { display: none; }
 }
 .toast--out { opacity: 0; transform: translateY(-4px); transition: opacity 160ms var(--ease), transform 160ms var(--ease); }
 .toast__msg { display: block; }
+.toast--action { display: flex; align-items: center; gap: 10px; text-align: left; }
+.toast--action .toast__msg { display: inline; }
+.toast__act {
+  flex: none;
+  padding: 2px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  background: var(--bg);
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.toast__act:hover { background: var(--bg-sunken); }
+.toast__act:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @keyframes toast-in {
   from { opacity: 0; transform: translateY(-8px); }
   to { opacity: 1; transform: translateY(0); }
