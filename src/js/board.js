@@ -6564,6 +6564,9 @@ function richItemOf(box) {
     wrap.appendChild(head);
     if (!entries.length) {
       wrap.appendChild(node('div', 'bd-cal__railnote', 'Nothing planned yet.'));
+      var railAdd = calButton('+ Add a block', function () { planAddKind(plan); }, 'is-quiet bd-cal__railadd');
+      railAdd.title = 'Choose what to add to this day';
+      wrap.appendChild(railAdd);
       return wrap;
     }
     entries.forEach(function (entry) {
@@ -6571,8 +6574,12 @@ function richItemOf(box) {
       row.type = 'button';
       row.title = 'Show this block on the canvas';
       row.setAttribute('data-ol-id', entry.item.id);
-      row.appendChild(node('span', 'bd-cal__oltitle', planTitle(entry.item) || entry.item.kind));
       var kindRow = BLOCK_KINDS.filter(function (kindDef) { return kindDef.kind === entry.item.kind; })[0];
+      var glyph = node('span', 'bd-cal__olglyph');
+      var glyphIcon = App.ui.icon((kindText(entry.item.kind) || {}).icon || 'note', 12);
+      if (glyphIcon) glyph.appendChild(glyphIcon);
+      row.appendChild(glyph);
+      row.appendChild(node('span', 'bd-cal__oltitle', planTitle(entry.item) || entry.item.kind));
       row.appendChild(node('span', 'bd-cal__olkind', (kindRow || {}).label || entry.item.kind));
       row.addEventListener('click', function () { planCenterOn(plan, this.getAttribute('data-ol-id')); });
       wrap.appendChild(row);
@@ -7137,6 +7144,7 @@ function richItemOf(box) {
     drawButton.appendChild(App.ui.icon('pencil', 15));
     dayActs.appendChild(drawButton);
     if (plan.full) dayActs.appendChild(planToolButton(plan));
+    dayActs.appendChild(node('span', 'bd-cal__sep'));
     dayActs.appendChild(node('div', 'bd-cal__zoomslot'));
     var dayClose = node('button', 'bd-cal__dayclose');
     dayClose.type = 'button';
@@ -7149,11 +7157,13 @@ function richItemOf(box) {
       paintPlanner();
     });
     if (plan.full) {
+      dayActs.appendChild(node('span', 'bd-cal__sep'));
       var fitButton = calButton('Fit', function () { planFitView(plan); }, 'is-quiet');
       fitButton.title = 'Frame every block on this day (F)';
       fitButton.setAttribute('aria-label', 'Frame every block on this day');
       dayActs.appendChild(fitButton);
     }
+    dayActs.appendChild(node('span', 'bd-cal__sep'));
     dayActs.appendChild(calButton(plan.full ? 'Exit fullscreen' : 'Fullscreen', function () {
       plan.full = !plan.full;
       plan.calMonth = null;
@@ -7171,7 +7181,6 @@ function richItemOf(box) {
       railPanel = node('div', 'bd-cal__railpanel');
       column.appendChild(railPanel);
       railPanel.appendChild(planMiniCal(plan, todayKey));
-      railPanel.appendChild(planRailOutline(plan));
     }
     var week = node('div', 'bd-cal__week');
     var weekStart = new Date(ms === null ? Date.now() : ms);
@@ -7196,7 +7205,15 @@ function richItemOf(box) {
       });
       week.appendChild(chip);
     }
-    column.appendChild(week);
+    if (railPanel) {
+      // The week strip is the rail's own calendar, so it sits between the month and the day list.
+      week.classList.add('is-rail');
+      railPanel.appendChild(node('div', 'bd-cal__railtitle', 'This week'));
+      railPanel.appendChild(week);
+      railPanel.appendChild(planRailOutline(plan));
+    } else {
+      column.appendChild(week);
+    }
     var list = node('div', 'bd-cal__list');
     var dayEntries = planSort(planFiltered(planEntries(plan.date)), plan.date);
     var dayDone = 0;
@@ -7208,7 +7225,7 @@ function richItemOf(box) {
       if (plan.full) {
         var blank = node('div', 'bd-cal__empty is-center');
         blank.appendChild(node('div', 'bd-cal__emptytitle', plan.query || planTypes(plan).length ? 'Nothing matches the filter' : 'Nothing planned on this day'));
-        blank.appendChild(node('div', 'bd-cal__emptyhint', 'Add a block from the left, or schedule one from the board.'));
+        blank.appendChild(node('div', 'bd-cal__emptyhint', 'Add a block from the toolbar, or schedule one from the board.'));
         blank.appendChild(node('div', 'bd-cal__emptygestures', 'Drag to pan \u00b7 Ctrl + wheel to zoom \u00b7 F to frame'));
         list.appendChild(blank);
       } else {
