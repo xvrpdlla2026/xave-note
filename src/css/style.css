@@ -4014,8 +4014,8 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__type.is-on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 .bd-cal__typelabel { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bd-cal__caret { flex: none; width: 0; height: 0; margin-top: 2px; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid currentColor; opacity: 0.75; }
-.bd-cal__day.is-full { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; width: auto; height: auto; max-height: none; border: 0; border-radius: 0; background: var(--bg); }
-.bd-cal__map { position: fixed; top: 96px; right: 14px; z-index: 260; }
+.bd-cal__day.is-full { position: fixed; inset: 0; z-index: 60; display: grid; grid-template-columns: 268px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 12px; padding: 14px; width: auto; height: auto; max-height: none; border: 0; border-radius: 0; background: var(--bg); }
+.bd-cal__map { position: fixed; top: 100px; right: 28px; z-index: 260; }
 .bd-cal__map .board__map { position: static; top: auto; right: auto; }
 .bd-cal__map.is-maphidden .board__map-canvas, .bd-cal__map.is-maphidden .board__map .board__zoom { display: none; }
 .bd-cal__map.is-maphidden .board__map { width: auto; border-width: 0; background: none; box-shadow: none; overflow: visible; }
@@ -4238,11 +4238,11 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__zoom-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: none; color: var(--text-muted); font: inherit; font-size: 15px; line-height: 1; cursor: pointer; }
 .bd-cal__zoom-btn:hover { background: var(--bg-hover); color: var(--text); }
 .bd-cal__zoomlabel { min-width: 48px; text-align: center; color: var(--text); font-size: 12px; font-variant-numeric: tabular-nums; cursor: pointer; }
-.bd-cal__day.is-full { display: grid; grid-template-columns: 264px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-.bd-cal__day.is-full .bd-cal__daytop { grid-column: 1 / -1; grid-row: 1; align-items: center; gap: 12px; padding: 11px 16px; border-bottom: 1px solid var(--border); background: var(--bg-raised); }
-.bd-cal__day.is-full .bd-cal__railpanel { grid-column: 1; grid-row: 2; background: var(--bg-sunken); border-right: 1px solid var(--border); }
-.bd-cal__day.is-full .bd-cal__mini { position: static; z-index: 1; grid-column: 1; grid-row: 2; align-self: start; width: auto; margin: 14px; box-shadow: none; }
-.bd-cal__day.is-full .bd-cal__list { grid-column: 2; grid-row: 2; }
+.bd-cal__day.is-full .bd-cal__daytop { grid-column: 1 / -1; grid-row: 1; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-raised); }
+.bd-cal__day.is-full .bd-cal__railpanel { grid-column: 1; grid-row: 2; gap: 10px; padding: 12px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-sunken); }
+.bd-cal__day.is-full .bd-cal__mini { position: static; z-index: 1; align-self: stretch; width: auto; margin: 0; padding: 0 0 12px; border-width: 0 0 1px; border-style: solid; border-color: var(--border); border-radius: 0; background: none; box-shadow: none; }
+.bd-cal__day.is-full .bd-cal__list { grid-column: 2; grid-row: 2; border: 1px solid var(--border); border-radius: var(--radius-lg); background-color: var(--bg); }
+.bd-cal__day.is-full .bd-cal__map { top: 98px; right: 28px; }
 .bd-cal__day.is-full .bd-cal__dayclose { display: none; }
 .bd-cal__day.is-full .bd-cal__zoom { position: static; }
 .bd-cal__dayacts { display: flex; align-items: center; gap: 8px; margin-left: auto; }
@@ -4529,7 +4529,6 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__railnote { color: var(--text-faint); font-size: 11.5px; }
 .bd-cal__outline { display: flex; flex-direction: column; gap: 2px; }
 .bd-cal__day.is-full .bd-cal__mini { margin: 0; padding: 10px 10px 11px; }
-.bd-cal__day.is-full .bd-cal__railpanel { gap: 9px; padding: 12px; }
 .bd-cal__day.is-full .bd-cal__week.is-rail { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
 .bd-cal__day.is-full .bd-cal__week.is-rail .bd-cal__wday { padding: 6px 0 5px; border: 0; background: var(--bg); }
 .bd-cal__day.is-full .bd-cal__week.is-rail .bd-cal__wday:hover { background: var(--bg-hover); }
