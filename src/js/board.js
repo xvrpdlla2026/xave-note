@@ -6912,13 +6912,17 @@ function richItemOf(box) {
     foot.appendChild(calButton('Today', function () { pick(todayKey); }, 'is-quiet bd-qnav__today'));
     foot.appendChild(total);
     var left = node('div', 'bd-qnav__left');
+    left.appendChild(node('div', 'bd-qnav__sect', 'Month'));
     left.appendChild(months);
     left.appendChild(cal);
     var railWrap = node('div', 'bd-qnav__railwrap');
     railWrap.appendChild(rail);
+    var right = node('div', 'bd-qnav__right');
+    right.appendChild(node('div', 'bd-qnav__sect', 'Year'));
+    right.appendChild(railWrap);
     var wrap = node('div', 'bd-qnav__body');
     wrap.appendChild(left);
-    wrap.appendChild(railWrap);
+    wrap.appendChild(right);
     body.appendChild(jump);
     body.appendChild(wrap);
     body.appendChild(foot);

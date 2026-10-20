@@ -4266,21 +4266,24 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__mday.is-today { border-color: var(--border-strong); color: var(--text); }
 .bd-cal__mday.is-sel { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 .bd-qnav { display: flex; flex-direction: column; gap: 10px; width: 414px; max-width: 100%; margin: 0 auto; }
-.bd-qnav__body { display: flex; align-items: stretch; gap: 14px; }
-.bd-qnav__left { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
-.bd-qnav__railwrap { position: relative; flex: 0 0 108px; }
+.bd-qnav__body { display: flex; align-items: stretch; gap: 12px; }
+.bd-qnav__left { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+/* Named zones: the month chips and the year rail each say what they pick, so nothing here has to be guessed. */
+.bd-qnav__sect { color: var(--text-faint); font-size: 9.5px; font-weight: 600; letter-spacing: 0.11em; text-transform: uppercase; }
+.bd-qnav__right { display: flex; flex-direction: column; gap: 4px; flex: 0 0 104px; min-height: 0; }
+.bd-qnav__railwrap { position: relative; flex: 1 1 auto; min-height: 0; }
 .bd-qnav__jump { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-sunken); transition: border-color 0.14s ease, box-shadow 0.14s ease; }
 .bd-qnav__jump:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .bd-qnav__jump.is-bad { border-color: var(--danger); box-shadow: none; }
 .bd-qnav__jumpicon { display: inline-flex; color: var(--text-faint); }
 .bd-qnav__input { flex: 1 1 auto; min-width: 0; height: 100%; padding: 0; border: 0; background: none; color: var(--text); font: inherit; font-size: 12.5px; outline: none; }
 .bd-qnav__input::placeholder { color: var(--text-faint); }
-.bd-qnav__months { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; }
-.bd-qnav__month { position: relative; height: 28px; padding: 0 2px; border: 1px solid transparent; border-radius: var(--radius); background: none; color: var(--text-muted); font: inherit; font-size: 11.5px; cursor: pointer; transition: background var(--fast), color var(--fast), border-color var(--fast); }
+.bd-qnav__months { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 3px; }
+.bd-qnav__month { position: relative; height: 26px; padding: 0 2px; border: 0; border-radius: var(--radius-sm); background: none; color: var(--text-muted); font: inherit; font-size: 11px; cursor: pointer; transition: background var(--fast), color var(--fast); }
 .bd-qnav__month:hover { background: var(--bg-hover); color: var(--text); }
 .bd-qnav__month.has-plan { color: var(--text); }
-.bd-qnav__month.is-sel { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
-.bd-qnav__mdot { position: absolute; bottom: 4px; left: 50%; width: 3px; height: 3px; margin-left: -1.5px; border-radius: 50%; background: currentColor; opacity: 0.75; }
+.bd-qnav__month.is-sel { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.bd-qnav__mdot { position: absolute; bottom: 3px; left: 50%; width: 3px; height: 3px; margin-left: -1.5px; border-radius: 50%; background: currentColor; opacity: 0.75; }
 .bd-qnav__cal { display: flex; flex-direction: column; gap: 6px; }
 .bd-qnav__head { display: flex; align-items: center; gap: 2px; }
 .bd-qnav__step { width: 30px; height: 30px; padding: 0; border: 0; border-radius: 7px; background: none; color: var(--text-muted); font: inherit; font-size: 14px; line-height: 1; cursor: pointer; }
@@ -4293,11 +4296,16 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-qnav__day:hover { background: var(--bg-hover); color: var(--text); }
 .bd-qnav__day.is-out { color: var(--text-faint); }
 .bd-qnav__day.has-plan { font-weight: 600; }
-.bd-qnav__day.is-today { border-color: var(--border-strong); color: var(--text); }
-.bd-qnav__day.is-sel { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.bd-qnav__day.is-today { color: var(--accent); font-weight: 600; }
+.bd-qnav__day.is-today.is-out { color: var(--text-faint); }
+.bd-qnav__day.is-sel { background: var(--accent); color: var(--text-inverse); font-weight: 600; }
+.bd-qnav__day.is-sel .bd-qnav__dot { opacity: 0.55; }
 .bd-qnav__day:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .bd-qnav__dot { position: absolute; bottom: 5px; left: 50%; width: 3px; height: 3px; margin-left: -1.5px; border-radius: 50%; background: currentColor; opacity: 0.8; }
-.bd-qnav__years { position: absolute; inset: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding: 3px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-sunken); scrollbar-width: thin; }
+.bd-qnav__years { position: absolute; inset: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; padding: 4px; border: 0; border-radius: var(--radius); background: var(--bg-sunken); scrollbar-width: thin; mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%); }
+.bd-qnav__years::-webkit-scrollbar { width: 6px; }
+.bd-qnav__years::-webkit-scrollbar-thumb { border-radius: 3px; background: var(--border-strong); }
+.bd-qnav__years::-webkit-scrollbar-track { background: none; }
 .bd-qnav__year { display: flex; align-items: center; justify-content: center; gap: 5px; flex: 0 0 auto; height: 26px; padding: 0 6px; border: 0; border-radius: 6px; background: none; color: var(--text-muted); font: inherit; font-size: 12px; font-variant-numeric: tabular-nums; cursor: pointer; }
 .bd-qnav__year:hover { background: var(--bg-hover); color: var(--text); }
 .bd-qnav__year.is-sel { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
