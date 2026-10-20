@@ -7233,7 +7233,6 @@ function richItemOf(box) {
     following.title = 'Next ' + stepped;
     following.setAttribute('aria-label', following.title);
     nav.appendChild(following);
-    lead.appendChild(nav);
     var toToday = calButton('Today', function () {
       plan.date = calKey(Date.now());
       plan.month = monthStart(Date.now());
@@ -7242,7 +7241,8 @@ function richItemOf(box) {
     }, 'is-quiet bd-cal__today');
     toToday.title = 'Go to today';
     if (!planOnToday(plan)) toToday.classList.add('is-off');
-    lead.appendChild(toToday);
+    nav.appendChild(toToday);
+    lead.appendChild(nav);
     top.appendChild(lead);
     top.appendChild(node('div', 'bd-cal__spacer'));
     var trail = node('div', 'bd-cal__trail');
