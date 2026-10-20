@@ -1149,6 +1149,13 @@ function richItemOf(box) {
         el.style.removeProperty('font-size');
         if (!el.getAttribute('style')) richUnwrap(el);
       });
+      Array.prototype.slice.call(ctx.box.querySelectorAll('.bd-tick, .bd-code')).forEach(function (el) {
+        var hit = false;
+        try { hit = ctx.range.intersectsNode(el); } catch (e) { }
+        if (!hit) return;
+        el.classList.remove('bd-tick', 'bd-code');
+        el.removeAttribute('data-done');
+      });
       richSync(ctx);
       return;
     }
@@ -1271,6 +1278,52 @@ function richItemOf(box) {
       else block.style.removeProperty('line-height');
       richTidyBlock(block, ctx.box);
     });
+    richSync(ctx);
+  }
+
+  // A checklist line keeps its own tick box, so a note can hold small tasks without becoming a to-do.
+  function richCheck() {
+    var ctx = richSelection();
+    if (!ctx) return;
+    pushUndo('format');
+    var blocks = richSpanBlocks(ctx).map(function (el) { return richBlockTarget(ctx, el); }).filter(Boolean);
+    var allOn = blocks.length > 0 && blocks.every(function (el) { return el.classList.contains('bd-tick'); });
+    blocks.forEach(function (el) {
+      el.classList.toggle('bd-tick', !allOn);
+      if (allOn) el.removeAttribute('data-done');
+      else el.setAttribute('data-done', el.getAttribute('data-done') === '1' ? '1' : '0');
+      richTidyBlock(el, ctx.box);
+    });
+    richSync(ctx);
+  }
+
+  function richCode() {
+    var ctx = richSelection();
+    if (!ctx) return;
+    pushUndo('format');
+    var blocks = richSpanBlocks(ctx).map(function (el) { return richBlockTarget(ctx, el); }).filter(Boolean);
+    var allOn = blocks.length > 0 && blocks.every(function (el) { return el.classList.contains('bd-code'); });
+    blocks.forEach(function (el) {
+      el.classList.toggle('bd-code', !allOn);
+      richTidyBlock(el, ctx.box);
+    });
+    richSync(ctx);
+  }
+
+  function richCodeInline() {
+    var ctx = richSelection();
+    if (!ctx) return;
+    pushUndo('format');
+    var el = ctx.range.commonAncestorContainer;
+    if (el && el.nodeType === 3) el = el.parentNode;
+    while (el && el !== ctx.box && el.nodeName !== 'CODE') el = el.parentNode;
+    if (el && el !== ctx.box) {
+      richUnwrap(el);
+      richSync(ctx);
+      return;
+    }
+    var code = document.createElement('code');
+    richWrap(ctx.range, code);
     richSync(ctx);
   }
 
@@ -1627,6 +1680,12 @@ function richItemOf(box) {
       button.addEventListener('click', function () { richToggle(kind); });
       weight.appendChild(button);
     });
+    var mono = richButton('bd-rich__btn--icon', '', 'Inline code');
+    mono.setAttribute('data-code', '1');
+    var monoGlyph = App.ui.icon('code', 13);
+    if (monoGlyph) mono.appendChild(monoGlyph);
+    mono.addEventListener('click', function () { richCodeInline(); });
+    weight.appendChild(mono);
 
     var ink = group(head);
     var colour = richButton('bd-rich__btn--colour', 'A', 'Text colour');
@@ -1668,6 +1727,18 @@ function richItemOf(box) {
       button.addEventListener('click', function () { richList(pair[1]); });
       lists.appendChild(button);
     });
+    var shapes = group(base);
+    [['check', 'checklist', 'Checklist'], ['code', 'code', 'Code block']].forEach(function (pair) {
+      var button = richButton('bd-rich__btn--icon', '', pair[2]);
+      button.setAttribute('data-block', pair[0]);
+      var glyph = App.ui.icon(pair[1], 13);
+      if (glyph) button.appendChild(glyph);
+      button.addEventListener('click', function () {
+        if (pair[0] === 'check') richCheck();
+        else richCode();
+      });
+      shapes.appendChild(button);
+    });
     var nest = group(base);
     [['outdent', 'out', 'Outdent'], ['indent', 'in', 'Indent']].forEach(function (pair) {
       var button = richButton('bd-rich__btn--icon', '', pair[2]);
@@ -1695,6 +1766,24 @@ function richItemOf(box) {
     Array.prototype.forEach.call(richBar.querySelectorAll('[data-rich]'), function (button) {
       var pair = RICH_STYLE[button.getAttribute('data-rich')];
       button.classList.toggle('is-on', !!(ctx && richHost(ctx.range, ctx.box, pair[0])));
+    });
+    var line = ctx ? richBlockOf(ctx, ctx.range.startContainer, ctx.range.startOffset) : null;
+    var checks = !!(line && line.classList && line.classList.contains('bd-tick'));
+    var codes = !!(line && line.classList && line.classList.contains('bd-code'));
+    Array.prototype.forEach.call(richBar.querySelectorAll('[data-block]'), function (button) {
+      button.classList.toggle('is-on', button.getAttribute('data-block') === 'check' ? checks : codes);
+    });
+    var inlineCode = false;
+    if (ctx) {
+      var walk = ctx.range.commonAncestorContainer;
+      if (walk && walk.nodeType === 3) walk = walk.parentNode;
+      while (walk && walk !== ctx.box) {
+        if (walk.nodeName === 'CODE') { inlineCode = true; break; }
+        walk = walk.parentNode;
+      }
+    }
+    Array.prototype.forEach.call(richBar.querySelectorAll('[data-code]'), function (button) {
+      button.classList.toggle('is-on', inlineCode);
     });
     var label = richBar.querySelector('[data-type] .bd-rich__label');
     if (label) label.textContent = ctx ? richTypeName() : 'Normal';
@@ -9094,6 +9183,20 @@ return function () {
     });
   }
 
+  // A tick box is drawn by its line, so pressing it ticks the line instead of dropping the caret.
+  function onCheckDown(event) {
+    var target = event.target;
+    var line = target && target.closest ? target.closest('.bd-tick') : null;
+    if (!line) return;
+    var box = line.closest('.bd-text');
+    if (!box || box.getAttribute('contenteditable') !== 'true') return;
+    if (event.clientX - line.getBoundingClientRect().left > 26) return;
+    event.preventDefault();
+    pushUndo('check');
+    line.setAttribute('data-done', line.getAttribute('data-done') === '1' ? '0' : '1');
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
   function onPaste(event) {
     if (!board.open || board.picker) return;
     var target = event.target;
@@ -11617,6 +11720,7 @@ if (wrap.closest && wrap.closest('.bd-cal')) openDrawPad(item);
       }
       board.root.addEventListener('contextmenu', onBoardContext);
       document.addEventListener('paste', onPaste);
+      document.addEventListener('mousedown', onCheckDown, true);
       document.addEventListener('pointerdown', commitEdits, true);
     }
     document.addEventListener('keydown', onKeyDown, true);
