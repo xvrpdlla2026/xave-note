@@ -123,12 +123,14 @@ window.NoteApp = window.NoteApp || {};
     if (board.viewZ !== view.z) {
       board.viewZ = view.z;
       board.canvas.style.setProperty('--bd-z', view.z);
+      board.canvas.style.setProperty('--bd-k', String(rasterScale(view.z)));
       board.grid.style.backgroundSize = (26 * view.z) + 'px ' + (26 * view.z) + 'px';
       board.zoomLabel.textContent = Math.round(view.z * 100) + '%';
     }
     board.canvas.style.transform = 'translate(' + view.x + 'px, ' + view.y + 'px) scale(' + view.z + ')';
     board.grid.style.backgroundPosition = view.x + 'px ' + view.y + 'px';
     richFollow();
+    refreshPictures();
     if (lite === true) return;
     cullPass();
     inkRepaintCards();
@@ -2400,13 +2402,101 @@ function richItemOf(box) {
     util.toast(list.length === 1 ? 'Added \u201c' + list[0].name + '\u201d to the board' : 'Added ' + list.length + ' files to the board');
   }
 
+  var PIC_THUMB = 480;
+  var picUrls = {};
+  var picOrder = [];
+
+  function rasterScale(z) {
+    var dpr = window.devicePixelRatio || 1;
+    return Math.min(3, Math.max(1, (z || 1) * dpr));
+  }
+
+  function itemZoom(item, card) {
+    var plan = board.planner;
+    var host = card || (item && item.node);
+    if (plan && plan.full && plan.view && host && host.closest && host.closest('.bd-cal')) return plan.view.z || 1;
+    return (board.view && board.view.z) || 1;
+  }
+
+  // A 480px thumbnail is enough until the card is drawn bigger than that on screen, then the card asks for the file itself.
+  function pictureWanted(item, img, card) {
+    var data = item.data || {};
+    if (!data.thumb) return false;
+    if (!data.fileId && !data.src) return false;
+    var base = Math.max(item.w || 0, item.h || 0);
+    if (!base && img) base = Math.max(img.offsetWidth || 0, img.offsetHeight || 0);
+    if (!base) base = 288;
+    var need = base * Math.max(1, itemZoom(item, card)) * (window.devicePixelRatio || 1);
+    return need > PIC_THUMB * 1.25;
+  }
+
+  function rememberPic(fileId, url) {
+    picUrls[fileId] = url;
+    picOrder.push(fileId);
+    while (picOrder.length > 32) {
+      var old = picOrder.shift();
+      var gone = picUrls[old];
+      if (!gone) continue;
+      if (board.canvas && board.canvas.querySelector('img[src="' + gone + '"]')) continue;
+      URL.revokeObjectURL(gone);
+      delete picUrls[old];
+    }
+  }
+
+  function pictureLoad(item, img) {
+    var data = item.data || {};
+    if (!data.fileId) {
+      img.src = data.src || data.thumb || '';
+      return;
+    }
+    if (picUrls[data.fileId]) {
+      img.src = picUrls[data.fileId];
+      return;
+    }
+    App.db.getFileBlob(data.fileId).then(function (res) {
+      if (!res || !res.blob) return;
+      var url = URL.createObjectURL(res.blob);
+      if (!img.isConnected) {
+        URL.revokeObjectURL(url);
+        return;
+      }
+      rememberPic(data.fileId, url);
+      img.src = url;
+    }).catch(function () { });
+  }
+
+  function refreshPicture(item, card) {
+    var host = card || (item && item.node);
+    if (!item || !host || !item.data || !item.data.thumb) return;
+    if (item.kind !== 'image' && item.kind !== 'file') return;
+    var img = host.querySelector('.bd-image__img');
+    if (!img) return;
+    var want = pictureWanted(item, img, host);
+    if (want === !!item.picWanted) return;
+    item.picWanted = want;
+    if (want) pictureLoad(item, img);
+    else img.src = item.data.thumb;
+  }
+
+  function refreshPictures() {
+    if (!board.open || !board.items) return;
+    var plan = board.planner;
+    var key = Math.round(((board.view && board.view.z) || 1) * 100) + ':' +
+      Math.round((plan && plan.full && plan.view ? plan.view.z || 1 : 0) * 100) + ':' + (window.devicePixelRatio || 1);
+    if (board.picKey === key) return;
+    board.picKey = key;
+    board.items.forEach(refreshPicture);
+  }
+
   function thumbPicture(item) {
     var data = item.data || {};
     var img = node('img', 'bd-image__img');
     img.loading = 'lazy';
     img.decoding = 'async';
     img.alt = data.name || data.filename || '';
-    img.src = data.thumb;
+    item.picWanted = pictureWanted(item, img);
+    if (item.picWanted) pictureLoad(item, img);
+    else img.src = data.thumb;
     return img;
   }
 
@@ -5683,6 +5773,8 @@ function richItemOf(box) {
     card.style.transformOrigin = '0 0';
     card.style.transform = 'translate(' + Math.round(view.x + box.x * view.z) + 'px, ' + Math.round(view.y + box.y * view.z) + 'px) scale(' + view.z + ')';
     card.__planCanvas = box;
+    card.style.setProperty('--bd-k', String(rasterScale(view.z)));
+    refreshPicture(card.__planItem, card);
     var ink = card.querySelector('.bd-draw__canvas');
     if (ink && ink.inkPaint) requestAnimationFrame(function () { ink.inkPaint(); });
   }
