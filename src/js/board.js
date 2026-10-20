@@ -2368,14 +2368,45 @@ function richItemOf(box) {
     };
   }
 
+  function refNote(item) {
+    if (item.ref_kind !== 'note' || !item.ref_id) return null;
+    var note = null;
+    try { note = App.db.getNote(item.ref_id); } catch (e) { note = null; }
+    if (!note || typeof note.content !== 'string') return null;
+    if (App.crypto && App.crypto.isEnvelope && App.crypto.isEnvelope(note.content)) return null;
+    var html = '';
+    try { html = util.sanitizeRichHtml(note.content); } catch (e) { html = ''; }
+    return { note: note, html: html };
+  }
+
+  function refSheet(html) {
+    var sheet = node('div', 'bd-ref__note editor__body');
+    sheet.setAttribute('contenteditable', 'false');
+    sheet.innerHTML = html;
+    try {
+      util.normalizeCheckboxRows(sheet);
+      util.linkifyWikiText(sheet);
+    } catch (e) { }
+    if (App.ui.hydrateNoteImages) {
+      try { App.ui.hydrateNoteImages(sheet); } catch (e) { }
+    }
+    Array.prototype.forEach.call(sheet.querySelectorAll('input'), function (field) {
+      field.disabled = true;
+      field.tabIndex = -1;
+      field.setAttribute('data-blocked', '1');
+    });
+    return sheet;
+  }
+
   function refBody(item) {
     var wrap = node('div', 'bd-ref');
     var data = item.data || {};
+    var live = refNote(item);
     var glyph = node('span', 'bd-ref__glyph');
     glyph.appendChild(App.ui.icon(item.ref_kind === 'folder' ? 'folder' : item.ref_kind === 'file' ? 'file' : 'note', 16));
     var head = node('div', 'bd-ref__head');
     head.appendChild(glyph);
-    head.appendChild(node('span', 'bd-ref__title', data.title || 'Untitled'));
+    head.appendChild(node('span', 'bd-ref__title', (live && live.note.title) || data.title || 'Untitled'));
     wrap.appendChild(head);
     var stage = null;
     if (item.ref_kind === 'file' && data.fileId && App.ui.filePreviewContent) {
@@ -2391,7 +2422,8 @@ function richItemOf(box) {
     }
     if (!stage) {
       wrap.appendChild(node('span', 'bd-ref__meta', data.meta || ''));
-      if (data.snippet) wrap.appendChild(node('p', 'bd-ref__snippet', data.snippet));
+      if (live && live.html) wrap.appendChild(refSheet(live.html));
+      else if (data.snippet) wrap.appendChild(node('p', 'bd-ref__snippet', data.snippet));
     }
     wrap.appendChild(node('span', 'bd-ref__badge', 'from ' + (data.workspace || 'notes')));
     return wrap;

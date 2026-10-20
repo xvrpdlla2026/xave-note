@@ -2396,6 +2396,7 @@ App.ui = Object.assign(App.ui || {}, {
     setUploadStatus: setUploadStatus,
     revokeObjectUrls: revokeObjectUrls,
     makeObjectUrl: makeObjectUrl,
+    hydrateNoteImages: hydrateNoteImages,
     menuOpen: menuOpen,
     menuOpenSort: menuOpenSort,
     sortKeysFor: sortKeysFor,
