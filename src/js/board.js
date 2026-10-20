@@ -7319,11 +7319,13 @@ function richItemOf(box) {
     top.appendChild(trail);
     main.appendChild(top);
     var rail = node('div', 'bd-cal__find');
-    rail.appendChild(search);
+    var group = node('div', 'bd-cal__grp');
+    group.appendChild(search);
     if (plan.mode === 'browse') {
       var types = planTypeBar();
-      if (types) rail.appendChild(types);
+      if (types) group.appendChild(types);
     }
+    rail.appendChild(group);
     rail.appendChild(sum);
     main.appendChild(rail);
     var viewMode = planViewMode(plan);
