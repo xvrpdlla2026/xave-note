@@ -2587,11 +2587,11 @@ dialog:not([open]) { display: none; }
 }
 .toast--out { opacity: 0; transform: translateY(-4px); transition: opacity 160ms var(--ease), transform 160ms var(--ease); }
 .toast__msg { display: block; }
-.toast--action { display: flex; align-items: center; gap: 10px; text-align: left; }
+.toast--action { display: flex; align-items: center; gap: 10px; text-align: left; pointer-events: auto; }
 .toast--action .toast__msg { display: inline; }
 .toast__act {
   flex: none;
-  padding: 2px 8px;
+  padding: 3px 10px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-xs);
   background: var(--bg);
