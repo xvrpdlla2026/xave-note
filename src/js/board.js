@@ -5771,13 +5771,7 @@ function richItemOf(box) {
       planCardIntoView(list, card);
     }
     if (!plan.full) planReveal(fresh.id);
-    var edit = card.querySelector('[contenteditable="true"]')
-      || card.querySelector('input:not([type="checkbox"]):not([type="radio"])')
-      || card.querySelector('textarea');
-    if (edit) {
-      try { edit.focus({ preventScroll: true }); } catch (e) { edit.focus(); }
-    }
-    // The ring only says where the new block landed, so it settles as soon as the caret is in place.
+    // The block is shown, not edited: taking the caret would pull the next keystroke into a field nobody asked for.
     card.classList.remove('is-selected');
     setTimeout(function () { card.classList.remove('is-fresh'); }, 1400);
   }
