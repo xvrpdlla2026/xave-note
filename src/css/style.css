@@ -4231,7 +4231,14 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-qnav__head { display: flex; align-items: center; gap: 2px; }
 .bd-qnav__step { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: none; color: var(--text-muted); font-size: 13px; line-height: 1; cursor: pointer; }
 .bd-qnav__step:hover { background: var(--bg-hover); color: var(--text); }
-.bd-qnav__label { flex: 1 1 auto; text-align: center; color: var(--text); font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+.bd-qnav__label { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; gap: 5px; height: 28px; padding: 0 8px; border: 0; border-radius: 7px; background: none; color: var(--text); font: inherit; font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+button.bd-qnav__label { cursor: pointer; }
+button.bd-qnav__label:hover { background: var(--bg-hover); color: var(--accent); }
+.bd-qnav__caret { font-size: 8px; line-height: 1; color: var(--text-faint); }
+.bd-qnav__chips { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-content: center; gap: 6px; min-height: 238px; }
+.bd-qnav__chip { height: 36px; padding: 0 4px; border: 1px solid transparent; border-radius: var(--radius); background: none; color: var(--text-muted); font: inherit; font-size: 12px; cursor: pointer; }
+.bd-qnav__chip:hover { background: var(--bg-hover); color: var(--text); }
+.bd-qnav__chip.is-sel { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 .bd-qnav__dow { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; color: var(--text-faint); font-size: 10px; text-align: center; }
 .bd-qnav__grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
 .bd-qnav__day { position: relative; display: flex; align-items: center; justify-content: center; height: 34px; padding: 0; border: 1px solid transparent; border-radius: var(--radius); background: none; color: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; cursor: pointer; }

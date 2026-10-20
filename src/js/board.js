@@ -6784,16 +6784,12 @@ function richItemOf(box) {
   }
 
   function planQuickNav(plan) {
-    var state = monthStart(plan.calMonth || plan.month || Date.now());
     var counts = planCountIndex(plan);
     var todayKey = calKey(Date.now());
+    var state = monthStart(plan.calMonth || plan.month || Date.now());
+    var page = Math.floor(new Date(state).getFullYear() / 12) * 12;
+    var mode = 'day';
     var body = node('div', 'bd-qnav');
-    var head = node('div', 'bd-qnav__head');
-    var label = node('span', 'bd-qnav__label');
-    var dow = node('div', 'bd-qnav__dow');
-    var grid = node('div', 'bd-qnav__grid');
-    var foot = node('div', 'bd-qnav__foot');
-    var total = node('span', 'bd-qnav__total');
     var close = null;
     var pick = function (key) {
       if (!key) return;
@@ -6804,58 +6800,129 @@ function richItemOf(box) {
       if (close) close(null);
       paintPlanner();
     };
-    var draw = function () {
-      var shown = new Date(state);
-      label.textContent = CAL_MONTHS[shown.getMonth()] + ' ' + shown.getFullYear();
-      grid.textContent = '';
-      var booked = 0;
-      var start = new Date(state);
-      start.setDate(1 - start.getDay());
-      for (var i = 0; i < 42; i++) {
-        var day = new Date(start.getTime());
-        day.setDate(start.getDate() + i);
-        var key = calKey(day.getTime());
-        var count = counts[key] || 0;
-        if (day.getMonth() === shown.getMonth()) booked += count;
-        var cell = node('button', 'bd-qnav__day'
-          + (day.getMonth() === shown.getMonth() ? '' : ' is-out')
-          + (key === todayKey ? ' is-today' : '')
-          + (key === plan.date ? ' is-sel' : ''));
-        cell.type = 'button';
-        cell.title = CAL_DAYS[day.getDay()] + ', ' + CAL_MONTHS[day.getMonth()] + ' ' + day.getDate()
-          + (count ? ', ' + count + (count === 1 ? ' block' : ' blocks') : '');
-        cell.appendChild(node('span', null, String(day.getDate())));
-        if (count) cell.appendChild(node('span', 'bd-qnav__dot'));
-        cell.setAttribute('data-qnav-key', key);
-        cell.addEventListener('click', function () { pick(this.getAttribute('data-qnav-key')); });
-        grid.appendChild(cell);
-      }
-      total.textContent = booked ? booked + (booked === 1 ? ' block' : ' blocks') : 'No blocks';
-    };
-    var step = function (glyph, tip, months) {
-      var button = node('button', 'bd-qnav__step', glyph);
+    var step = function (one) {
+      var button = node('button', 'bd-qnav__step', one.glyph);
       button.type = 'button';
-      button.title = tip;
-      button.setAttribute('aria-label', tip);
-      button.addEventListener('click', function () {
-        state = calShift(state, months);
-        draw();
-      });
+      button.title = one.tip;
+      button.setAttribute('aria-label', one.tip);
+      button.addEventListener('click', one.run);
       return button;
     };
-    head.appendChild(step('\u00ab', 'Previous year', -12));
-    head.appendChild(step('\u2039', 'Previous month', -1));
-    head.appendChild(label);
-    head.appendChild(step('\u203a', 'Next month', 1));
-    head.appendChild(step('\u00bb', 'Next year', 12));
-    CAL_DOW.forEach(function (text) { dow.appendChild(node('span', null, text)); });
-    foot.appendChild(calButton('Today', function () { pick(todayKey); }, 'is-quiet bd-qnav__today'));
-    foot.appendChild(total);
+    var chip = function (label, selected, run) {
+      var button = node('button', 'bd-qnav__chip' + (selected ? ' is-sel' : ''), label);
+      button.type = 'button';
+      button.addEventListener('click', run);
+      return button;
+    };
+    var countMonth = function (month) {
+      var stamp = month.getFullYear() + '-' + String(month.getMonth() + 1).padStart(2, '0');
+      return Object.keys(counts).reduce(function (total, one) {
+        return one.slice(0, 7) === stamp ? total + counts[one] : total;
+      }, 0);
+    };
+    var draw = function () {
+      body.textContent = '';
+      var shown = new Date(state);
+      var year = shown.getFullYear();
+      var head = node('div', 'bd-qnav__head');
+      var before = [];
+      var after = [];
+      if (mode === 'year') {
+        before.push({ glyph: '\u2039', tip: 'Previous years', run: function () { page -= 12; draw(); } });
+        after.push({ glyph: '\u203a', tip: 'Next years', run: function () { page += 12; draw(); } });
+      } else if (mode === 'month') {
+        before.push({ glyph: '\u2039', tip: 'Previous year', run: function () { state = calShift(state, -12); draw(); } });
+        after.push({ glyph: '\u203a', tip: 'Next year', run: function () { state = calShift(state, 12); draw(); } });
+      } else {
+        before.push({ glyph: '\u00ab', tip: 'Previous year', run: function () { state = calShift(state, -12); draw(); } });
+        before.push({ glyph: '\u2039', tip: 'Previous month', run: function () { state = calShift(state, -1); draw(); } });
+        after.push({ glyph: '\u203a', tip: 'Next month', run: function () { state = calShift(state, 1); draw(); } });
+        after.push({ glyph: '\u00bb', tip: 'Next year', run: function () { state = calShift(state, 12); draw(); } });
+      }
+      before.forEach(function (one) { head.appendChild(step(one)); });
+      var label = node(mode === 'year' ? 'span' : 'button', 'bd-qnav__label');
+      if (mode === 'year') {
+        label.textContent = page + ' to ' + (page + 11);
+      } else if (mode === 'month') {
+        label.textContent = String(year);
+        label.type = 'button';
+        label.title = 'Pick a year';
+        label.setAttribute('aria-label', 'Pick a year');
+        label.addEventListener('click', function () { page = Math.floor(year / 12) * 12; mode = 'year'; draw(); });
+      } else {
+        label.textContent = CAL_MONTHS[shown.getMonth()] + ' ' + year;
+        label.type = 'button';
+        label.title = 'Pick a month';
+        label.setAttribute('aria-label', 'Pick a month');
+        label.addEventListener('click', function () { mode = 'month'; draw(); });
+      }
+      if (mode !== 'year') label.appendChild(node('span', 'bd-qnav__caret', '\u25be'));
+      head.appendChild(label);
+      after.forEach(function (one) { head.appendChild(step(one)); });
+      body.appendChild(head);
+      var booked = 0;
+      if (mode === 'day') {
+        var dow = node('div', 'bd-qnav__dow');
+        CAL_DOW.forEach(function (text) { dow.appendChild(node('span', null, text)); });
+        var grid = node('div', 'bd-qnav__grid');
+        var start = new Date(state);
+        start.setDate(1 - start.getDay());
+        for (var i = 0; i < 42; i++) {
+          var day = new Date(start.getTime());
+          day.setDate(start.getDate() + i);
+          var key = calKey(day.getTime());
+          var count = counts[key] || 0;
+          if (day.getMonth() === shown.getMonth()) booked += count;
+          var cell = node('button', 'bd-qnav__day'
+            + (day.getMonth() === shown.getMonth() ? '' : ' is-out')
+            + (key === todayKey ? ' is-today' : '')
+            + (key === plan.date ? ' is-sel' : ''));
+          cell.type = 'button';
+          cell.title = CAL_DAYS[day.getDay()] + ', ' + CAL_MONTHS[day.getMonth()] + ' ' + day.getDate()
+            + (count ? ', ' + count + (count === 1 ? ' block' : ' blocks') : '');
+          cell.appendChild(node('span', null, String(day.getDate())));
+          if (count) cell.appendChild(node('span', 'bd-qnav__dot'));
+          cell.setAttribute('data-qnav-key', key);
+          cell.addEventListener('click', function () { pick(this.getAttribute('data-qnav-key')); });
+          grid.appendChild(cell);
+        }
+        body.appendChild(dow);
+        body.appendChild(grid);
+        booked = countMonth(shown);
+      } else {
+        var pickedMs = calMs(plan.date);
+        var pickedDate = pickedMs === null ? null : new Date(pickedMs);
+        var chips = node('div', 'bd-qnav__chips');
+        var fromYears = mode === 'year';
+        for (var n = 0; n < 12; n++) {
+          var useYear = mode === 'year' ? page + n : year;
+          var selected = pickedDate !== null && pickedDate.getFullYear() === useYear
+            && (mode === 'year' || pickedDate.getMonth() === n);
+          chips.appendChild(chip(mode === 'year' ? String(useYear) : CAL_MONTHS[n], selected, (function (m, y) {
+            return function () {
+              state = new Date(y, m, 1).getTime();
+              mode = fromYears ? 'month' : 'day';
+              draw();
+            };
+          })(mode === 'year' ? shown.getMonth() : n, useYear)));
+        }
+        body.appendChild(chips);
+        if (fromYears) {
+          booked = Object.keys(counts).reduce(function (total, one) {
+            return Number(one.slice(0, 4)) === year ? total + counts[one] : total;
+          }, 0);
+        } else {
+          booked = countMonth(shown);
+        }
+      }
+      var foot = node('div', 'bd-qnav__foot');
+      foot.appendChild(calButton('Today', function () { pick(todayKey); }, 'is-quiet bd-qnav__today'));
+      foot.appendChild(node('span', 'bd-qnav__total', booked
+        ? booked + (booked === 1 ? ' block' : ' blocks') + (mode === 'year' ? ' in ' + year : '')
+        : 'No blocks'));
+      body.appendChild(foot);
+    };
     draw();
-    body.appendChild(head);
-    body.appendChild(dow);
-    body.appendChild(grid);
-    body.appendChild(foot);
     App.ui.dialog({
       title: 'Go to a date',
       icon: 'calendar',
@@ -6865,6 +6932,7 @@ function richItemOf(box) {
       onOpen: function (api) { close = api.close; },
     });
   }
+
   function planMiniCal(plan, todayKey) {
     var wrap = node('div', 'bd-cal__mini');
     var head = node('div', 'bd-cal__minihead');
