@@ -7434,6 +7434,12 @@ function richItemOf(box) {
       cell.addEventListener('click', (function (useKey) {
         return function () { onCell(useKey); };
       })(key));
+      // The press picks a day, it does not ask to be shown the button it landed on, so the grid must not
+      // scroll the cell into view. A press on a chip keeps its default, or dragging between days breaks.
+      cell.addEventListener('mousedown', function (event) {
+        var chip = event.target && event.target.closest ? event.target.closest('[draggable="true"]') : null;
+        if (!chip) event.preventDefault();
+      });
       cell.addEventListener('dragover', function (event) {
         if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
         if (!board.planDrag && !planDragHas(event)) return;
