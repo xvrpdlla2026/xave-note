@@ -1832,6 +1832,8 @@ function richItemOf(box) {
           entry.done = box.checked;
           row.classList.toggle('is-done', entry.done);
           queueItemSave(item);
+          paintKind(item);
+          if (item.node) item.node.classList.toggle('is-done', planDoneOf(item));
         });
         var text = node('input', 'bd-todo__text');
         text.type = 'text';
@@ -1858,6 +1860,7 @@ function richItemOf(box) {
           if (!item.data.items.length) item.data.items.push({ text: '', done: false });
           saveItem(item);
           paint();
+          paintKind(item);
         });
         row.appendChild(box);
         row.appendChild(text);
@@ -1877,6 +1880,7 @@ function richItemOf(box) {
       item.data.items.push({ text: '', done: false });
       saveItem(item);
       paint();
+      paintKind(item);
     });
     wrap.appendChild(add);
     return wrap;
@@ -2431,7 +2435,15 @@ function richItemOf(box) {
   function paintKind(item) {
     if (!item.node) return;
     var label = item.node.querySelector('.bd-item__kind');
+    if (!label) return;
+    var prog = label.querySelector('.bd-item__prog');
+    if (prog) label.textContent = '';
     if (label) label.textContent = labelText(item);
+    if (prog) {
+      prog.textContent = todoProgress(item);
+      prog.hidden = !prog.textContent;
+      label.appendChild(prog);
+    }
   }
 
   function labelText(item) {
@@ -2439,8 +2451,22 @@ function richItemOf(box) {
     return title ? title : kindLabel(item);
   }
 
+  function todoProgress(item) {
+    if (item.kind !== 'todo' || !item.data) return '';
+    var rows = item.data.items || [];
+    if (!rows.length) return '';
+    var done = 0;
+    rows.forEach(function (row) { if (row.done) done++; });
+    return done + '/' + rows.length;
+  }
+
   function barLabel(item, kindOnly) {
     var span = node('span', 'bd-item__kind', kindOnly ? kindLabel(item) : labelText(item));
+    if (item.kind === 'todo') {
+      var prog = node('span', 'bd-item__prog', todoProgress(item));
+      if (!prog.textContent) prog.hidden = true;
+      span.appendChild(prog);
+    }
     if (kindOnly) span.setAttribute('data-kind-only', '1');
     span.title = 'Double-click to rename';
     span.addEventListener('dblclick', function (event) {

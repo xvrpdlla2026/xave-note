@@ -4083,6 +4083,10 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__list .bd-item--comment .bd-item__body,
 .bd-cal__list .bd-item--todo .bd-item__body { max-height: 132px; overflow: hidden; }
 .bd-cal__list .bd-item { max-height: 380px; }
+/* A checklist grows with its items; clipping it hid the add row entirely. */
+.bd-cal__list .bd-item--todo .bd-item__body { max-height: none; overflow: visible; }
+.bd-cal__list .bd-item--todo { max-height: none; }
+.bd-item__prog { margin-left: 6px; color: var(--text-muted); letter-spacing: 0; font-variant-numeric: tabular-nums; }
 .bd-cal__list .bd-item--column { height: auto; }
 .bd-item__lock.is-on { color: var(--accent); }
 .bd-cal__day.is-over { outline: 1px dashed var(--accent-ring); outline-offset: 2px; }
