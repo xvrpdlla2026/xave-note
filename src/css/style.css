@@ -3951,7 +3951,9 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__nav { display: inline-flex; align-items: center; gap: 2px; height: 30px; padding: 0 2px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-raised); }
 .bd-cal__nav .bd-cal__btn { height: 24px; min-width: 24px; padding: 0; border: 0; background: none; color: var(--text-muted); border-radius: 7px; font-size: 13px; }
 .bd-cal__nav .bd-cal__btn:hover { background: var(--bg-hover); color: var(--text); }
-.bd-cal__mtitle { padding: 0 6px; color: var(--text); font-size: 13px; font-weight: 600; letter-spacing: -0.005em; white-space: nowrap; }
+.bd-cal__mtitle { flex: 0 0 auto; width: 138px; padding: 0 6px; color: var(--text); font-size: 13px; font-weight: 600; letter-spacing: -0.005em; white-space: nowrap; text-align: center; overflow: hidden; text-overflow: ellipsis; }
+/* The stepper label holds one width so the tabs, the count and the search never shift between views. */
+.bd-cal__nav { flex: 0 0 auto; }
 .bd-cal__msum { flex: 0 0 auto; padding: 3px 9px; border-radius: 999px; background: var(--bg-raised); color: var(--text-faint); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 .bd-cal__msum:empty { display: none; }
 .bd-cal__top > .bd-cal__btn { height: 30px; padding: 0 11px; border-color: transparent; background: none; color: var(--text-muted); font-size: 12.5px; }

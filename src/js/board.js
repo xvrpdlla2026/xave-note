@@ -6177,7 +6177,7 @@ function richItemOf(box) {
     }
     if (mode !== 'week' && mode !== 'year') {
       return monthTotal
-        ? monthTotal + (monthTotal === 1 ? ' block' : ' blocks') + (monthLate ? ' \u00b7 ' + monthLate + ' late' : '')
+        ? monthTotal + (monthTotal === 1 ? ' block' : ' blocks') + ' this month' + (monthLate ? ' \u00b7 ' + monthLate + ' late' : '')
         : 'Nothing planned this month';
     }
     var counts = planCountIndex(plan);
