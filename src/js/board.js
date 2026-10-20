@@ -3794,6 +3794,13 @@ function richItemOf(box) {
     return d.getTime();
   }
 
+  function planSpanOf(item, isBoard) {
+    var start = planClock(planTimeOf(item, isBoard));
+    var end = planClock(planEndOf(item, isBoard));
+    if (start === null || end === null || end <= start) return QUICK_HOUR;
+    return end - start;
+  }
+
   function planKeysOf(item) {
     if (!item || !item.data) return [];
     var out = [];
@@ -5139,11 +5146,13 @@ function richItemOf(box) {
     var moved = false;
     var count = 0;
     var last = null;
+    var repeats = 0;
     sources.forEach(function (source) {
       var item = source.board ? planRow(source.id) : board.plans.filter(function (row) { return row.id === source.id; })[0];
       if (!item) return;
       last = item;
       var keys = planKeysOf(item);
+      if (source.from && keys.indexOf(source.from) < 0 && planRepeatOf(item)) { repeats++; return; }
       if (source.board) {
         // A block dragged inside the planner keeps its other dates, but the day it came from is
         // replaced, because a drop on another day reads as a move and not as a second date.
@@ -5167,6 +5176,7 @@ function richItemOf(box) {
     });
     if (typeof index === 'number' && last) planReorder(planSort(planFiltered(planEntries(key)), key), last, key, index);
     if (added) util.toast(count > 1 ? 'Moved ' + count + ' blocks to ' + calShort(key) : (moved ? 'Moved to ' : (drag.board ? 'Planned for ' : 'Moved to ')) + calShort(key));
+    if (!added && repeats) util.toast('That day comes from a repeat. Move the block\'s own day to shift the whole series.');
     if (board.planner) board.planner.date = key;
     paintPlanner();
   }
@@ -6535,10 +6545,13 @@ function richItemOf(box) {
             event.preventDefault();
             var at = planStamped(planSnapped(planMinutesAt(useCol, event.clientY)));
             var isBoardDrag = !!board.planDrag.board;
-            var moved = findItem(board.planDrag.id);
+            var moved = planRow(board.planDrag.id);
             if (moved) {
               if (!moved.data) moved.data = {};
-              if (isBoardDrag) moved.data.planTime = at; else moved.data.time = at;
+              // The drop says where the block starts and nothing else, so the length it had travels with it.
+              var stop = planStamped(Math.min(1440, planClock(at) + planSpanOf(moved, isBoardDrag)));
+              if (isBoardDrag) { moved.data.planTime = at; moved.data.planEnd = stop; }
+              else { moved.data.time = at; moved.data.end = stop; }
               savePlanItem(moved);
             }
             dropPlanOn(useKey);
