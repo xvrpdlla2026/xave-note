@@ -6336,6 +6336,14 @@ function richItemOf(box) {
     return (clientY - box.top) / box.height * 1440;
   }
 
+  // The grip travels with the drag, because a repaint between the drag and the drop rebuilds everything
+  // that could remember it.
+  function planGrabY() {
+    var drag = board.planDrag;
+    var grabbed = drag ? drag.grab : null;
+    return typeof grabbed === 'number' && grabbed > 0 ? grabbed : 0;
+  }
+
   // A dragged block marks the slot it takes with a copy of itself, so the drag shows the block and its
   // range rather than the day it happens to be over.
   function planDropBand(col, event) {
@@ -6362,7 +6370,7 @@ function richItemOf(box) {
       return true;
     }
     col.classList.remove('is-over');
-    var at = planSnapped(planMinutesAt(col, event.clientY));
+    var at = planSnapped(planMinutesAt(col, event.clientY - planGrabY()));
     var span = planSpanOf(item, isBoard);
     var length = span / 60 * PLAN_HOUR;
     var height = Math.max(16, length);
@@ -6635,7 +6643,7 @@ function richItemOf(box) {
         bar.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
         bar.addEventListener('dragstart', (function (useEntry, useKey) {
           return function (event) {
-            board.planDragSources = [{ id: useEntry.item.id, board: !!useEntry.board, from: useKey }];
+            board.planDragSources = [{ id: useEntry.item.id, board: !!useEntry.board, from: useKey, grab: Math.max(0, Math.round(event.clientY - bar.getBoundingClientRect().top)) }];
             board.planDrag = board.planDragSources[0];
             if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
           };
@@ -6671,7 +6679,7 @@ function richItemOf(box) {
           planDropBandClear();
           if (board.planDrag) {
             event.preventDefault();
-            var at = planStamped(planSnapped(planMinutesAt(useCol, event.clientY)));
+            var at = planStamped(planSnapped(planMinutesAt(useCol, event.clientY - planGrabY())));
             var isBoardDrag = !!board.planDrag.board;
             var moved = planRowAny(board.planDrag.id);
             // A block with no time of its own belongs to the whole day, so the clock it was dropped on
