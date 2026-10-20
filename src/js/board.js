@@ -5632,6 +5632,15 @@ function richItemOf(box) {
 
   // Today sits beside the stepper for the same reason it does in the planner header: it moves the
   // date, so it belongs with the arrows instead of inside them.
+  function planOnToday(plan) {
+    if (!plan) return true;
+    var now = Date.now();
+    var mode = planViewMode(plan);
+    if (mode === 'month') return plan.month === monthStart(now);
+    if (mode === 'year') return new Date(plan.month).getFullYear() === new Date(now).getFullYear();
+    return plan.date === calKey(now);
+  }
+
   function planTodayButton(todayKey) {
     var button = calButton('Today', function () {
       var plan = board.planner;
@@ -5642,6 +5651,7 @@ function richItemOf(box) {
       paintPlanner();
     }, 'is-quiet bd-cal__today');
     button.title = 'Go to today';
+    if (!planOnToday(board.planner)) button.classList.add('is-off');
     return button;
   }
 
@@ -6964,6 +6974,7 @@ function richItemOf(box) {
     var main = node('div', 'bd-cal__main');
     main.classList.toggle('is-jumping', !!plan.jump);
     var top = node('div', 'bd-cal__top');
+    top.classList.toggle('is-assign', plan.mode !== 'browse');
     var titles = {
       browse: 'Planner',
       assign: 'Choose a date for ' + plan.rows.length + (plan.rows.length === 1 ? ' block' : ' blocks'),
@@ -6991,12 +7002,15 @@ function richItemOf(box) {
     following.setAttribute('aria-label', following.title);
     nav.appendChild(following);
     top.appendChild(nav);
-    top.appendChild(calButton('Today', function () {
+    var toToday = calButton('Today', function () {
       plan.date = calKey(Date.now());
       plan.month = monthStart(Date.now());
+      plan.calMonth = monthStart(Date.now());
       paintPlanner();
-    }, 'is-quiet bd-cal__today'));
-    top.appendChild(node('span', 'bd-cal__topsep'));
+    }, 'is-quiet bd-cal__today');
+    toToday.title = 'Go to today';
+    if (!planOnToday(plan)) toToday.classList.add('is-off');
+    top.appendChild(toToday);
     top.appendChild(planViewSwitch(plan));
     var sum = node('span', 'bd-cal__msum', '');
     top.appendChild(sum);
