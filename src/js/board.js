@@ -4657,7 +4657,7 @@ function richItemOf(box) {
       return null;
     }
     var item = planDraftItem(kind, key, time, end);
-    board.planFresh = { id: item.id, until: Date.now() + 4000 };
+    board.planFresh = { id: item.id, key: key, until: Date.now() + 4000 };
     if (draft) item.__planDraft = true;
     board.plans.push(item);
     if (!draft) savePlanItem(item);
@@ -5729,6 +5729,16 @@ function richItemOf(box) {
     body.scrollTop = Math.max(0, Math.round(body.scrollTop + shift));
   }
 
+  // The month grid scrolls on its own, so the cell a block landed in is brought up the same way a bar is.
+  function planCellIntoView(scroller, cell) {
+    var view = scroller.getBoundingClientRect();
+    var spot = cell.getBoundingClientRect();
+    var room = 6;
+    if (spot.top >= view.top + room && spot.bottom <= view.bottom - room) return;
+    var shift = spot.top < view.top + room ? spot.top - (view.top + room) : spot.bottom - (view.bottom - room);
+    scroller.scrollTop = Math.max(0, Math.round(scroller.scrollTop + shift));
+  }
+
   // Bringing a fresh block's card up keeps it clear of the panel edge, the way the clock reveal keeps its bar clear.
   function planCardIntoView(list, card) {
     var view = list.getBoundingClientRect();
@@ -5743,6 +5753,11 @@ function richItemOf(box) {
     var fresh = board.planFresh;
     if (!fresh || Date.now() > fresh.until) return;
     board.planFresh = null;
+    var grid = plannerEl().querySelector('.bd-cal__grid');
+    if (fresh.key && grid && grid.clientHeight) {
+      var cell = grid.querySelector('.bd-cal__cell[data-key="' + fresh.key + '"]');
+      if (cell) planCellIntoView(grid, cell);
+    }
     var list = plannerEl().querySelector('.bd-cal__list');
     var card = list ? list.querySelector('[data-plan-id="' + fresh.id + '"]') : null;
     if (!list || !card) return;
@@ -5784,7 +5799,7 @@ function richItemOf(box) {
       item.data.planCanvas[key] = { x: Math.round(box.x - INK_PAD), y: Math.round(box.y - INK_PAD), w: item.w, h: item.h };
     }
     savePlanItem(item);
-    board.planFresh = { id: item.id, until: Date.now() + 4000 };
+    board.planFresh = { id: item.id, key: key, until: Date.now() + 4000 };
   }
 
   function planSel() {
@@ -6295,7 +6310,7 @@ function richItemOf(box) {
     planReveal(id);
     plan.month = monthStart(calMs(key));
     plan.dayOpen = true;
-    board.planFresh = { id: id, board: !!board.planFresh && board.planFresh.board };
+    board.planFresh = { id: id, key: key, board: !!board.planFresh && board.planFresh.board };
     paintPlanner();
   }
 
@@ -7202,6 +7217,8 @@ function richItemOf(box) {
     var keepScroll = 0;
     var before = el.querySelector('.bd-cal__list');
     if (before) keepScroll = before.scrollTop;
+    var gridBefore = el.querySelector('.bd-cal__grid');
+    var keepGrid = gridBefore ? gridBefore.scrollTop : 0;
     var clockBefore = el.querySelector('.bd-cal__tbody');
     var keepClock = clockBefore ? clockBefore.scrollTop : 0;
     var active = document.activeElement;
@@ -7680,6 +7697,8 @@ column.addEventListener('dragover', function (event) {
     }
     var clock = el.querySelector('.bd-cal__tbody');
     if (clock && keepClock) clock.scrollTop = keepClock;
+    var gridAfter = el.querySelector('.bd-cal__grid');
+    if (gridAfter && keepGrid) gridAfter.scrollTop = keepGrid;
     planRevealFresh(plan);
     if (board.planRevealId && board.planRevealUntil > Date.now()) planScrollTo(board.planRevealId);
     if (caret) {
@@ -8033,7 +8052,7 @@ column.addEventListener('dragover', function (event) {
       made.updated_at = util.nowIso();
       board.plans.push(made);
       savePlanItem(made);
-      board.planFresh = { id: made.id, until: Date.now() + 4000 };
+      board.planFresh = { id: made.id, key: key, until: Date.now() + 4000 };
       planGridPick(board.planner, key, made.id);
     });
   }
