@@ -5134,6 +5134,13 @@ function richItemOf(box) {
     return null;
   }
 
+  // A block dragged inside the planner lives in its own store, which planRow does not hold, so both
+  // places are asked before a drag gives up on the block it is carrying.
+  function planRowAny(id) {
+    var own = board.plans.filter(function (row) { return row.id === id; })[0];
+    return own || planRow(id);
+  }
+
   function dropPlanOn(key, index) {
     var drag = board.planDrag;
     var sources = board.planDragSources;
@@ -6335,14 +6342,15 @@ function richItemOf(box) {
     return (clientY - box.top) / box.height * 1440;
   }
 
-  // A dragged block shows the slot it will land in, the size of the block and not the size of the day.
+  // A dragged block marks the slot it takes with a copy of itself, so the drag shows the block and its
+  // range rather than the day it happens to be over.
   function planDropBand(col, event) {
     var drag = board.planDrag;
     if (!drag) return false;
-    var item = planRow(drag.id);
+    var item = planRowAny(drag.id);
     if (!item) return false;
     var isBoard = !!drag.board;
-    var at = planSnapped(planMinutesAt(col, event.clientY));
+    var start = planClock(planTimeOf(item, isBoard));
     var band = col.querySelector('.bd-cal__dropband');
     Array.prototype.forEach.call(document.querySelectorAll('.bd-cal__dropband'), function (other) { if (other !== band) other.remove(); });
     if (!band) {
@@ -6350,12 +6358,39 @@ function richItemOf(box) {
       band.setAttribute('aria-hidden', 'true');
       col.appendChild(band);
     }
-    var top = at / 60 * PLAN_HOUR;
-    var height = Math.max(16, planSpanOf(item, isBoard) / 60 * PLAN_HOUR);
-    if (height + top > 24 * PLAN_HOUR) top = 24 * PLAN_HOUR - height;
+    if (start === null) {
+      // The block has no time of its own, so it takes the whole day and the whole day is what is marked.
+      col.classList.add('is-over');
+      band.className = 'bd-cal__tevent bd-cal__dropband is-ghost is-short';
+      band.style.top = '2px';
+      band.style.height = '22px';
+      planBandFill(band, item, planLabelOf(item), '');
+      return true;
+    }
+    col.classList.remove('is-over');
+    var at = planSnapped(planMinutesAt(col, event.clientY));
+    var span = planSpanOf(item, isBoard);
+    var length = span / 60 * PLAN_HOUR;
+    var height = Math.max(16, length);
+    var top = Math.min(at / 60 * PLAN_HOUR, 24 * PLAN_HOUR - height);
+    band.className = 'bd-cal__tevent bd-cal__dropband is-ghost'
+      + (length < 34 ? ' is-short' : '')
+      + (length < 24 ? ' is-tiny' : '');
     band.style.top = Math.round(top) + 'px';
     band.style.height = Math.round(height) + 'px';
+    planBandFill(band, item, planLabelOf(item), planTimeLabel(planStamped(at)) + ' - ' + planTimeLabel(planStamped(at + span)));
     return true;
+  }
+
+  function planBandFill(band, item, label, clock) {
+    band.textContent = '';
+    if (clock) band.appendChild(node('span', 'bd-cal__teventtime', clock));
+    var line = node('span', 'bd-cal__teventname');
+    line.appendChild(App.ui.icon(kindText(planKindOf(item)).icon, 11));
+    var words = node('span', 'bd-cal__teventtext', '');
+    words.innerHTML = planCellHtml(item, label);
+    line.appendChild(words);
+    band.appendChild(line);
   }
 
   function planDropBandClear() {
@@ -6609,8 +6644,10 @@ function richItemOf(box) {
             event.preventDefault();
             var at = planStamped(planSnapped(planMinutesAt(useCol, event.clientY)));
             var isBoardDrag = !!board.planDrag.board;
-            var moved = planRow(board.planDrag.id);
-            if (moved) {
+            var moved = planRowAny(board.planDrag.id);
+            // A block with no time of its own belongs to the whole day, so the clock it was dropped on
+            // is not a time to give it.
+            if (moved && planClock(planTimeOf(moved, isBoardDrag)) !== null) {
               if (!moved.data) moved.data = {};
               // The drop says where the block starts and nothing else, so the length it had travels with it.
               var stop = planStamped(Math.min(1440, planClock(at) + planSpanOf(moved, isBoardDrag)));

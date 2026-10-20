@@ -4478,7 +4478,8 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__tevent.is-short .bd-cal__teventtime { flex: none; }
 .bd-cal__tevent.is-short .bd-cal__teventname { flex: 1 1 auto; }
 .bd-cal__tevent.is-tiny .bd-cal__teventtime { display: none; }
-.bd-cal__dropband { position: absolute; left: 3px; right: 3px; z-index: 3; border: 1px dashed var(--accent); border-radius: 6px; background: var(--accent-soft); pointer-events: none; }
+.bd-cal__dropband { z-index: 3; pointer-events: none; }
+.bd-cal__tevent.is-ghost { opacity: 0.55; }
 .bd-cal__nowline { position: absolute; left: 0; right: 0; height: 2px; background: #e5484d; }
 .bd-cal__nowline::before { content: ''; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 999px; background: #e5484d; }
 /* A block is booked by pressing a lane, so the lane shows the range before you let go, and the quick add takes its title where you drew it. */
