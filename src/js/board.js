@@ -9116,24 +9116,26 @@ return function () {
     if (!quiet) util.toast('Board background: ' + board.bg);
   }
 
+  // The copy leaves out the card's own DOM node and its pending timer, and it must not leave
+  // out anything a card stores under data, where a pasted picture keeps its bytes in src.
   var CLONE_SKIP = { node: true, saveTimer: true, src: true };
 
   // A hand written copy instead of a JSON round trip: the board snapshots itself on
   // every edit, so this runs over every card and the string it used to build was pure
   // garbage the moment it was parsed.
-  function cloneValue(value) {
+  function cloneValue(value, inner) {
     if (value === null || typeof value !== 'object') return value;
     if (Array.isArray(value)) {
       var list = new Array(value.length);
-      for (var i = 0; i < value.length; i++) list[i] = cloneValue(value[i]);
+      for (var i = 0; i < value.length; i++) list[i] = cloneValue(value[i], inner);
       return list;
     }
     var copy = {};
     var keys = Object.keys(value);
     for (var k = 0; k < keys.length; k++) {
       var key = keys[k];
-      if (CLONE_SKIP[key]) continue;
-      copy[key] = cloneValue(value[key]);
+      if (!inner && CLONE_SKIP[key]) continue;
+      copy[key] = cloneValue(value[key], true);
     }
     return copy;
   }
