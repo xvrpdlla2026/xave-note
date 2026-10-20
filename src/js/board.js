@@ -6964,7 +6964,11 @@ function richItemOf(box) {
     };
     top.appendChild(node('div', 'bd-cal__label', titles[plan.mode] || 'Planner'));
     var nav = node('div', 'bd-cal__nav');
-    nav.appendChild(calButton('\u2039', function () { planShift(plan, -1); }, 'is-icon'));
+    var stepped = planViewMode(plan) || 'month';
+    var previous = calButton('\u2039', function () { planShift(plan, -1); }, 'is-icon');
+    previous.title = 'Previous ' + stepped;
+    previous.setAttribute('aria-label', previous.title);
+    nav.appendChild(previous);
     var monthTitle = calButton(planNavLabel(plan), function () {
       plan.jump = plan.jump ? 0 : 'month';
       paintPlanner();
@@ -6973,18 +6977,29 @@ function richItemOf(box) {
     monthTitle.setAttribute('aria-haspopup', 'true');
     monthTitle.setAttribute('aria-expanded', plan.jump ? 'true' : 'false');
     monthTitle.classList.toggle('is-open', !!plan.jump);
+    monthTitle.classList.add('bd-cal__mtjump');
+    monthTitle.appendChild(node('span', 'bd-cal__mtcaret', '\u25be'));
     nav.appendChild(monthTitle);
-    nav.appendChild(calButton('\u203a', function () { planShift(plan, 1); }, 'is-icon'));
+    var following = calButton('\u203a', function () { planShift(plan, 1); }, 'is-icon');
+    following.title = 'Next ' + stepped;
+    following.setAttribute('aria-label', following.title);
+    nav.appendChild(following);
     top.appendChild(nav);
-    top.appendChild(planViewSwitch(plan));
+    top.appendChild(calButton('Today', function () {
+      plan.date = calKey(Date.now());
+      plan.month = monthStart(Date.now());
+      paintPlanner();
+    }, 'is-quiet bd-cal__today'));
+    top.appendChild(node('div', 'bd-cal__spacer'));
     var sum = node('span', 'bd-cal__msum', '');
     top.appendChild(sum);
+    top.appendChild(planViewSwitch(plan));
     var search = node('div', 'bd-cal__search');
     var glyph = App.ui.icon('search', 14);
     if (glyph) search.appendChild(glyph);
     var filter = node('input', 'bd-cal__filter');
     filter.type = 'search';
-    filter.placeholder = 'Search every month';
+    filter.placeholder = 'Search blocks';
     filter.value = plan.query || '';
     filter.setAttribute('aria-label', 'Search planned blocks in every month');
     filter.addEventListener('input', function () {
@@ -7019,7 +7034,6 @@ function richItemOf(box) {
       try { filter.setSelectionRange(filter.value.length, filter.value.length); } catch (e) { }
       board.plannerFilter = false;
     }
-    top.appendChild(node('div', 'bd-cal__spacer'));
     if (plan.mode === 'assign') {
       top.appendChild(calButton('Remove from planner', function () {
         plan.rows.forEach(function (item) { setPlan(item, null); });
@@ -7027,11 +7041,6 @@ function richItemOf(box) {
         util.toast('Removed from the planner');
       }, 'is-quiet'));
     }
-    top.appendChild(calButton('Today', function () {
-      plan.date = calKey(Date.now());
-      plan.month = monthStart(Date.now());
-      paintPlanner();
-    }, 'is-quiet'));
     top.appendChild(calButton('Day', function () {
       plan.dayOpen = !plan.dayOpen;
       if (!plan.dayOpen) plan.full = false;
