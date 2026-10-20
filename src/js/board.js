@@ -4736,6 +4736,7 @@ function richItemOf(box) {
     head.appendChild(badge);
     // A block can be finished from the card, so the editor for it can finish it too.
     var doneNow = planDoneOf(item);
+    var doneDraft = doneNow;
     var mark = node('button', 'bd-cal__quickdone' + (doneNow ? ' is-on' : ''));
     mark.type = 'button';
     mark.title = doneNow ? 'Mark as not done' : 'Mark as done';
@@ -4745,8 +4746,8 @@ function richItemOf(box) {
     if (markIcon) mark.appendChild(markIcon);
     mark.addEventListener('click', function (event) {
       event.stopPropagation();
-      planSetDone(item, !planDoneOf(item));
-      var finished = planDoneOf(item);
+      doneDraft = !doneDraft;
+      var finished = doneDraft;
       mark.classList.toggle('is-on', finished);
       mark.title = finished ? 'Mark as not done' : 'Mark as done';
       mark.setAttribute('aria-label', mark.title);
@@ -4937,6 +4938,7 @@ function richItemOf(box) {
       var saved = planRepeatValue(rule);
       if (saved) item.data.repeat = saved;
       else delete item.data.repeat;
+      if (doneDraft !== planDoneOf(item)) planSetDone(item, doneDraft);
       savePlanItem(item);
     };
     var shut = function () {
