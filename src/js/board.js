@@ -1774,6 +1774,7 @@ function richItemOf(box) {
     if (ctx) richCtx = ctx;
     if (richBar && richBar.contains(document.activeElement)) { richState(richCtx); return; }
     if (!ctx) { richHide(); return; }
+    if (board.planner && !(ctx.box.closest && ctx.box.closest('.bd-cal__quick'))) { richHide(); return; }
     var rect = ctx.range.getBoundingClientRect();
     if (!rect || (!rect.width && !rect.height)) { richHide(); return; }
     if (!richBar) richBar = buildRichBar();
@@ -4515,6 +4516,7 @@ function richItemOf(box) {
       sheetZoom: 1,
       tool: board.mode === 'select' ? 'select' : 'grab',
     };
+    richHide();
     var el = plannerEl();
     el.hidden = false;
     paintPlanner();
