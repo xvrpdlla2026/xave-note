@@ -8591,7 +8591,12 @@ return function () {
     if (!board.open || board.picker) return;
     var target = event.target;
     var inBoard = !!(target && board.root && board.root.contains(target));
-    if (inBoard && target.closest && target.closest('input, textarea, [contenteditable="true"]') && !target.closest('.bd-table__cell')) return;
+
+    // Every editable takes the paste itself, wherever it lives; only a table cell wants the raw rows.
+    if (target && target.closest) {
+      var editable = target.closest('input, textarea, [contenteditable="true"]');
+      if (editable && !editable.closest('.bd-table__cell')) return;
+    }
     if (target && target.closest && target.closest('.bd-cal') && board.planner) {
       var planData = event.clipboardData;
       if (!planData) return;
