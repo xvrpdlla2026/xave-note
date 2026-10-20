@@ -6996,10 +6996,11 @@ function richItemOf(box) {
       plan.month = monthStart(Date.now());
       paintPlanner();
     }, 'is-quiet bd-cal__today'));
-    top.appendChild(node('div', 'bd-cal__spacer'));
+    top.appendChild(node('span', 'bd-cal__topsep'));
+    top.appendChild(planViewSwitch(plan));
     var sum = node('span', 'bd-cal__msum', '');
     top.appendChild(sum);
-    top.appendChild(planViewSwitch(plan));
+    top.appendChild(node('div', 'bd-cal__spacer'));
     var search = node('div', 'bd-cal__search');
     var glyph = App.ui.icon('search', 14);
     if (glyph) search.appendChild(glyph);
