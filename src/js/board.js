@@ -4529,6 +4529,7 @@ function richItemOf(box) {
   }
 
   function closePlanner() {
+    planQuickClose();
     if (board.plannerEl) board.plannerEl.hidden = true;
     // The fullscreen minimap hangs off the body, so closing the planner has to take it down too.
     var map = board.planner && board.planner.map;
@@ -4780,7 +4781,6 @@ function richItemOf(box) {
       body.__planItem = item;
       body.innerHTML = stored ? (util.isRichHtml(stored) ? util.sanitizeRichHtml(stored) : util.escapeHtml(stored)) : '';
       body.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
-      body.addEventListener('input', function () { if (typeof sum === 'function') { } });
       title.hidden = true;
     }
     var when = planTimeOf(item, !!isBoard);
@@ -5181,7 +5181,7 @@ function richItemOf(box) {
         count++;
       }
     });
-    if (typeof index === 'number' && last) planReorder(planSort(planFiltered(planEntries(key)), key), last, key, index);
+    if (typeof index === 'number' && last) planReorder(planSort(planEntries(key), key), last, key, index);
     if (added) util.toast(count > 1 ? 'Moved ' + count + ' blocks to ' + calShort(key) : (moved ? 'Moved to ' : (drag.board ? 'Planned for ' : 'Moved to ')) + calShort(key));
     if (!added && repeats) util.toast('That day comes from a repeat. Move the block\'s own day to shift the whole series.');
     if (board.planner) board.planner.date = key;
@@ -5353,15 +5353,7 @@ function richItemOf(box) {
         event.dataTransfer.setDragImage(pill, 14, 16);
       }
     });
-    bar.addEventListener('dragend', function () {
-      board.planDrag = null;
-      board.planDropIndex = null;
-      planDropBandClear();
-      Array.prototype.forEach.call(document.querySelectorAll('.bd-cal__dropmark'), function (mark) { mark.remove(); });
-      Array.prototype.forEach.call(document.querySelectorAll('.bd-cal__list.is-over'), function (over) { over.classList.remove('is-over'); });
-      Array.prototype.forEach.call(document.querySelectorAll('.bd-item.is-dragging'), function (card) { card.classList.remove('is-dragging'); });
-      Array.prototype.forEach.call(document.querySelectorAll('.bd-plan__pill'), function (n) { n.remove(); });
-    });
+    bar.addEventListener('dragend', planDragStop);
     var label = barLabel(view, true);
     if (isBoard) {
       var jump = node('button', 'bd-item__plan is-jump', 'board');
@@ -6397,6 +6389,24 @@ function richItemOf(box) {
     Array.prototype.forEach.call(document.querySelectorAll('.bd-cal__dropband'), function (band) { band.remove(); });
   }
 
+  // A drag can end anywhere, and a cancelled one ends where the pointer last was rather than over a
+  // target, so the marks it made are taken away here instead of waiting for the next paint.
+  function planDragStop() {
+    board.planDrag = null;
+    board.planDragSources = null;
+    board.planDropIndex = null;
+    planDropBandClear();
+    Array.prototype.forEach.call(document.querySelectorAll('.bd-cal__tcol.is-over, .bd-cal__tallcol.is-over, .bd-cal__cell.is-over, .bd-cal__list.is-over'), function (over) { over.classList.remove('is-over'); });
+    Array.prototype.forEach.call(document.querySelectorAll('.bd-cal__dropmark'), function (mark) { mark.remove(); });
+    Array.prototype.forEach.call(document.querySelectorAll('.bd-item.is-dragging'), function (card) { card.classList.remove('is-dragging'); });
+    Array.prototype.forEach.call(document.querySelectorAll('.bd-plan__pill'), function (n) { n.remove(); });
+  }
+
+  // A drag that ends outside the planner still ends, and the planner hears about it here rather than
+  // leaving the marks of a drag that is no longer happening on the screen.
+  window.addEventListener('dragend', function () { if (board.planner) planDragStop(); });
+  window.addEventListener('drop', function () { if (board.planner) planDragStop(); });
+
   function planSnapped(minutes) {
     return Math.max(0, Math.min(1425, Math.round(minutes / 15) * 15));
   }
@@ -6554,12 +6564,32 @@ function richItemOf(box) {
           board.planDrag = board.planDragSources[0];
           if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
         });
-        chip.addEventListener('dragend', function () {
-          board.planDrag = null;
-          board.planDragSources = null;
-        });
+        chip.addEventListener('dragend', planDragStop);
         lane.appendChild(chip);
       });
+      lane.addEventListener('dragover', function (event) {
+        if (!board.planDrag && !planDragHas(event)) return;
+        event.preventDefault();
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+        lane.classList.add('is-over');
+      });
+      lane.addEventListener('dragleave', function () { lane.classList.remove('is-over'); });
+      lane.addEventListener('drop', (function (useKey, useLane) {
+        return function (event) {
+          useLane.classList.remove('is-over');
+          if (!board.planDrag) { planDropEvent(event, useKey); return; }
+          event.preventDefault();
+          var dropping = planRowAny(board.planDrag.id);
+          // The band holds the blocks that own the whole day, so a drop here takes the clock away.
+          if (dropping) {
+            if (!dropping.data) dropping.data = {};
+            if (board.planDrag.board) { dropping.data.planTime = ''; dropping.data.planEnd = ''; }
+            else { dropping.data.time = ''; dropping.data.end = ''; }
+            savePlanItem(dropping);
+          }
+          dropPlanOn(useKey);
+        };
+      })(key, lane));
       lane.appendChild(add);
       lanes.appendChild(lane);
     });
@@ -6608,10 +6638,7 @@ function richItemOf(box) {
             if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
           };
         })(entry, key));
-        bar.addEventListener('dragend', function () {
-          board.planDrag = null;
-          board.planDragSources = null;
-        });
+        bar.addEventListener('dragend', planDragStop);
         bar.addEventListener('click', (function (useEntry, useKey) {
           return function (event) {
             event.stopPropagation();
@@ -7538,10 +7565,7 @@ function richItemOf(box) {
             if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
           };
         })(key));
-        tag.addEventListener('dragend', function () {
-          board.planDrag = null;
-          board.planDragSources = null;
-        });
+        tag.addEventListener('dragend', planDragStop);
         cell.appendChild(tag);
       });
       if (groups.length > 3) cell.appendChild(node('span', 'bd-cal__t', '+' + (groups.length - 3) + ' more'));
@@ -7582,7 +7606,6 @@ function richItemOf(box) {
       var matches = planMatches();
       if (dow.parentNode) main.removeChild(dow);
       if (grid.parentNode) main.removeChild(grid);
-      Array.prototype.forEach.call(head.querySelectorAll('button'), function (button) { button.remove(); });
       main.appendChild(planResults(matches));
       sum.textContent = matches.length
         ? matches.length + (matches.length === 1 ? ' block' : ' blocks') + ' found in every month'
@@ -7839,16 +7862,24 @@ column.addEventListener('dragover', function (event) {
       util.toast('Planned for ' + calShort(key));
       return;
     }
+    // A month grid shows the days either side of its own month, and a press on one of them picks that
+    // day. It is not a request to move the grid to their month, which would slide the days away.
     plan.date = key;
     plan.dayOpen = true;
-    var ms = calMs(key);
-    if (ms !== null && new Date(ms).getMonth() !== new Date(plan.month).getMonth()) plan.month = monthStart(ms);
     paintPlanner();
   }
 
   window.addEventListener('keydown', function (event) {
     if (event.key !== 'Escape' || !board.planner) return;
     if (document.querySelector('dialog[open]')) return;
+    if (board.planner.full) {
+      board.planner.full = false;
+      board.planner.view = null;
+      board.plannerView = planViewMode(board.planner);
+      try { App.prefs.set('board.planView', board.plannerView); } catch (e) { }
+      paintPlanner();
+      return;
+    }
     closePlanner();
   });
 
