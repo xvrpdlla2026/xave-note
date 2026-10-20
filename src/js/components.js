@@ -836,12 +836,15 @@ window.NoteApp = window.NoteApp || {};
           + (item.danger ? ' menu__item--danger' : '')
           + (item.disabled ? ' is-disabled' : ''),
         type: 'button',
-        role: 'menuitem',
+        role: item.box ? 'menuitemcheckbox' : 'menuitem',
+        'aria-checked': item.box ? (item.checked ? 'true' : 'false') : null,
         tabindex: '-1',
         disabled: item.disabled ? 'disabled' : null,
         onclick: function () { run(item); },
       }, [
-        el('span', { class: 'menu__check' }, [item.checked ? icon('check', 13) : null]),
+        el('span', { class: 'menu__check' + (item.box ? ' is-box' + (item.checked ? ' is-on' : '') : '') }, [
+          item.checked || item.box ? icon('check', item.box ? 11 : 13) : null,
+        ]),
         item.icon ? el('span', { class: 'menu__icon' }, [icon(item.icon, 14)]) : null,
         el('span', { class: 'menu__label', text: item.label }),
         item.shortcut ? el('span', { class: 'menu__shortcut', text: item.shortcut }) : null,
@@ -857,6 +860,7 @@ window.NoteApp = window.NoteApp || {};
       if (typeof handler === 'function') handler();
     }
 
+    root.classList.toggle('is-quiet', !!c.quiet);
     root.classList.remove('is-hidden');
     root.style.left = '0px';
     root.style.top = '0px';

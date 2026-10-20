@@ -4214,37 +4214,55 @@ function richItemOf(box) {
     BLOCK_KINDS.forEach(function (entry) { if (counts[entry.kind]) present.push(entry.kind); });
     extra.forEach(function (kind) { if (counts[kind] && present.indexOf(kind) < 0) present.push(kind); });
     if (!present.length) return null;
-    if (on.length > 1) on.length = 0;
+    var summary = '';
+    if (on.length === 1) summary = kindText(on[0]).label;
+    else if (on.length === 2) summary = kindText(on[0]).label + ' + ' + kindText(on[1]).label;
+    else if (on.length > 2) summary = on.length + ' types';
     var button = node('button', 'bd-cal__type' + (on.length ? ' is-on' : ''));
     button.type = 'button';
     button.setAttribute('aria-haspopup', 'menu');
-    button.setAttribute('aria-label', 'Show only one type of block');
-    button.appendChild(node('span', 'bd-cal__typelabel', on.length ? kindText(on[0]).label : 'All types'));
+    button.setAttribute('aria-label', 'Filter blocks by type');
+    button.title = on.length ? 'Showing ' + summary + '. Click to change.' : 'Showing every type. Click to filter.';
+    button.appendChild(node('span', 'bd-cal__typelabel', summary || 'All types'));
     button.appendChild(node('span', 'bd-cal__caret'));
-    button.addEventListener('click', function () {
-      var at = button.getBoundingClientRect();
+    var total = 0;
+    present.forEach(function (kind) { total += counts[kind] || 0; });
+    var openTypes = function (quiet) {
+      var live = document.querySelector('.bd-cal__type') || button;
+      var at = live.getBoundingClientRect();
+      var chosen = planTypes(plan);
       var items = [{
         label: 'All types',
-        checked: !on.length,
-        onclick: function () { planTypes(plan).length = 0; paintPlanner(); },
+        box: true,
+        checked: !chosen.length,
+        shortcut: String(total),
+        onclick: function () {
+          planTypes(plan).length = 0;
+          paintPlanner();
+          openTypes(true);
+        },
       }];
       present.forEach(function (kind) {
         var text = kindText(kind);
         items.push({
           label: text.label,
           icon: text.icon,
+          box: true,
           shortcut: String(counts[kind] || 0),
-          checked: on.indexOf(kind) >= 0,
+          checked: chosen.indexOf(kind) >= 0,
           onclick: function () {
             var list = planTypes(plan);
-            list.length = 0;
-            list.push(kind);
+            var seen = list.indexOf(kind);
+            if (seen >= 0) list.splice(seen, 1);
+            else list.push(kind);
             paintPlanner();
+            openTypes(true);
           },
         });
       });
-      App.ui.openMenu({ x: Math.round(at.left), y: Math.round(at.bottom + 6), items: items });
-    });
+      App.ui.openMenu({ x: Math.round(at.left), y: Math.round(at.bottom + 6), quiet: !!quiet, items: items });
+    };
+    button.addEventListener('click', function () { openTypes(false); });
     return button;
   }
 

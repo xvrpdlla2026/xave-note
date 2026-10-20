@@ -3150,6 +3150,23 @@ dialog:not([open]) { display: none; }
 .menu__item--danger { color: var(--danger); }
 .menu__item--danger:hover, .menu__item--danger:focus-visible { background: var(--danger-soft); }
 .menu__check { display: inline-flex; color: var(--accent); font-size: 13px; }
+.menu__item:has(.menu__check.is-box) { grid-template-columns: 17px 16px minmax(0, 1fr) auto; }
+.menu__item:not(:has(.menu__icon)):has(.menu__check.is-box) { grid-template-columns: 17px minmax(0, 1fr) auto; }
+.menu__check.is-box {
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  background: var(--bg-sunken);
+  color: transparent;
+  transition: background var(--fast), border-color var(--fast), color var(--fast);
+}
+.menu__item:hover .menu__check.is-box { border-color: var(--accent); }
+.menu__check.is-box.is-on { background: var(--accent); border-color: var(--accent); color: var(--text-inverse); }
+.menu__check.is-box .icon { font-size: 11px; stroke-width: 2.6; }
+.menu.is-quiet { animation: none; }
 .menu__item--danger .menu__check { color: var(--danger); }
 .menu__icon { display: inline-flex; color: var(--text-faint); font-size: 14px; }
 .menu__item:hover .menu__icon { color: var(--text-muted); }
