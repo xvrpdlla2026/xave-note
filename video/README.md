@@ -1,4 +1,23 @@
-# The Xave film
+# The Xave films
+
+Two pieces live here: a 30 second ad built from motion graphics, and a longer tour cut
+from real recorded sessions.
+
+## The 30 second film
+
+`src/Ad.tsx` draws everything: the mark, the window card, the block grid, the canvas with
+its marquee and minimap, the planner, the palettes. Nothing is screen captured, so the
+beats can be as quick as the voice. Its timing comes from `audio/vo-ad/timing.json`, via
+`node build-ad.mjs`. The soundtrack is written to `public/ad.wav`.
+
+```
+node audio/make-ad-vo.mjs
+node build-ad.mjs
+$env:SCENES="ad-scenes.json"; node audio/make-score.mjs
+node_modules/.bin/remotion render src/index.ts XaveAd out/ad.mp4
+```
+
+## The tour
 
 A tour of the whole app for the repository front page, built with
 [Remotion](https://github.com/remotion-dev/remotion). Every shot is a real session: the

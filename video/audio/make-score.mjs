@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const RATE = 44100;
-const SCENE_FILE = JSON.parse(readFileSync(HERE + "scenes.json", "utf8"));
+const SCENE_FILE = JSON.parse(readFileSync(HERE + (process.env.SCENES || "scenes.json"), "utf8"));
 const DURATION = SCENE_FILE.total;
 const N = Math.ceil(RATE * DURATION);
 const music = new Float32Array(N);

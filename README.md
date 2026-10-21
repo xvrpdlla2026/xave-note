@@ -5,7 +5,7 @@
 A notebook, a board and a week planner that live in one file on your computer.
 No account, no sign up, no internet needed.
 
-[Watch the tour](docs/xave-tour.mp4) (75 seconds, narrated)
+[Watch the 30 second film](docs/xave-ad.mp4) (narrated), or the [full tour](docs/xave-tour.mp4) (75 seconds)
 
 ![The notes screen](docs/screenshot-notes.png)
 
