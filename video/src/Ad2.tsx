@@ -147,9 +147,16 @@ const Limit: React.FC = () => {
   );
 };
 
+const ORB_START = [
+  { x: 120, y: 742 },
+  { x: 340, y: 894 },
+  { x: 560, y: 1002 },
+];
+
 const orbPath = (i: number) => {
   const end = [{ x: 700, y: 470 }, { x: 960, y: 380 }, { x: 1220, y: 520 }][i];
-  return "M " + (140 + i * 60) + " 900 C " + (300 + i * 80) + " 700, " + (end.x - 320) + " " + (end.y + 220) + ", " + end.x + " " + end.y;
+  const s = ORB_START[i];
+  return "M " + s.x + " " + s.y + " C " + (s.x + 260) + " " + (s.y + 30) + ", " + (end.x - 300) + " " + (end.y + 250) + ", " + end.x + " " + end.y;
 };
 
 const Agents: React.FC = () => {
@@ -188,8 +195,8 @@ const Agents: React.FC = () => {
       })}
       {cards.map((c, i) => {
         const t = spring({ frame: f - 20 - i * 8, fps, config: { damping: 26, stiffness: 62, mass: 1.1 } });
-        const x = interpolate(t, [0, 1], [120 + i * 40, c.x]);
-        const y = interpolate(t, [0, 1], [980, c.y]);
+        const x = interpolate(t, [0, 1], [ORB_START[i].x, c.x]);
+        const y = interpolate(t, [0, 1], [ORB_START[i].y, c.y]);
         return (
           <div
             key={c.label}
