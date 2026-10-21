@@ -85,6 +85,22 @@ already written.
 
 ![The board menu](docs/screenshot-board-menu.png)
 
+## Start from a template
+
+Save a note as a template and the next one takes a minute instead of ten. The picker has
+a filter, and using a template copies it, so the note you make never changes the
+template.
+
+![Templates](docs/screenshot-templates.png)
+
+## Nothing is lost by accident
+
+Deleting a note or a folder moves it to the trash instead of throwing it away. The trash
+filters by folders, notes and files, remembers where each item came from, and puts it
+back in one click.
+
+![The trash](docs/screenshot-trash.png)
+
 ## Add from your notes
 
 The best part of having everything in one place: press **Add from your notes** on a
@@ -104,6 +120,13 @@ A single day can be opened fullscreen as a free canvas, with the same blocks lai
 the way you want them, the calendar still on the left, and the time on each block.
 
 ![One day as a free canvas](docs/screenshot-planner-day.png)
+
+The month puts a count on every day, and the year shows twelve small months at once, so
+a busy stretch is easy to spot from far away.
+
+![The month](docs/screenshot-planner-month.png)
+
+![The year](docs/screenshot-planner-year.png)
 
 ## Make it yours
 
