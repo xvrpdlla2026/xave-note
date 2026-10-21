@@ -47,7 +47,7 @@ export const Mark: React.FC<{ size: number; scale?: number }> = ({ size, scale =
     style={{
       width: size,
       height: size,
-      borderRadius: size * 0.3,
+      borderRadius: size * 0.27,
       background: accent,
       display: "flex",
       alignItems: "center",
@@ -56,11 +56,12 @@ export const Mark: React.FC<{ size: number; scale?: number }> = ({ size, scale =
       boxShadow: "0 18px 40px rgba(77,90,232,0.28)",
     }}
   >
-    <svg width={size * 0.56} height={size * 0.56} viewBox="0 0 24 24" fill="none"
-      stroke="#ffffff" strokeWidth={1.9} strokeLinejoin="round" strokeLinecap="round">
-      <path d="M12 3 3 8l9 5 9-5-9-5Z" />
-      <path d="m3 13 9 5 9-5" />
-      <path d="m3 18 9 5 9-5" opacity={0.5} />
+    <svg width={size} height={size} viewBox="0 0 22 22">
+      <g fill="#ffffff">
+        <rect x="5.9" y="8.3" width="10.2" height="2.2" rx="1.1" transform="rotate(45 11 9.4)" />
+        <rect x="5.9" y="8.3" width="10.2" height="2.2" rx="1.1" transform="rotate(-45 11 9.4)" />
+        <rect x="6.2" y="16" width="9.6" height="2" rx="1" />
+      </g>
     </svg>
   </div>
 );

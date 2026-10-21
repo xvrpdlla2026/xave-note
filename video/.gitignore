@@ -1,4 +1,8 @@
 node_modules
 out
 .remotion
+tmp
+record/out
 audio/bed.wav
+audio/vo/*.mp3
+audio/vo/*.wav

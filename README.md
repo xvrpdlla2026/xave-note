@@ -5,7 +5,7 @@
 A notebook, a board and a week planner that live in one file on your computer.
 No account, no sign up, no internet needed.
 
-[Watch the 30 second tour](docs/xave-30s.mp4) (11 MB, with a quiet soundtrack)
+[Watch the tour](docs/xave-tour.mp4) (75 seconds, narrated)
 
 ![The notes screen](docs/screenshot-notes.png)
 
@@ -222,7 +222,7 @@ one is a real screenshot of the app, opened on a normal size window.
 
 ![Three ways to think, drawn on one canvas](docs/banner-still-life.png)
 
-The 30 second film is in `video/`, and `video/README.md` explains how to render it.
+The film is in `video/`, and `video/README.md` explains how to render it.
 
 ## For developers
 

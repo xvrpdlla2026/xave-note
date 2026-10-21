@@ -1,19 +1,27 @@
 # The Xave film
 
-A 30 second piece for the repository front page, built with
-[Remotion](https://github.com/remotion-dev/remotion). Everything on screen is either the
-real app, running, or the same shapes the app draws, so the film cannot drift away from
-the product.
+A tour of the whole app for the repository front page, built with
+[Remotion](https://github.com/remotion-dev/remotion). Every shot is a real session: the
+recorder drives Chrome over the DevTools protocol and dispatches actual clicks, drags and
+keystrokes at the app, then the film plays that footage inside a window card. Nothing is
+a mockup, so the film cannot drift away from the product.
 
-| Time | Scene | What it says |
+| Time | Scene | What it shows |
 | :-- | :-- | :-- |
-| 0.0 | Open | The mark, the name, and the promise typed out |
-| 3.2 | Write | A note, saving itself, with the live cursor |
-| 8.7 | Arrange | The board of cards on its canvas |
-| 14.4 | Plan | Week, day and month, cutting on the beat |
-| 20.1 | Find | The search palette, with real keycaps |
-| 24.9 | Claim | Offline, local only, open source |
-| 27.6 | Close | The mark, the name and a short promise |
+| 0.0 | Open | The mark, the name, and the promise |
+| 4.4 | Classic view | Tabs, and a workspace per part of your life |
+| 12.6 | Editor | Bold, headings, lists, checkboxes, highlights, saving as you type |
+| 22.9 | Sidebar | Nested folders, and Control K search |
+| 30.3 | Board | Notes, to-dos, links, files, comments, tables, add from your notes |
+| 42.8 | Canvas | Drag to select, group, landmarks, drawing, the minimap |
+| 52.7 | Boards | A board per project, and the board list |
+| 58.9 | Planner | Day, week, month, year, and fullscreen |
+| 66.1 | Themes | Six palettes, each with a dark side |
+| 70.4 | Close | Free, open source, yours |
+
+The runtime follows the narration, not the other way round: the voice is generated first,
+then every cut is pinned to a beat the recorder marked in the footage, so the picture
+changes exactly when the sentence names the feature.
 
 ## Render it
 
@@ -22,22 +30,27 @@ npm install
 npm run render
 ```
 
-Output lands in `out/xave-30s.mp4`. `remotion.config.ts` points the renderer at the
-Chrome already installed on this machine, so nothing is downloaded.
+Output lands in `out/tour.mp4`, then it is copied to `../docs/xave-tour.mp4`.
+`remotion.config.ts` points the renderer at the Chrome already installed on this machine,
+so nothing is downloaded.
 
-The silent cut is rendered first, then muxed with the bed:
+## Re-record the footage
 
 ```
-node audio/make-bed.mjs
+node record/record.mjs
 ```
 
-That script writes `audio/bed.wav` by synthesis: a pad that follows three chords, a low
-drone for body, and a soft bloom on each cut. No samples, so there is nothing to license.
-It is not committed; regenerate it before muxing.
+Each take reloads the app and reseeds it first, so a take never inherits the wreckage of
+the one before it. Set `TAKES=classic,canvas` to record only some of them. The film's cut
+points come from `record/out/timeline.json`, which records the millisecond of every
+`a.mark()` beat.
 
 ## Files
 
-- `src/Video.tsx` holds the seven scenes and their timings.
-- `src/parts.tsx` holds the shared look: backdrop, mark, headline, pills, window.
-- `public/shots` mirrors the screenshots in `../docs`, at full size.
-- `audio/make-bed.mjs` is the soundtrack generator.
+- `record/takes.mjs` is the script of every session, one entry per take.
+- `record/record.mjs` is the Chrome recorder: screencast frames, plus real input events.
+- `build-scenes.mjs` turns the takes plus the narration timing into `src/scenes.ts`.
+- `src/Live.tsx` is the film: window card, camera push, intro, close.
+- `audio/make-vo.mjs` generates the narration, one file per scene.
+- `audio/make-score.mjs` builds the soundtrack: chords, sound effects, and the music
+  ducked under the voice.
