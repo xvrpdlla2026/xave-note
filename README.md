@@ -1,3 +1,5 @@
+**[Watch the 30 second film](docs/xave-ad.mp4)** (narrated), or the [full tour](docs/xave-tour.mp4) (75 seconds)
+
 ![Notes, a board and a planner, in one file on your computer](docs/banner.png)
 
 # Xave
