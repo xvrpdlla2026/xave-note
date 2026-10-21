@@ -1,0 +1,19 @@
+{
+  "name": "xave-video",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The 30 second feature film for Xave, built with Remotion.",
+  "scripts": {
+    "render": "remotion render src/index.ts Xave out/xave-30s.mp4",
+    "studio": "remotion studio src/index.ts"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.537",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remotion": "^4.0.537",
+    "typescript": "^5.9.3"
+  }
+}

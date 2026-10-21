@@ -50,7 +50,7 @@
 </g>
 
 <rect x="63" y="536" width="210" height="1.4" rx="0.7" fill="#dfe0ec" />
-<text x="63" y="570" font-family="Segoe UI, Inter, system-ui, -apple-system, sans-serif" font-size="13.5" font-weight="600" fill="#7d7f92" >Runs from one index.html.</text>
+<text x="63" y="570" font-family="Segoe UI, Inter, system-ui, -apple-system, sans-serif" font-size="13.5" font-weight="600" fill="#7d7f92" >Everything in one place.</text>
 <text x="63" y="590" font-family="Segoe UI, Inter, system-ui, -apple-system, sans-serif" font-size="13.5" font-weight="400" fill="#9b9dae" >Nothing leaves the machine.</text>
 
 <g filter="url(#win)">
