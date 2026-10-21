@@ -62,7 +62,7 @@
 
 <g filter="url(#f4)">
   <rect x="556" y="44" width="168" height="44" rx="22" fill="#ffffff" stroke="#e7e9f6"/>
-  <g transform="translate(572.4,53.8) scale(1.15)" fill="#4d5ae8"><rect x="5.9" y="8.3" width="10.2" height="2.2" rx="1.1" transform="rotate(45 11 9.4)"/><rect x="5.9" y="8.3" width="10.2" height="2.2" rx="1.1" transform="rotate(-45 11 9.4)"/><rect x="6.2" y="16" width="9.6" height="2" rx="1"/></g>
+  <g transform="translate(567.6,51.2) scale(1.4)" fill="#4d5ae8"><rect x="5.9" y="8.3" width="10.2" height="2.2" rx="1.1" transform="rotate(45 11 9.4)"/><rect x="5.9" y="8.3" width="10.2" height="2.2" rx="1.1" transform="rotate(-45 11 9.4)"/><rect x="6.2" y="16" width="9.6" height="2" rx="1"/></g>
   <text x="604" y="73" font-family="Segoe UI, Inter, system-ui, -apple-system, sans-serif" font-size="18" font-weight="700" fill="#22233a" letter-spacing="-0.3">Xave</text>
 </g>
 
