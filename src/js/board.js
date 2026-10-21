@@ -4655,11 +4655,15 @@ function richItemOf(box) {
     var hour = Number(parts[0]);
     var minute = Number(parts[1]);
     if (isNaN(hour) || isNaN(minute)) return null;
-    return Math.max(0, Math.min(1439, hour * 60 + minute));
+    var clock = hour * 60 + minute;
+    // Midnight closes the day rather than starting it, so an end of 24:00 has to stay 1440.
+    if (clock === 1440) return 1440;
+    return Math.max(0, Math.min(1439, clock));
   }
 
   function planStamped(minutes) {
-    var at = Math.max(0, Math.min(1439, Math.round(minutes)));
+    var at = Math.max(0, Math.min(1440, Math.round(minutes)));
+    if (at === 1440) return '24:00';
     var hour = Math.floor(at / 60);
     var minute = at % 60;
     return (hour < 10 ? '0' : '') + hour + ':' + (minute < 10 ? '0' : '') + minute;
@@ -5101,7 +5105,9 @@ function richItemOf(box) {
     var dash = node('span', 'bd-plan__rangedash', '-');
     var to = node('input', 'bd-plan__time');
     to.type = 'time';
-    to.value = planEndOf(item, !!isBoard);
+    // A time input has no 24:00, so an end at midnight is shown as 00:00 and read back as midnight.
+    var endNow = planEndOf(item, !!isBoard);
+    to.value = endNow === '24:00' ? '00:00' : endNow;
     to.title = 'End time';
     to.setAttribute('aria-label', 'End time');
     var row = node('div', 'bd-cal__quickrow');
@@ -5246,12 +5252,13 @@ function richItemOf(box) {
       planSetRange(item, first, stop);
       planQuickName(item, body ? util.sanitizeRichHtml(body.innerHTML) : title.value);
       var timed = !all.checked && !!from.value;
+      var stop = to.value === '00:00' ? '24:00' : (to.value || '');
       if (isBoard) {
         item.data.planTime = timed ? from.value : '';
-        item.data.planEnd = timed ? (to.value || '') : '';
+        item.data.planEnd = timed ? stop : '';
       } else {
         item.data.time = timed ? from.value : '';
-        item.data.end = timed ? (to.value || '') : '';
+        item.data.end = timed ? stop : '';
       }
       var saved = planRepeatValue(rule);
       if (saved) item.data.repeat = saved;
@@ -5290,10 +5297,15 @@ function richItemOf(box) {
     box.appendChild(repeat);
     box.appendChild(acts);
     document.body.appendChild(box);
+    var endClock = function () { return to.value === '00:00' ? 1440 : planClock(to.value); };
+    var startClock = function () { return planClock(from.value); };
     var stamp = function () {
       if (all.checked) return;
-      if (from.value && !to.value) to.value = planStamped(Math.min(1439, planClock(from.value) + QUICK_HOUR));
-      if (to.value && !from.value) from.value = planStamped(Math.max(0, planClock(to.value) - QUICK_HOUR));
+      if (from.value && !to.value) {
+        var late = Math.min(1440, startClock() + QUICK_HOUR);
+        to.value = late === 1440 ? '00:00' : planStamped(late);
+      }
+      if (to.value && !from.value) from.value = planStamped(Math.max(0, endClock() - QUICK_HOUR));
     };
     // A typed time means a timed block, so the all day box clears itself instead of swallowing the clock.
     var wake = function () {
@@ -6702,6 +6714,11 @@ function richItemOf(box) {
     return Math.max(0, Math.min(1425, Math.round(minutes / 15) * 15));
   }
 
+  // The end of a drag may use the last quarter of the day, where the start may not.
+  function planSnappedEnd(minutes) {
+    return Math.max(0, Math.min(1440, Math.round(minutes / 15) * 15));
+  }
+
   function planGridName(entry) {
     return planTitle(entry.item) || kindText(planKindOf(entry.item)).label;
   }
@@ -6734,7 +6751,7 @@ function richItemOf(box) {
       var to = Math.min(1440, anchor + QUICK_HOUR);
       var moved = false;
       var paint = function (clientY) {
-        var at = planSnapped(planMinutesAt(col, clientY));
+        var at = planSnappedEnd(planMinutesAt(col, clientY));
         if (Math.abs(at - anchor) >= 15) moved = true;
         if (moved) {
           from = Math.min(anchor, at);
