@@ -3,6 +3,18 @@
 Two pieces live here: a 30 second ad built from motion graphics, and a longer tour cut
 from real recorded sessions.
 
+## The mesh film
+
+22 seconds, hyper motion, dark. Agents that read the board, move its blocks and link
+them into a mesh that lives inside it.
+
+```sh
+node audio/make-ad2-vo.mjs
+node build-ad2.mjs
+node audio/make-ad2-score.mjs
+node_modules/.bin/remotion render src/index.ts XaveMesh out/mesh.mp4
+```
+
 ## The 30 second film
 
 `src/Ad.tsx` draws everything: the mark, the window card, the block grid, the canvas with
