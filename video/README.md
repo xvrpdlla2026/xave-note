@@ -5,8 +5,8 @@ from real recorded sessions.
 
 ## The mesh film
 
-22 seconds, hyper motion, dark. Agents that read the board, move its blocks and link
-them into a mesh that lives inside it.
+27 seconds, hyper motion, dark. Agents that read the board, reach outside it to mail,
+the web and automation, move its blocks, and link into a tree that lives inside it.
 
 ```sh
 node audio/make-ad2-vo.mjs

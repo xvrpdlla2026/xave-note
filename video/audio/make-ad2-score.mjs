@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const RATE = 44100;
 const SCENES = JSON.parse(readFileSync(HERE + "mesh-scenes.json", "utf8")).scenes;
-const ORDER = ["01-limit", "02-agents", "03-move", "04-mesh", "05-learn", "06-close"];
+const ORDER = ["01-limit", "02-agents", "03-beyond", "04-move", "05-mesh", "06-learn", "07-close"];
 const END = SCENES[SCENES.length - 1].end;
 const N = Math.ceil(RATE * (END + 0.08));
 const music = new Float32Array(N);

@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const timing = JSON.parse(readFileSync(HERE + "audio/vo-mesh/timing.json", "utf8"));
 const FPS = 30;
-const ORDER = ["01-limit", "02-agents", "03-move", "04-mesh", "05-learn", "06-close"];
+const ORDER = ["01-limit", "02-agents", "03-beyond", "04-move", "05-mesh", "06-learn", "07-close"];
 const PAD = 0.4;
 
 let cursor = 0;

@@ -277,12 +277,12 @@ const TREE = [
   { id: "n1", x: 520, y: 466, w: 210, label: "NOTES", depth: 1 },
   { id: "n2", x: 960, y: 466, w: 210, label: "BOARD", depth: 1 },
   { id: "n3", x: 1400, y: 466, w: 210, label: "PLANNER", depth: 1 },
-  { id: "l1", x: 400, y: 664, w: 200, label: "RESEARCH", depth: 2 },
-  { id: "l2", x: 640, y: 664, w: 200, label: "LEDGER", depth: 2 },
-  { id: "l3", x: 840, y: 664, w: 200, label: "ROADMAP", depth: 2 },
-  { id: "l4", x: 1080, y: 664, w: 200, label: "WEEK 42", depth: 2 },
-  { id: "l5", x: 1280, y: 664, w: 200, label: "SKETCHES", depth: 2 },
-  { id: "l6", x: 1520, y: 664, w: 200, label: "ARCHIVE", depth: 2 },
+  { id: "l1", x: 400, y: 664, w: 190, label: "RESEARCH", depth: 2 },
+  { id: "l2", x: 640, y: 664, w: 190, label: "LEDGER", depth: 2 },
+  { id: "l3", x: 880, y: 664, w: 190, label: "ROADMAP", depth: 2 },
+  { id: "l4", x: 1120, y: 664, w: 190, label: "WEEK 42", depth: 2 },
+  { id: "l5", x: 1350, y: 664, w: 190, label: "SKETCHES", depth: 2 },
+  { id: "l6", x: 1590, y: 664, w: 190, label: "ARCHIVE", depth: 2 },
 ];
 
 const TREE_EDGES: [string, string][] = [
@@ -404,6 +404,81 @@ const Mesh: React.FC = () => {
   );
 };
 
+const OUTSIDE = [
+  { id: "INBOX", x: 1130, y: 292, accent: CYAN },
+  { id: "BROWSER", x: 1130, y: 520, accent: ACCENT },
+  { id: "AUTOMATION", x: 1130, y: 748, accent: MAGENTA },
+];
+const TILE_W = 480;
+const TILE_H = 176;
+const HUB = { x: 330, y: 520, w: 360, h: 200 };
+
+const bez = (p0: number, p1: number, p2: number, p3: number, t: number) => {
+  const u = 1 - t;
+  return u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3;
+};
+
+const Beyond: React.FC = () => {
+  const f = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const hub = ramp(f, 2, 16);
+  return (
+    <AbsoluteFill>
+      <svg width={1920} height={1080} style={{ position: "absolute", inset: 0 }}>
+        {OUTSIDE.map((tile, i) => {
+          const y2 = tile.y;
+          const d = ramp(f, 12 + i * 4, 30 + i * 4);
+          return (
+            <path
+              key={tile.id}
+              d={"M " + (HUB.x + HUB.w / 2) + " " + HUB.y + " C 720 " + HUB.y + ", 760 " + y2 + ", 880 " + y2}
+              fill="none"
+              stroke={tile.accent}
+              strokeWidth="1.5"
+              strokeDasharray="5 9"
+              opacity={d * 0.62}
+            />
+          );
+        })}
+      </svg>
+      <div style={{ position: "absolute", left: HUB.x - HUB.w / 2, top: HUB.y - HUB.h / 2, width: HUB.w, height: HUB.h, borderRadius: 16, background: "rgba(16,19,36,0.95)", border: "1px solid rgba(120,136,255," + (0.28 + hub * 0.5) + ")", boxShadow: "0 0 " + (20 + hub * 46) + "px rgba(111,123,255," + hub * 0.32 + "), 0 30px 60px rgba(0,0,0,0.6)", opacity: hub, padding: "18px 20px" }}>
+        <div style={{ fontFamily: "Consolas, ui-monospace, monospace", fontSize: 12, letterSpacing: 3, color: "#8890b2" }}>THE BOARD</div>
+        <div style={{ marginTop: 18, height: 8, width: "74%", borderRadius: 4, background: "rgba(160,172,220,0.42)" }} />
+        <div style={{ marginTop: 10, height: 8, width: "46%", borderRadius: 4, background: "rgba(160,172,220,0.24)" }} />
+        <div style={{ position: "absolute", left: 20, bottom: 18, display: "flex", gap: 8 }}>
+          {[CYAN, ACCENT, MAGENTA].map((c, k) => (
+            <div key={k} style={{ width: 9, height: 9, borderRadius: "50%", background: c, boxShadow: "0 0 14px 3px " + c, opacity: 0.6 + pulse(f, 0.8, k) * 0.4 }} />
+          ))}
+        </div>
+      </div>
+      {OUTSIDE.map((tile, i) => {
+        const land = spring({ frame: f - 16 - i * 8, fps, config: { damping: 24, stiffness: 80, mass: 1 } });
+        const x = bez(HUB.x + HUB.w / 2, 720, 760, 880, land);
+        const y = bez(HUB.y, HUB.y, tile.y, tile.y, land);
+        const back = spring({ frame: f - 58 - i * 8, fps, config: { damping: 26, stiffness: 70, mass: 1 } });
+        const bx = bez(880, 760, 720, HUB.x + HUB.w / 2, back);
+        const by = bez(tile.y, tile.y, HUB.y, HUB.y, back);
+        const lit = ramp(f, 30 + i * 8, 44 + i * 8);
+        return (
+          <React.Fragment key={tile.id}>
+            <div style={{ position: "absolute", left: tile.x - TILE_W / 2, top: tile.y - TILE_H / 2, width: TILE_W, height: TILE_H, borderRadius: 14, background: "rgba(13,16,30,0.94)", border: "1px solid rgba(150,165,255," + (0.16 + lit * 0.5) + ")", boxShadow: "0 0 " + (lit * 40) + "px rgba(111,123,255," + lit * 0.3 + "), 0 24px 50px rgba(0,0,0,0.5)", opacity: ramp(f, 8 + i * 4, 22 + i * 4), transform: "translateX(" + (1 - lit) * 16 + "px)", padding: "18px 20px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, fontFamily: "Consolas, ui-monospace, monospace", fontSize: 13, letterSpacing: 2.8, color: "#aab2d4" }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: tile.accent, boxShadow: "0 0 14px 3px " + tile.accent, opacity: 0.4 + lit * 0.6 }} />
+                {tile.id}
+              </div>
+              <div style={{ marginTop: 18, height: 8, width: "82%", borderRadius: 4, background: "rgba(160,172,220," + (0.26 + lit * 0.26) + ")" }} />
+              <div style={{ marginTop: 10, height: 8, width: "58%", borderRadius: 4, background: "rgba(160,172,220,0.2)" }} />
+              <div style={{ position: "absolute", right: 20, bottom: 18, fontFamily: "Consolas, ui-monospace, monospace", fontSize: 11, letterSpacing: 2, color: tile.accent, opacity: lit }}>DONE</div>
+            </div>
+            <div style={{ position: "absolute", left: x - 15, top: y - 15, width: 30, height: 30, borderRadius: "50%", background: "radial-gradient(circle at 42% 38%, #ffffff, " + tile.accent + " 46%, rgba(0,0,0,0) 74%)", boxShadow: "0 0 40px 10px " + tile.accent, opacity: land > 0.001 ? Math.min(1, ramp(f, 12 + i * 8, 22 + i * 8)) : 0 }} />
+            <div style={{ position: "absolute", left: bx - 6, top: by - 6, width: 12, height: 12, borderRadius: "50%", background: CYAN, boxShadow: "0 0 22px 6px " + CYAN, opacity: back > 0.02 && back < 0.98 ? 0.95 : 0 }} />
+          </React.Fragment>
+        );
+      })}
+
+    </AbsoluteFill>
+  );
+};
 const Learn: React.FC = () => {
   const f = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -471,6 +546,7 @@ export const XaveMesh: React.FC = () => {
           <Scene scene={scene} label={scene.id.toUpperCase()}>
             {scene.id === "limit" ? <Limit /> : null}
             {scene.id === "agents" ? <Agents /> : null}
+            {scene.id === "beyond" ? <Beyond /> : null}
             {scene.id === "move" ? <Move /> : null}
             {scene.id === "mesh" ? <Mesh /> : null}
             {scene.id === "learn" ? <Learn /> : null}

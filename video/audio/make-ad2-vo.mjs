@@ -16,10 +16,11 @@ const FFPROBE = fileURLToPath(new URL("../node_modules/@remotion/compositor-win3
 const LINES = [
   ["01-limit", "Every board has an edge. This one does not."],
   ["02-agents", "Plug agents straight into it, and let them read everything."],
-  ["03-move", "They move the blocks. They link the data. They find the shape."],
-  ["04-mesh", "Not one agent. A mesh of them, living inside the board."],
-  ["05-learn", "Learning what you keep, arranging what you leave behind."],
-  ["06-close", "Xave. The board that thinks with you."],
+  ["03-beyond", "They leave the board too. Your inbox, the web, the work in between."],
+  ["04-move", "They move the blocks. They link the data. They find the shape."],
+  ["05-mesh", "Not one agent. A mesh of them, living inside the board."],
+  ["06-learn", "Learning what you keep, arranging what you leave behind."],
+  ["07-close", "Xave. The board that thinks with you."],
 ];
 
 const seconds = (file) => {
