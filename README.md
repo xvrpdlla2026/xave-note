@@ -1,3 +1,5 @@
+![Notes, a board and a planner, in one file on your computer](docs/banner.png)
+
 # Xave
 
 A notebook, a board and a week planner that live in one file on your computer.
@@ -200,6 +202,8 @@ If you want one link you can open from any device, publish the folder:
 
 The page is public, but nobody sees your notes: each visitor gets an empty notebook
 stored in their own browser.
+
+![Three ways to think, drawn on one canvas](docs/banner-still-life.png)
 
 ## For developers
 
