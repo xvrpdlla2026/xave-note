@@ -2466,8 +2466,8 @@ function richItemOf(box) {
   }
 
   function refreshPicture(item, card) {
-    var host = card || (item && item.node);
-    if (!item || !host || !item.data || !item.data.thumb) return;
+    var host = card && typeof card.querySelector === 'function' ? card : (item && item.node);
+    if (!item || !host || typeof host.querySelector !== 'function' || !item.data || !item.data.thumb) return;
     if (item.kind !== 'image' && item.kind !== 'file') return;
     var img = host.querySelector('.bd-image__img');
     if (!img) return;
@@ -2485,7 +2485,7 @@ function richItemOf(box) {
       Math.round((plan && plan.full && plan.view ? plan.view.z || 1 : 0) * 100) + ':' + (window.devicePixelRatio || 1);
     if (board.picKey === key) return;
     board.picKey = key;
-    board.items.forEach(refreshPicture);
+    board.items.forEach(function (item) { refreshPicture(item); });
   }
 
   function thumbPicture(item) {
