@@ -197,10 +197,18 @@ const Agents: React.FC = () => {
         <div style={{ position: "absolute", left: 26, top: 24, fontFamily: "Consolas, ui-monospace, monospace", fontSize: 12, letterSpacing: 3, color: "#6f7796" }}>INFINITE BOARD / LIVE</div>
       </div>
       <svg width={1920} height={1080} style={{ position: "absolute", inset: 0 }}>
+        <defs>
+          {cards.map((c, i) => (
+            <linearGradient key={"trail" + i} id={"trail" + i} gradientUnits="userSpaceOnUse" x1={ORB_ORIGIN.x} y1={ORB_ORIGIN.y} x2={c.x} y2={c.y}>
+              <stop offset="0" stopColor={colors[i]} stopOpacity="1" />
+              <stop offset="1" stopColor={colors[i]} stopOpacity="0.34" />
+            </linearGradient>
+          ))}
+        </defs>
         <circle cx={ORB_ORIGIN.x} cy={ORB_ORIGIN.y} r={4.5} fill="#eef1ff" opacity={ramp(f, 4, 22) * (1 - ramp(f, 112, 126))} />
         <circle cx={ORB_ORIGIN.x} cy={ORB_ORIGIN.y} r={10 + ramp(f, 6, 40) * 26} fill="none" stroke={CYAN} strokeWidth="1.2" opacity={ramp(f, 6, 24) * (1 - ramp(f, 24, 48)) * 0.8} />
         {cards.map((c, i) => (
-          <path key={i} d={orbPath(i)} fill="none" stroke={colors[i]} strokeWidth="1.6" strokeDasharray="4 7" strokeLinecap="round" opacity={ramp(f, 6 + i * 4, 32 + i * 4) * (1 - ramp(f, 112, 126)) * 0.62} />
+          <path key={i} d={orbPath(i)} fill="none" stroke={"url(#trail" + i + ")"} strokeWidth="1.7" strokeDasharray="4 7" strokeLinecap="round" opacity={ramp(f, 6 + i * 4, 32 + i * 4) * (1 - ramp(f, 112, 126)) * 0.72} />
         ))}
       </svg>
       {cards.map((c, i) => {
@@ -209,7 +217,8 @@ const Agents: React.FC = () => {
       })}
       {cards.map((c, i) => {
         const t = spring({ frame: f - 20 - i * 8, fps, config: { damping: 26, stiffness: 62, mass: 1.1 } });
-        const pt = orbAt(i, Math.max(0, Math.min(1, t)));
+        const travel = Math.max(0, Math.min(1, t));
+        const pt = orbAt(i, travel);
         const x = pt.x;
         const y = pt.y;
         return (
@@ -225,7 +234,7 @@ const Agents: React.FC = () => {
               background: "radial-gradient(circle at 40% 38%, #ffffff, " + colors[i] + " 40%, rgba(0,0,0,0) 72%)",
               boxShadow: "0 0 60px 12px rgba(" + (i === 0 ? "69,227,210" : i === 1 ? "111,123,255" : "255,92,143") + ",0.45)",
               opacity: ramp(f, 14 + i * 8, 26 + i * 8),
-              transform: "scale(" + (0.8 + pulse(f, 0.9, i) * 0.2) + ")",
+              transform: "scale(" + interpolate(travel, [0, 1], [1.14, 0.62]) * (0.9 + pulse(f, 0.9, i) * 0.1) + ")",
             }}
           />
         );
