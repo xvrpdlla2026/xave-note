@@ -96,30 +96,86 @@ const Bar: React.FC<{ x: number; y: number; w: number; h: number; delay: number;
   return <div style={{ position: "absolute", left: x, top: y, width: w * grow, height: h, borderRadius: 6, background: color }} />;
 };
 
+const ChipArt: React.FC<{ kind: string }> = ({ kind }) => {
+  if (kind === "note") {
+    return (
+      <div style={{ position: "absolute", left: 22, top: 26, right: 22 }}>
+        <div style={{ height: 9, width: "62%", borderRadius: 5, background: accent }} />
+        <div style={{ height: 7, width: "100%", borderRadius: 4, background: "#dde1f2", marginTop: 16 }} />
+        <div style={{ height: 7, width: "88%", borderRadius: 4, background: "#e8ebf7", marginTop: 10 }} />
+        <div style={{ height: 7, width: "70%", borderRadius: 4, background: "#e8ebf7", marginTop: 10 }} />
+      </div>
+    );
+  }
+  if (kind === "board") {
+    return (
+      <div
+        style={{
+          position: "absolute",
+          inset: 14,
+          borderRadius: 10,
+          backgroundImage: "radial-gradient(rgba(120,124,160,0.32) 1.4px, transparent 1.4px)",
+          backgroundSize: "14px 14px",
+        }}
+      >
+        <div style={{ position: "absolute", left: 6, top: 10, width: 44, height: 30, borderRadius: 6, background: "#ffffff", border: "1px solid #dde1f2", boxShadow: "0 6px 12px rgba(20,20,45,0.08)" }} />
+        <div style={{ position: "absolute", left: 30, top: 40, width: 44, height: 30, borderRadius: 6, background: accent }} />
+        <div style={{ position: "absolute", left: 58, top: 14, width: 30, height: 22, borderRadius: 6, background: "#ffffff", border: "1px solid #dde1f2" }} />
+      </div>
+    );
+  }
+  return (
+    <div style={{ position: "absolute", left: 20, top: 24, right: 20, display: "flex", gap: 4 }}>
+      {[0, 1, 2, 3, 4, 5, 6].map((c) => (
+        <div key={c} style={{ flex: 1, height: 54, borderRadius: 4, background: c === 2 ? "rgba(77,90,232,0.12)" : "#f2f4fc" }}>
+          <div style={{ height: 5, width: "60%", borderRadius: 3, background: c === 2 ? accent : "#dfe3f1", margin: "6px auto 0" }} />
+          <div style={{ height: 8, width: "78%", borderRadius: 3, background: c === 2 ? accent : "#dde1f2", margin: "7px auto 0", opacity: c === 2 ? 0.7 : 1 }} />
+          {c === 2 || c === 4 ? <div style={{ height: 8, width: "78%", borderRadius: 3, background: "#e8ebf7", margin: "5px auto 0" }} /> : null}
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const Brand: React.FC = () => {
   const f = useCurrentFrame();
   const { fps } = useVideoConfig();
   const mark = spring({ frame: f - 3, fps, config: { damping: 15, stiffness: 105, mass: 0.9 } });
   const word = "Xave".split("");
+  const chips = [
+    { label: "Notes", kind: "note" },
+    { label: "Board", kind: "board" },
+    { label: "Week", kind: "week" },
+  ];
   return (
     <AbsoluteFill style={{ alignItems: "center", justifyContent: "center" }}>
-      <AbsoluteFill style={{ opacity: ramp(f, 0, 30) * 0.9, background: "radial-gradient(820px 560px at 50% 44%, rgba(120,132,255,0.18), rgba(120,132,255,0))" }} />
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginTop: -30 }}>
-        <Mark size={116} scale={0.86 + mark * 0.14} />
-        <div style={{ height: 46 }} />
+      <AbsoluteFill style={{ opacity: ramp(f, 0, 30) * 0.9, background: "radial-gradient(820px 560px at 50% 42%, rgba(120,132,255,0.18), rgba(120,132,255,0))" }} />
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginTop: -40 }}>
+        <Mark size={96} scale={0.86 + mark * 0.14} />
+        <div style={{ height: 22 }} />
         <div style={{ display: "flex", gap: 3 }}>
           {word.map((c, i) => {
             const d = ramp(f, 12 + i * 3, 20 + i * 3);
             return (
-              <span key={i} style={{ fontFamily: font, fontSize: 128, fontWeight: 700, letterSpacing: -5, color: ink, opacity: d, transform: "translateY(" + (1 - d) * 18 + "px)" }}>
+              <span key={i} style={{ fontFamily: font, fontSize: 116, fontWeight: 700, letterSpacing: -4.6, color: ink, opacity: d, transform: "translateY(" + (1 - d) * 16 + "px)" }}>
                 {c}
               </span>
             );
           })}
         </div>
-        <div style={{ height: 34 }} />
-        <div style={{ fontFamily: font, fontSize: 22, fontWeight: 600, letterSpacing: 6.4, textTransform: "uppercase", color: mute, opacity: ramp(f, 46, 60) }}>
-          Notes &nbsp;&middot;&nbsp; Board &nbsp;&middot;&nbsp; Planner
+        <div style={{ height: 30 }} />
+        <div style={{ display: "flex", gap: 22 }}>
+          {chips.map((chip, i) => {
+            const s = spring({ frame: f - 30 - i * 5, fps, config: { damping: 17, stiffness: 130, mass: 0.7 } });
+            return (
+              <div key={chip.label} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, opacity: Math.min(1, s * 1.5), transform: "translateY(" + (1 - s) * 18 + "px)" }}>
+                <div style={{ position: "relative", width: 128, height: 128, borderRadius: 24, background: "#ffffff", border: "1px solid #dbdef0", boxShadow: "0 24px 46px rgba(22,24,52,0.14), 0 8px 18px rgba(22,24,52,0.06)", overflow: "hidden" }}>
+                  <ChipArt kind={chip.kind} />
+                </div>
+                <span style={{ fontFamily: font, fontSize: 17, fontWeight: 600, letterSpacing: 0.4, color: "#4a4c5e" }}>{chip.label}</span>
+              </div>
+            );
+          })}
         </div>
       </div>
     </AbsoluteFill>
@@ -220,11 +276,31 @@ const Blocks: React.FC = () => {
           </Card>
         );
       })}
-      <svg width="232" height="150" viewBox="0 0 232 150" style={{ position: "absolute", left: startX + 2 * (W + gapX), top: startY + 2 * (H + gapY) }}>
-        <rect x="0.75" y="0.75" width="230" height="148" rx="16" fill="#ffffff" stroke="#e9e9f3" strokeWidth="1.5" />
-        <text x="20" y="36" fontFamily="Segoe UI" fontSize="12" fontWeight="700" letterSpacing="1.6" fill="#a3a5ba">Draw</text>
-        <path d="M24 112c14-26 26 8 40-10s22 16 36-4 20 6 34-8" fill="none" stroke={accent} strokeWidth="3.4" strokeLinecap="round" strokeDasharray="240" strokeDashoffset={240 - ramp(f, 62, 96) * 240} />
-      </svg>
+      {(() => {
+        const s = spring({ frame: f - 8 - 8 * 7, fps: 30, config: { damping: 20, stiffness: 110, mass: 0.8 } });
+        return (
+          <div
+            style={{
+              position: "absolute",
+              left: startX + 2 * (W + gapX),
+              top: startY + 2 * (H + gapY),
+              width: W,
+              height: H,
+              borderRadius: 16,
+              background: "#ffffff",
+              border: "1px solid #dbdef0",
+              boxShadow: "0 20px 38px rgba(22,24,52,0.1)",
+              transform: "translateY(" + (1 - s) * 26 + "px) scale(" + (0.97 + s * 0.03) + ")",
+              opacity: Math.min(1, s * 1.4),
+            }}
+          >
+            <div style={{ position: "absolute", left: 20, top: 20, fontFamily: font, fontSize: 12, fontWeight: 700, letterSpacing: 1.6, textTransform: "uppercase", color: "#70758e" }}>Draw</div>
+            <svg width={W} height={H} viewBox="0 0 232 150" style={{ position: "absolute", left: 0, top: 0 }}>
+              <path d="M24 112c14-26 26 8 40-10s22 16 36-4 20 6 34-8" fill="none" stroke={accent} strokeWidth="3.4" strokeLinecap="round" strokeDasharray="240" strokeDashoffset={240 - ramp(f, 96, 138) * 240} />
+            </svg>
+          </div>
+        );
+      })()}
     </AbsoluteFill>
   );
 };
@@ -368,28 +444,83 @@ const Themes: React.FC = () => {
   );
 };
 
+const boardCards = [
+  { x: -300, y: -60, w: 190, h: 116, delay: 8, fill: "#ffffff", border: "#cbd2e8" },
+  { x: -80, y: -92, w: 160, h: 100, delay: 4, fill: "#ffffff", border: "#cbd2e8" },
+  { x: 120, y: -110, w: 210, h: 124, delay: 12, fill: "#ffffff", border: "#cbd2e8" },
+  { x: -220, y: 70, w: 168, h: 100, delay: 20, fill: "#ffffff", border: "#cbd2e8" },
+  { x: 20, y: 52, w: 200, h: 112, delay: 0, fill: "rgba(77,90,232,0.16)", border: "rgba(77,90,232,0.6)" },
+  { x: 268, y: 40, w: 176, h: 104, delay: 16, fill: "#ffffff", border: "#cbd2e8" },
+  { x: -400, y: 8, w: 150, h: 92, delay: 34, fill: "#ffffff", border: "#cbd2e8" },
+  { x: 470, y: -40, w: 160, h: 96, delay: 40, fill: "#ffffff", border: "#cbd2e8" },
+];
+
 const Close: React.FC = () => {
   const f = useCurrentFrame();
   const { fps } = useVideoConfig();
   const mark = spring({ frame: f - 2, fps, config: { damping: 19, stiffness: 125, mass: 0.8 } });
-  const pill = spring({ frame: f - 26, fps, config: { damping: 17, stiffness: 140, mass: 0.7 } });
+  const zoom = interpolate(f, [0, 84], [1.9, 0.72], clamp);
   return (
     <AbsoluteFill style={{ alignItems: "center", justifyContent: "center" }}>
-      <AbsoluteFill style={{ opacity: 0.9, background: "radial-gradient(780px 520px at 50% 46%, rgba(120,132,255,0.16), rgba(120,132,255,0))" }} />
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginTop: -20 }}>
-        <Mark size={96} scale={0.9 + mark * 0.1} />
-        <div style={{ height: 36 }} />
-        <div style={{ fontFamily: font, fontSize: 96, fontWeight: 700, letterSpacing: -3.8, color: ink, opacity: ramp(f, 12, 24) }}>Xave</div>
-        <div style={{ height: 34 }} />
-        <div style={{ display: "flex", gap: 16, opacity: ramp(f, 24, 36) }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "15px 26px", borderRadius: 99, background: "#ffffff", border: "1px solid " + "#dbdef0", boxShadow: "0 16px 30px rgba(20,20,45,0.08)", fontFamily: font, fontSize: 24, fontWeight: 600, color: "#3d3f50" }}>
-            <span style={{ width: 11, height: 11, borderRadius: 99, background: "#2fa06a" }} />
+      <AbsoluteFill style={{ opacity: 0.9, background: "radial-gradient(780px 520px at 50% 40%, rgba(120,132,255,0.16), rgba(120,132,255,0))" }} />
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginTop: -24 }}>
+        <Mark size={76} scale={0.9 + mark * 0.1} />
+        <div style={{ height: 18 }} />
+        <div style={{ fontFamily: font, fontSize: 84, fontWeight: 700, letterSpacing: -3.4, color: ink, opacity: ramp(f, 10, 22) }}>Xave</div>
+        <div style={{ height: 22 }} />
+        <div style={{ display: "flex", gap: 14, alignItems: "center", opacity: ramp(f, 20, 32) }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 11, padding: "12px 22px", borderRadius: 99, background: "#ffffff", border: "1px solid #dbdef0", boxShadow: "0 14px 28px rgba(22,24,52,0.08)", fontFamily: font, fontSize: 20, fontWeight: 600, color: "#3d3f50" }}>
+            <span style={{ width: 10, height: 10, borderRadius: 99, background: "#2fa06a" }} />
             Free and open source
           </div>
-          <div style={{ padding: "15px 26px", borderRadius: 99, background: accent, boxShadow: "0 18px 34px rgba(77,90,232,0.3)", fontFamily: font, fontSize: 24, fontWeight: 600, color: "#ffffff", transform: "translateY(" + (1 - pill) * 12 + "px) scale(" + (0.96 + pill * 0.04) + ")", opacity: pill }}>Yours to keep</div>
+          <div style={{ padding: "12px 22px", borderRadius: 99, background: accent, boxShadow: "0 16px 30px rgba(77,90,232,0.3)", fontFamily: font, fontSize: 20, fontWeight: 600, color: "#ffffff" }}>Yours to keep</div>
         </div>
-        <div style={{ height: 26 }} />
-        <div style={{ fontFamily: font, fontSize: 21, color: mute, opacity: ramp(f, 40, 54) }}>No account. Nothing leaves your computer.</div>
+        <div style={{ height: 30 }} />
+        <div style={{ position: "relative", width: 1040, height: 260, borderRadius: 20, background: "#ffffff", border: "1px solid #dbdef0", boxShadow: "0 40px 80px rgba(22,24,52,0.16), 0 10px 24px rgba(22,24,52,0.06)", overflow: "hidden", opacity: ramp(f, 14, 26) }}>
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              transform: "scale(" + zoom + ")",
+              transformOrigin: "50% 50%",
+              backgroundImage: "radial-gradient(rgba(108,114,158,0.5) 1.6px, transparent 1.6px)",
+              backgroundSize: "26px 26px",
+            }}
+          >
+            <div style={{ position: "absolute", left: "50%", top: "50%" }}>
+              {boardCards.map((c, i) => {
+                const d = ramp(f, c.delay, c.delay + 14);
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      position: "absolute",
+                      left: c.x,
+                      top: c.y,
+                      width: c.w,
+                      height: c.h,
+                      borderRadius: 12,
+                      background: c.fill,
+                      border: "1px solid " + c.border,
+                      boxShadow: "0 12px 24px rgba(22,24,52,0.14)",
+                      opacity: d,
+                      transform: "scale(" + (0.86 + d * 0.14) + ")",
+                    }}
+                  >
+                    <div style={{ height: 7, width: "62%", borderRadius: 4, background: "#dde1f2", margin: "14px 0 0 14px" }} />
+                    <div style={{ height: 6, width: "80%", borderRadius: 4, background: "#e8ebf7", margin: "9px 0 0 14px" }} />
+                    <div style={{ height: 6, width: "52%", borderRadius: 4, background: "#e8ebf7", margin: "7px 0 0 14px" }} />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div style={{ position: "absolute", inset: 0, boxShadow: "inset 0 0 34px 6px rgba(255,255,255,0.85)", pointerEvents: "none" }} />
+        </div>
+        <div style={{ height: 22 }} />
+        <div style={{ fontFamily: font, fontSize: 26, fontWeight: 600, color: "#33354a", opacity: ramp(f, 30, 44) }}>
+          No edge to the board. Only room to grow.
+        </div>
       </div>
     </AbsoluteFill>
   );
