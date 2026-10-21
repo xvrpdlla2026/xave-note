@@ -8,12 +8,14 @@ from real recorded sessions.
 `src/Ad.tsx` draws everything: the mark, the window card, the block grid, the canvas with
 its marquee and minimap, the planner, the palettes. Nothing is screen captured, so the
 beats can be as quick as the voice. Its timing comes from `audio/vo-ad/timing.json`, via
-`node build-ad.mjs`. The soundtrack is written to `public/ad.wav`.
+`node build-ad.mjs`. `audio/make-ad-score.mjs` writes the soundtrack to `public/ad.wav`: 128 bpm, four on
+  the floor, a bass and pluck hook that changes every four bars, and the music ducked
+  under each line of voice.
 
 ```
 node audio/make-ad-vo.mjs
 node build-ad.mjs
-$env:SCENES="ad-scenes.json"; node audio/make-score.mjs
+node audio/make-ad-score.mjs
 node_modules/.bin/remotion render src/index.ts XaveAd out/ad.mp4
 ```
 
