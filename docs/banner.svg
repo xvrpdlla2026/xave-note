@@ -11,7 +11,7 @@
 
 <g>
   <rect x="64" y="60" width="46" height="46" rx="14" fill="#4d5ae8" />
-  <g transform="translate(76,72) scale(0.92)" fill="none" stroke="#ffffff" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 13 9 5 9-5"/><path d="m3 18 9 5 9-5" opacity=".5"/></g>
+  <g transform="translate(64,60) scale(2.0909)" fill="#ffffff"><rect x="5.9" y="8.3" width="10.2" height="2.2" rx="1.1" transform="rotate(45 11 9.4)"/><rect x="5.9" y="8.3" width="10.2" height="2.2" rx="1.1" transform="rotate(-45 11 9.4)"/><rect x="6.2" y="16" width="9.6" height="2" rx="1"/></g>
   <text x="122" y="86" font-family="Segoe UI, Inter, system-ui, -apple-system, sans-serif" font-size="25" font-weight="700" fill="#15151d" letter-spacing="-0.5">Xave</text>
   <text x="122" y="105" font-family="Segoe UI, Inter, system-ui, -apple-system, sans-serif" font-size="10.5" font-weight="700" fill="#9a9bb0" letter-spacing="1.6">NOTES, BOARD AND PLANNER</text>
 </g>
