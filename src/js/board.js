@@ -6750,8 +6750,26 @@ function richItemOf(box) {
       var from = anchor;
       var to = Math.min(1440, anchor + QUICK_HOUR);
       var moved = false;
+      var day = key;
+      var active = col;
+      var columns = Array.prototype.slice.call(col.parentNode ? col.parentNode.children : []);
+      // The day follows the column under the pointer, so a press can start on one day and end on another.
+      var pickDay = function (clientX) {
+        var found = null;
+        columns.forEach(function (each) {
+          if (!each.classList || !each.classList.contains('bd-cal__tcol')) return;
+          var box = each.getBoundingClientRect();
+          if (clientX >= box.left && clientX <= box.right) found = each;
+        });
+        var next = found && found.getAttribute('data-key');
+        if (next && next !== day) {
+          day = next;
+          active = found;
+          active.appendChild(ghost);
+        }
+      };
       var paint = function (clientY) {
-        var at = planSnappedEnd(planMinutesAt(col, clientY));
+        var at = planSnappedEnd(planMinutesAt(active, clientY));
         if (Math.abs(at - anchor) >= 15) moved = true;
         if (moved) {
           from = Math.min(anchor, at);
@@ -6791,9 +6809,13 @@ function richItemOf(box) {
         window.removeEventListener('pointercancel', gone);
         if (ghost.parentNode) ghost.remove();
         if (cancelled) return;
-        planAddKind(plan, key, planStamped(from), planStamped(to));
+        planAddKind(plan, day, planStamped(from), planStamped(to));
       };
-      var move = function (event) { pointerY = event.clientY; paint(event.clientY); };
+      var move = function (event) {
+        pointerY = event.clientY;
+        pickDay(event.clientX);
+        paint(event.clientY);
+      };
       var up = function (event) { stop(event, false); };
       var gone = function (event) { stop(event, true); };
       window.addEventListener('pointermove', move);
