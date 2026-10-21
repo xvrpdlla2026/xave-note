@@ -147,16 +147,28 @@ const Limit: React.FC = () => {
   );
 };
 
-const ORB_START = [
-  { x: 120, y: 742 },
-  { x: 340, y: 894 },
-  { x: 560, y: 1002 },
+const ORB_ORIGIN = { x: 204, y: 934 };
+const ORB_ENDS = [{ x: 700, y: 470 }, { x: 960, y: 380 }, { x: 1220, y: 520 }];
+const ORB_CP = [
+  [{ x: 336, y: 866 }, { x: 432, y: 516 }],
+  [{ x: 388, y: 764 }, { x: 642, y: 322 }],
+  [{ x: 300, y: 1004 }, { x: 824, y: 702 }],
 ];
 
 const orbPath = (i: number) => {
-  const end = [{ x: 700, y: 470 }, { x: 960, y: 380 }, { x: 1220, y: 520 }][i];
-  const s = ORB_START[i];
-  return "M " + s.x + " " + s.y + " C " + (s.x + 260) + " " + (s.y + 30) + ", " + (end.x - 300) + " " + (end.y + 250) + ", " + end.x + " " + end.y;
+  const p = ORB_CP[i];
+  const e = ORB_ENDS[i];
+  return "M " + ORB_ORIGIN.x + " " + ORB_ORIGIN.y + " C " + p[0].x + " " + p[0].y + ", " + p[1].x + " " + p[1].y + ", " + e.x + " " + e.y;
+};
+
+const orbAt = (i: number, t: number) => {
+  const p = ORB_CP[i];
+  const e = ORB_ENDS[i];
+  const u = 1 - t;
+  return {
+    x: u * u * u * ORB_ORIGIN.x + 3 * u * u * t * p[0].x + 3 * u * t * t * p[1].x + t * t * t * e.x,
+    y: u * u * u * ORB_ORIGIN.y + 3 * u * u * t * p[0].y + 3 * u * t * t * p[1].y + t * t * t * e.y,
+  };
 };
 
 const Agents: React.FC = () => {
@@ -185,8 +197,10 @@ const Agents: React.FC = () => {
         <div style={{ position: "absolute", left: 26, top: 24, fontFamily: "Consolas, ui-monospace, monospace", fontSize: 12, letterSpacing: 3, color: "#6f7796" }}>INFINITE BOARD / LIVE</div>
       </div>
       <svg width={1920} height={1080} style={{ position: "absolute", inset: 0 }}>
+        <circle cx={ORB_ORIGIN.x} cy={ORB_ORIGIN.y} r={4.5} fill="#eef1ff" opacity={ramp(f, 4, 22) * (1 - ramp(f, 112, 126))} />
+        <circle cx={ORB_ORIGIN.x} cy={ORB_ORIGIN.y} r={10 + ramp(f, 6, 40) * 26} fill="none" stroke={CYAN} strokeWidth="1.2" opacity={ramp(f, 6, 24) * (1 - ramp(f, 24, 48)) * 0.8} />
         {cards.map((c, i) => (
-          <path key={i} d={orbPath(i)} fill="none" stroke={colors[i]} strokeWidth="1.6" strokeDasharray="4 7" strokeLinecap="round" opacity={ramp(f, 10 + i * 8, 30 + i * 8) * 0.6} />
+          <path key={i} d={orbPath(i)} fill="none" stroke={colors[i]} strokeWidth="1.6" strokeDasharray="4 7" strokeLinecap="round" opacity={ramp(f, 6 + i * 4, 32 + i * 4) * (1 - ramp(f, 112, 126)) * 0.62} />
         ))}
       </svg>
       {cards.map((c, i) => {
@@ -195,8 +209,9 @@ const Agents: React.FC = () => {
       })}
       {cards.map((c, i) => {
         const t = spring({ frame: f - 20 - i * 8, fps, config: { damping: 26, stiffness: 62, mass: 1.1 } });
-        const x = interpolate(t, [0, 1], [ORB_START[i].x, c.x]);
-        const y = interpolate(t, [0, 1], [ORB_START[i].y, c.y]);
+        const pt = orbAt(i, Math.max(0, Math.min(1, t)));
+        const x = pt.x;
+        const y = pt.y;
         return (
           <div
             key={c.label}
