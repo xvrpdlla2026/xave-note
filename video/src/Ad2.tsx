@@ -471,7 +471,7 @@ const Beyond: React.FC = () => {
               <div style={{ position: "absolute", right: 20, bottom: 18, fontFamily: "Consolas, ui-monospace, monospace", fontSize: 11, letterSpacing: 2, color: tile.accent, opacity: lit }}>DONE</div>
             </div>
             <div style={{ position: "absolute", left: x - 15, top: y - 15, width: 30, height: 30, borderRadius: "50%", background: "radial-gradient(circle at 42% 38%, #ffffff, " + tile.accent + " 46%, rgba(0,0,0,0) 74%)", boxShadow: "0 0 40px 10px " + tile.accent, opacity: land > 0.001 ? Math.min(1, ramp(f, 12 + i * 8, 22 + i * 8)) : 0 }} />
-            <div style={{ position: "absolute", left: bx - 6, top: by - 6, width: 12, height: 12, borderRadius: "50%", background: CYAN, boxShadow: "0 0 22px 6px " + CYAN, opacity: back > 0.02 && back < 0.98 ? 0.95 : 0 }} />
+            <div style={{ position: "absolute", left: bx - 6, top: by - 6, width: 12, height: 12, borderRadius: "50%", background: tile.accent, boxShadow: "0 0 22px 6px " + tile.accent, opacity: back > 0.02 && back < 0.98 ? 0.95 : 0 }} />
           </React.Fragment>
         );
       })}
@@ -479,24 +479,42 @@ const Beyond: React.FC = () => {
     </AbsoluteFill>
   );
 };
+const LEARN_SHUFFLE = [6, 1, 9, 3, 11, 0, 7, 2, 10, 4, 8, 5];
+
 const Learn: React.FC = () => {
   const f = useCurrentFrame();
   const { fps } = useVideoConfig();
   const rows = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+  const noise = (i: number, n: number) => {
+    const x = Math.sin(i * 127.1 + n * 311.7) * 43758.5453;
+    return x - Math.floor(x);
+  };
+  const swap = ramp(f, 20, 26) * (1 - ramp(f, 34, 40));
   return (
     <AbsoluteFill style={{ alignItems: "center", justifyContent: "center" }}>
       <div style={{ position: "relative", width: 1180, height: 620 }}>
         {rows.map((i) => {
           const col = i % 4;
           const row = Math.floor(i / 4);
-          const s = spring({ frame: f - 3 - i * 3, fps, config: { damping: 20, stiffness: 130, mass: 0.7 } });
-          const tx = col * 300;
-          const ty = row * 210;
-          const x = interpolate(s, [0, 1], [tx + (col - 1.5) * 260, tx]);
-          const y = interpolate(s, [0, 1], [ty + (row - 1) * 260, ty]);
-          const scan = ramp(f, 54 + i * 2, 68 + i * 2);
+          const gx = col * 300;
+          const gy = row * 210;
+          const mx = -50 + noise(i, 1) * 1120;
+          const my = -40 + noise(i, 2) * 660;
+          const mr = (noise(i, 3) - 0.5) * 34;
+          const slot = LEARN_SHUFFLE[i];
+          const angle = (slot / 12) * Math.PI * 2 - Math.PI / 2;
+          const rx = 590 + Math.cos(angle) * 470 - 129;
+          const ry = 310 + Math.sin(angle) * 245 - 84;
+          const gather = spring({ frame: f - 20 - i * 1.2, fps, config: { damping: 22, stiffness: 120, mass: 0.8 } });
+          const settle = spring({ frame: f - 40 - i * 1.6, fps, config: { damping: 20, stiffness: 130, mass: 0.7 } });
+          const jitter = (noise(i, 4) - 0.5) * 14 * (1 - ramp(f, 6, 18));
+          const x = interpolate(settle, [0, 1], [interpolate(gather, [0, 1], [mx, rx]), gx]);
+          const y = interpolate(settle, [0, 1], [interpolate(gather, [0, 1], [my, ry]), gy]) + jitter;
+          const rot = interpolate(settle, [0, 1], [mr * 0.55, 0]);
+          const scan = ramp(f, 52 + i * 2, 66 + i * 2);
+          const messy = 1 - ramp(f, 18, 30);
           return (
-            <div key={i} style={{ position: "absolute", left: x, top: y, width: 258, height: 168, borderRadius: 12, background: "rgba(13,16,30,0.92)", border: "1px solid rgba(111,123,255," + (0.2 + scan * 0.55) + ")", boxShadow: "0 0 " + (scan * 40) + "px rgba(111,123,255,0.28), inset 0 0 0 1px rgba(255,255,255,0.02)", opacity: Math.min(1, s * 1.6), padding: "14px 16px" }}>
+            <div key={i} style={{ position: "absolute", left: x, top: y, width: 258, height: 168, borderRadius: 12, background: "rgba(13,16,30," + (0.62 + ramp(f, 26, 40) * 0.3) + ")", border: "1px solid rgba(111,123,255," + (0.12 + scan * 0.55 + messy * 0.1) + ")", boxShadow: "0 0 " + (scan * 40) + "px rgba(111,123,255,0.28), inset 0 0 0 1px rgba(255,255,255,0.02)", opacity: Math.min(1, ramp(f, 2, 12) * (0.82 + ramp(f, 26, 40) * 0.18)), transform: "rotate(" + rot + "deg) scale(" + (0.74 + settle * 0.26) + ")", padding: "14px 16px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "Consolas, ui-monospace, monospace", fontSize: 11, letterSpacing: 2, color: "#767d9c" }}>
                 <span>{"NODE " + String(i + 1).padStart(2, "0")}</span>
                 <span style={{ color: scan > 0.4 ? CYAN : "#4b5170" }}>{"MEM " + Math.round(scan * 100) + "%"}</span>
@@ -507,7 +525,8 @@ const Learn: React.FC = () => {
             </div>
           );
         })}
-        <div style={{ position: "absolute", inset: 0, opacity: ramp(f, 40, 60) * (1 - ramp(f, 96, 116)), transform: "translateY(" + interpolate(ramp(f, 40, 96), [0, 1], [-80, 700]) + "px)", height: 2, background: "linear-gradient(90deg, rgba(69,227,210,0), rgba(69,227,210,0.9), rgba(69,227,210,0))", boxShadow: "0 0 30px 6px rgba(69,227,210,0.35)" }} />
+        <div style={{ position: "absolute", inset: 0, opacity: swap * 0.9, background: "radial-gradient(circle at 50% 50%, rgba(69,227,210,0.16), rgba(7,8,13,0) 62%)" }} />
+        <div style={{ position: "absolute", inset: 0, opacity: ramp(f, 46, 58) * (1 - ramp(f, 92, 110)), transform: "translateY(" + interpolate(ramp(f, 46, 92), [0, 1], [-80, 700]) + "px)", height: 2, background: "linear-gradient(90deg, rgba(69,227,210,0), rgba(69,227,210,0.9), rgba(69,227,210,0))", boxShadow: "0 0 30px 6px rgba(69,227,210,0.35)" }} />
       </div>
     </AbsoluteFill>
   );
