@@ -16660,6 +16660,7 @@ function richItemOf(box) {
   function planSpanOf(item, isBoard) {
     var start = planClock(planTimeOf(item, isBoard));
     var end = planClock(planEndOf(item, isBoard));
+    if (planWrapOf(item, isBoard)) return Math.max(15, 1440 - start);
     if (start === null || end === null || end <= start) return QUICK_HOUR;
     return end - start;
   }
@@ -17227,6 +17228,15 @@ function richItemOf(box) {
     return keys.length ? keys : null;
   }
 
+  function planFitRange(item, keys) {
+    if (!item || !item.data || !keys || !keys.length) return;
+    item.data.plans = keys;
+    item.data.plan = keys[0];
+    if (item.data.planner) item.data.planner = keys[0];
+    item.data.spanFrom = keys[0];
+    item.data.spanTo = keys[keys.length - 1];
+  }
+
   function planSetRange(item, from, to) {
     var keys = planRangeKeys(from, to);
     if (!item || !item.data || !keys) return false;
@@ -17281,14 +17291,46 @@ function richItemOf(box) {
     var start = planClock(planTimeOf(item, isBoard));
     if (start === null) return '';
     var end = planClock(planEndOf(item, isBoard));
-    if (end === null || end <= start) return planTimeLabel(planStamped(start));
+    if (end === null) return planTimeLabel(planStamped(start));
+    if (end <= start && !planWrapOf(item, isBoard)) return planTimeLabel(planStamped(start));
     return planTimeLabel(planStamped(start)) + ' - ' + planTimeLabel(planStamped(end));
+  }
+
+  function planDayShift(key, days) {
+    var ms = calMs(key);
+    if (ms === null) return key;
+    var at = new Date(ms);
+    return calKey(new Date(at.getFullYear(), at.getMonth(), at.getDate() + (days || 0)).getTime());
+  }
+
+  function planDaysBetween(from, to) {
+    var a = calMs(from);
+    var b = calMs(to);
+    if (a === null || b === null) return 0;
+    return Math.round((b - a) / 86400000);
+  }
+
+  // A block whose end clock is earlier than its start and whose days run past one another wraps overnight,
+  // so the day it starts on holds its head and the day it ends on holds its tail.
+  function planWrapOf(item, isBoard) {
+    var data = (item && item.data) || {};
+    if (!data.spanFrom || !data.spanTo || !(data.spanTo > data.spanFrom)) return null;
+    var start = planClock(planTimeOf(item, isBoard));
+    var end = planClock(planEndOf(item, isBoard));
+    if (start === null || end === null || end > start) return null;
+    return { start: start, end: end, from: data.spanFrom, to: data.spanTo };
   }
 
   // A block with a time is drawn on the clock, on every day its range covers; one without a time waits in the all day band.
   function planTimed(entry) {
     var start = planClock(planTimeOf(entry.item, entry.board));
     if (start === null) return null;
+    var wrap = planWrapOf(entry.item, entry.board);
+    if (wrap && entry.key) {
+      if (entry.key === wrap.from) return { start: wrap.start, end: 1440, wrap: true, entry: entry };
+      if (entry.key === wrap.to) return { start: 0, end: wrap.end, wrap: true, entry: entry };
+      if (entry.key > wrap.from && entry.key < wrap.to) return { start: 0, end: 1440, wrap: true, entry: entry };
+    }
     var end = planClock(planEndOf(entry.item, entry.board));
     if (end === null || end <= start) end = Math.min(1440, start + 60);
     return { start: start, end: end, entry: entry };
@@ -17697,7 +17739,8 @@ function richItemOf(box) {
     dayRow.appendChild(glyph);
     var day = node('input', 'bd-plan__rangedate');
     day.type = 'date';
-    day.value = key;
+    // A block that runs past midnight is edited from the day it starts on, not from the day it was opened on.
+    day.value = (item.data && item.data.spanFrom) || key;
     day.title = 'Day';
     day.setAttribute('aria-label', 'Day');
     var from = node('input', 'bd-plan__time');
@@ -17855,13 +17898,13 @@ function richItemOf(box) {
       planSetRange(item, first, stop);
       planQuickName(item, body ? util.sanitizeRichHtml(body.innerHTML) : title.value);
       var timed = !all.checked && !!from.value;
-      var stop = to.value === '00:00' ? '24:00' : (to.value || '');
+      var stopAt = to.value === '00:00' ? '24:00' : (to.value || '');
       if (isBoard) {
         item.data.planTime = timed ? from.value : '';
-        item.data.planEnd = timed ? stop : '';
+        item.data.planEnd = timed ? stopAt : '';
       } else {
         item.data.time = timed ? from.value : '';
-        item.data.end = timed ? stop : '';
+        item.data.end = timed ? stopAt : '';
       }
       var saved = planRepeatValue(rule);
       if (saved) item.data.repeat = saved;
@@ -17986,8 +18029,8 @@ function richItemOf(box) {
     var begin = allDay ? null : planClock(from);
     if (begin === null) return day ? day + ' - all day' : 'All day';
     var end = planClock(to);
-    var clock = planTimeLabel(planStamped(begin)) + (end !== null && end > begin ? ' - ' + planTimeLabel(planStamped(end)) : '');
-    var len = planLengthText(end !== null ? end - begin : 0);
+    var clock = planTimeLabel(planStamped(begin)) + (end !== null && end !== begin ? ' - ' + planTimeLabel(planStamped(end)) : '');
+    var len = planLengthText(end !== null && end > begin ? end - begin : 0);
     return (day ? day + ' - ' : '') + clock + (len ? ' (' + len + ')' : '');
   }
 
@@ -19349,6 +19392,9 @@ function richItemOf(box) {
       var stamp = node('span', 'bd-cal__tdragtext');
       ghost.appendChild(stamp);
       col.appendChild(ghost);
+      var tail = node('div', 'bd-cal__tdrag');
+      var tailStamp = node('span', 'bd-cal__tdragtext');
+      tail.appendChild(tailStamp);
       var scroller = col.closest ? col.closest('.bd-cal__tbody') : null;
       var from = anchor;
       var to = Math.min(1440, anchor + QUICK_HOUR);
@@ -19368,20 +19414,35 @@ function richItemOf(box) {
         if (next && next !== day) {
           day = next;
           active = found;
-          active.appendChild(ghost);
         }
       };
       var paint = function (clientY) {
         var at = planSnappedEnd(planMinutesAt(active, clientY));
         if (Math.abs(at - anchor) >= 15) moved = true;
-        if (moved) {
+        if (!moved) {
+          from = anchor;
+          to = Math.min(1440, anchor + QUICK_HOUR);
+        } else if (day === key) {
           from = Math.min(anchor, at);
           to = Math.max(anchor, at);
           if (to - from < 15) to = from + 15;
+        } else {
+          // Across days the press fixes the head and the pointer fixes the tail, and midnight joins them.
+          from = anchor;
+          to = at;
         }
+        var headEnd = day === key ? to : 1440;
         ghost.style.top = (from / 60 * PLAN_HOUR) + 'px';
-        ghost.style.height = Math.max(14, (to - from) / 60 * PLAN_HOUR) + 'px';
-        stamp.textContent = planTimeLabel(planStamped(from)) + ' - ' + planTimeLabel(planStamped(to));
+        ghost.style.height = Math.max(14, (headEnd - from) / 60 * PLAN_HOUR) + 'px';
+        stamp.textContent = planTimeLabel(planStamped(from)) + ' - ' + planTimeLabel(planStamped(headEnd));
+        if (day === key) {
+          if (tail.parentNode) tail.remove();
+          return;
+        }
+        if (!tail.parentNode) active.appendChild(tail);
+        tail.style.top = '0px';
+        tail.style.height = Math.max(14, to / 60 * PLAN_HOUR) + 'px';
+        tailStamp.textContent = planTimeLabel('00:00') + ' - ' + planTimeLabel(planStamped(to));
       };
       paint(event.clientY);
       // Holding the pointer past an edge walks the grid, so a range can run from any hour to any other.
@@ -19411,8 +19472,9 @@ function richItemOf(box) {
         window.removeEventListener('pointerup', up);
         window.removeEventListener('pointercancel', gone);
         if (ghost.parentNode) ghost.remove();
+        if (tail.parentNode) tail.remove();
         if (cancelled) return;
-        planAddKind(plan, day, planStamped(from), planStamped(to));
+        planAddKind(plan, key, planStamped(from), planStamped(to), day === key ? null : day);
       };
       var move = function (event) {
         pointerY = event.clientY;
@@ -19607,15 +19669,17 @@ function richItemOf(box) {
             var moved = planRowAny(board.planDrag.id);
             // A block with no time of its own belongs to the whole day, so the clock it was dropped on
             // is not a time to give it.
+            var wrap = moved ? planWrapOf(moved, isBoardDrag) : null;
             if (moved && planClock(planTimeOf(moved, isBoardDrag)) !== null) {
               if (!moved.data) moved.data = {};
               // The drop says where the block starts and nothing else, so the length it had travels with it.
-              var stop = planStamped(Math.min(1440, planClock(at) + planSpanOf(moved, isBoardDrag)));
+              var stop = wrap ? planStamped(wrap.end) : planStamped(Math.min(1440, planClock(at) + planSpanOf(moved, isBoardDrag)));
               if (isBoardDrag) { moved.data.planTime = at; moved.data.planEnd = stop; }
               else { moved.data.time = at; moved.data.end = stop; }
               savePlanItem(moved);
             }
             dropPlanOn(useKey);
+            if (wrap) planSetRange(moved, useKey, planDayShift(useKey, planDaysBetween(wrap.from, wrap.to)));
             return;
           }
           if (planDropEvent(event, useKey)) event.preventDefault();
@@ -21061,7 +21125,7 @@ column.addEventListener('dragover', function (event) {
 
 
   // Which kind it is matters, so a new block is picked rather than assumed to be a note.
-  function planAddKind(plan, key, from, to) {
+  function planAddKind(plan, key, from, to, through) {
     var dayKey = key || plan.date;
     var grid = node('div', 'bd-cal__kinds');
     var tiles = [];
@@ -21103,11 +21167,11 @@ column.addEventListener('dragover', function (event) {
       hideFooter: true,
       focus: '.bd-cal__kindtile',
       onOpen: function (api) { close = api.close; },
-    }).then(function (kind) { if (kind) planCompose(String(kind), dayKey, from, to); });
+    }).then(function (kind) { if (kind) planCompose(String(kind), dayKey, from, to, through); });
   }
 
   // Picking a type opens that block's own editor, so it is set up before it lands on the day.
-  function planCompose(kind, key, from, to) {
+  function planCompose(kind, key, from, to, through) {
     var item = planDraftItem(kind, key, from || '', to || '');
     item.__planDraft = true;
     var view = planClone(item);
@@ -21149,7 +21213,8 @@ column.addEventListener('dragover', function (event) {
     var when = new Date(ms === null ? Date.now() : ms);
     App.ui.dialog({
       title: 'New ' + kindText(kind).label + ' for ' + CAL_DAYS[when.getDay()] + ', ' + CAL_MONTHS[when.getMonth()] + ' ' + when.getDate()
-        + (from && to ? ', ' + planTimeLabel(from) + ' - ' + planTimeLabel(to) : ''),
+        + (from && to ? ', ' + planTimeLabel(from) + ' - ' + planTimeLabel(to) : '')
+        + (through && through !== key ? ' to ' + calShort(through) : ''),
       icon: kindText(kind).icon,
       body: wrap,
       wide: true,
@@ -21161,6 +21226,10 @@ column.addEventListener('dragover', function (event) {
       var made = item;
       delete made.__planDraft;
       made.updated_at = util.nowIso();
+      if (through && through !== key) {
+        var days = planRangeKeys(key, through);
+        if (days && days.length > 1) planFitRange(made, days);
+      }
       board.plans.push(made);
       savePlanItem(made);
       board.planFresh = { id: made.id, key: key, until: Date.now() + 4000 };
