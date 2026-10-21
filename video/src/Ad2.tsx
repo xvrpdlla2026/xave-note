@@ -175,18 +175,21 @@ const Agents: React.FC = () => {
             </div>
           );
         })}
-        <svg width={1240} height={660} style={{ position: "absolute", inset: 0 }}>
-          {cards.map((c, i) => {
-            const d = c.w;
-            return <path key={i} d={orbPath(i)} fill="none" stroke={colors[i]} strokeWidth="1.6" strokeDasharray="6 8" opacity={ramp(f, 10 + i * 8, 30 + i * 8) * 0.55} />;
-          })}
-        </svg>
         <div style={{ position: "absolute", left: 26, top: 24, fontFamily: "Consolas, ui-monospace, monospace", fontSize: 12, letterSpacing: 3, color: "#6f7796" }}>INFINITE BOARD / LIVE</div>
       </div>
+      <svg width={1920} height={1080} style={{ position: "absolute", inset: 0 }}>
+        {cards.map((c, i) => (
+          <path key={i} d={orbPath(i)} fill="none" stroke={colors[i]} strokeWidth="1.6" strokeDasharray="4 7" strokeLinecap="round" opacity={ramp(f, 10 + i * 8, 30 + i * 8) * 0.6} />
+        ))}
+      </svg>
+      {cards.map((c, i) => {
+        const landed = ramp(f, 40 + i * 8, 54 + i * 8);
+        return <div key={"dot" + i} style={{ position: "absolute", left: c.x - 5, top: c.y - 5, width: 10, height: 10, borderRadius: "50%", background: colors[i], boxShadow: "0 0 22px 6px " + colors[i], opacity: landed }} />;
+      })}
       {cards.map((c, i) => {
         const t = spring({ frame: f - 20 - i * 8, fps, config: { damping: 26, stiffness: 62, mass: 1.1 } });
         const x = interpolate(t, [0, 1], [120 + i * 40, c.x]);
-        const y = interpolate(t, [0, 1], [980, c.y - 96 + c.h / 2]);
+        const y = interpolate(t, [0, 1], [980, c.y]);
         return (
           <div
             key={c.label}
@@ -269,54 +272,133 @@ const Move: React.FC = () => {
   );
 };
 
-const meshNodes = [
-  { id: 0, a: 0.0, r: 0.34, s: 1.0 },
-  { id: 1, a: 0.55, r: 0.42, s: -0.8 },
-  { id: 2, a: 1.1, r: 0.3, s: 1.2 },
-  { id: 3, a: 1.6, r: 0.46, s: -1.0 },
-  { id: 4, a: 2.1, r: 0.36, s: 0.9 },
-  { id: 5, a: 2.6, r: 0.5, s: -1.1 },
-  { id: 6, a: 3.05, r: 0.28, s: 1.3 },
-  { id: 7, a: 3.55, r: 0.44, s: -0.9 },
-  { id: 8, a: 4.0, r: 0.33, s: 1.1 },
-  { id: 9, a: 4.5, r: 0.48, s: -1.2 },
-  { id: 10, a: 5.0, r: 0.3, s: 1.0 },
-  { id: 11, a: 5.5, r: 0.4, s: -0.7 },
-  { id: 12, a: 5.95, r: 0.52, s: 1.1 },
+const TREE = [
+  { id: "root", x: 960, y: 288, w: 250, label: "ROOT BOARD", depth: 0 },
+  { id: "n1", x: 520, y: 466, w: 210, label: "NOTES", depth: 1 },
+  { id: "n2", x: 960, y: 466, w: 210, label: "BOARD", depth: 1 },
+  { id: "n3", x: 1400, y: 466, w: 210, label: "PLANNER", depth: 1 },
+  { id: "l1", x: 400, y: 664, w: 200, label: "RESEARCH", depth: 2 },
+  { id: "l2", x: 640, y: 664, w: 200, label: "LEDGER", depth: 2 },
+  { id: "l3", x: 840, y: 664, w: 200, label: "ROADMAP", depth: 2 },
+  { id: "l4", x: 1080, y: 664, w: 200, label: "WEEK 42", depth: 2 },
+  { id: "l5", x: 1280, y: 664, w: 200, label: "SKETCHES", depth: 2 },
+  { id: "l6", x: 1520, y: 664, w: 200, label: "ARCHIVE", depth: 2 },
 ];
-const meshLinks = [[0, 2], [1, 3], [2, 4], [3, 5], [4, 6], [5, 7], [6, 8], [7, 9], [8, 10], [9, 11], [10, 12], [11, 0], [0, 7], [2, 9], [4, 11], [6, 1], [8, 3], [10, 5], [12, 2], [12, 8]];
+
+const TREE_EDGES: [string, string][] = [
+  ["root", "n1"],
+  ["root", "n2"],
+  ["root", "n3"],
+  ["n1", "l1"],
+  ["n1", "l2"],
+  ["n2", "l3"],
+  ["n2", "l4"],
+  ["n3", "l5"],
+  ["n3", "l6"],
+];
+
+const H = 84;
+const at = (id: string) => TREE.find((n) => n.id === id) as (typeof TREE)[number];
+
+const elbow = (from: string, to: string) => {
+  const a = at(from);
+  const b = at(to);
+  const drop = 34;
+  return "M " + a.x + " " + (a.y + H / 2) + " L " + a.x + " " + (a.y + H / 2 + drop) + " L " + b.x + " " + (a.y + H / 2 + drop) + " L " + b.x + " " + (b.y - H / 2);
+};
+
+const Node: React.FC<{ node: (typeof TREE)[number]; start: number }> = ({ node, start }) => {
+  const f = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const s = spring({ frame: f - start, fps, config: { damping: 20, stiffness: 130, mass: 0.7 } });
+  const live = ramp(f, start, start + 16);
+  const w = node.w;
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: node.x - w / 2,
+        top: node.y - H / 2,
+        width: w,
+        height: H,
+        borderRadius: 12,
+        background: node.depth === 0 ? "rgba(24,28,52,0.96)" : "rgba(14,17,32,0.96)",
+        border: "1px solid rgba(120,136,255," + (0.24 + live * 0.5) + ")",
+        boxShadow: "0 0 " + (16 + live * 36) + "px rgba(111,123,255," + (0.18 + live * 0.26) + "), 0 18px 40px rgba(0,0,0,0.5)",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "0 16px",
+        opacity: Math.min(1, s * 1.7),
+        transform: "translateY(" + (1 - s) * 18 + "px) scale(" + (0.94 + s * 0.06) + ")",
+      }}
+    >
+      <div style={{ width: 8, height: 8, borderRadius: "50%", background: node.depth === 0 ? CYAN : node.depth === 1 ? ACCENT : MAGENTA, boxShadow: "0 0 16px 3px currentColor", opacity: 0.9 }} />
+      <span style={{ fontFamily: "Consolas, ui-monospace, monospace", fontSize: 13, letterSpacing: 2.6, color: "#c3c9e6" }}>{node.label}</span>
+      <span style={{ marginLeft: "auto", fontFamily: "Consolas, ui-monospace, monospace", fontSize: 11, letterSpacing: 1.4, color: "#5d6486" }}>{"D" + node.depth}</span>
+    </div>
+  );
+};
 
 const Mesh: React.FC = () => {
   const f = useCurrentFrame();
-  const { W, H } = { W: 1920, H: 1080 };
-  const zoom = 1 + ramp(f, 0, 123) * 0.16;
-  const pos = meshNodes.map((n) => {
-    const ang = n.a + (f / 30) * 0.1 * n.s;
-    return { x: W / 2 + Math.cos(ang) * (W * n.r), y: H / 2 + Math.sin(ang * 1.18) * (H * n.r * 0.78) };
-  });
+  const route = ["root", "n2", "l3"];
+  const routePath = elbow(route[0], route[1]) + " " + elbow(route[1], route[2]).replace(/^M \S+ \S+ /, "");
   return (
-    <AbsoluteFill style={{ transform: "scale(" + zoom + ")" }}>
-      <svg width={W} height={H} style={{ position: "absolute" }}>
-        {meshLinks.map(([a, b], i) => {
-          const o = ramp(f, 4 + i, 18 + i);
-          return <line key={i} x1={pos[a].x} y1={pos[a].y} x2={pos[b].x} y2={pos[b].y} stroke={i % 3 === 0 ? CYAN : ACCENT} strokeWidth="1.2" opacity={o * (0.18 + pulse(f, 0.7, i * 0.7) * 0.45)} />;
+    <AbsoluteFill style={{ transform: "scale(" + (1 + ramp(f, 0, 123) * 0.055) + ") translateY(" + (-ramp(f, 0, 123) * 18) + "px)" }}>
+      <AbsoluteFill style={{ background: "radial-gradient(680px 460px at 50% 30%, rgba(111,123,255,0.16), rgba(7,8,13,0))" }} />
+      {[0, 1].map((i) => {
+        const t = ((f - i * 18) % 46) / 46;
+        const r = 120 + t * 520;
+        return <div key={i} style={{ position: "absolute", left: 960 - r, top: 288 - r, width: r * 2, height: r * 2, borderRadius: "50%", border: "1px solid rgba(69,227,210," + (1 - t) * 0.32 + ")" }} />;
+      })}
+      <svg width={1920} height={1080} style={{ position: "absolute", inset: 0 }}>
+        {TREE_EDGES.map(([from, to], i) => {
+          const start = at(from).depth === 0 ? 6 + i * 6 : 30 + (i - 3) * 6;
+          const d = ramp(f, start, start + 16);
+          return (
+            <path
+              key={i}
+              d={elbow(from, to)}
+              fill="none"
+              stroke={at(from).depth === 0 ? "rgba(111,123,255,0.8)" : "rgba(140,155,255,0.55)"}
+              strokeWidth="1.6"
+              strokeDasharray="900"
+              strokeDashoffset={900 - d * 900}
+            />
+          );
         })}
+        <path d={routePath} fill="none" stroke={CYAN} strokeWidth="3" strokeDasharray="14 16" strokeDashoffset={-f * 3.4} opacity={ramp(f, 74, 88)} style={{ filter: "drop-shadow(0 0 10px rgba(69,227,210,0.8))" }} />
       </svg>
-      {pos.map((n, i) => {
-        const o = ramp(f, 2 + i * 2, 16 + i * 2);
-        return (
-          <div key={i} style={{ position: "absolute", left: n.x - 7, top: n.y - 7, width: 14, height: 14, borderRadius: 99, background: i % 4 === 0 ? CYAN : i % 4 === 1 ? MAGENTA : ACCENT, opacity: o, boxShadow: "0 0 26px 6px rgba(111,123,255,0.55)", transform: "scale(" + (0.7 + pulse(f, 1.3, i) * 0.5) + ")" }} />
-        );
-      })}
-      {[0, 1, 2].map((i) => {
-        const t = ((f - i * 14) % 42) / 42;
-        const r = 80 + t * 520;
-        return (
-          <div key={i} style={{ position: "absolute", left: W / 2 - r, top: H / 2 - r, width: r * 2, height: r * 2, borderRadius: "50%", border: "1px solid rgba(69,227,210," + (1 - t) * 0.35 + ")", opacity: f > 10 ? 1 : 0 }} />
-        );
-      })}
+      {TREE.map((node, i) => (
+        <Node key={node.id} node={node} start={4 + node.depth * 14 + (i % 3) * 4} />
+      ))}
+      {TREE.map((node, i) =>
+        [0, 1].map((k) => {
+          const ang = (f / 30) * (0.7 + k * 0.2) + i + k * Math.PI;
+          return (
+            <div
+              key={node.id + k}
+              style={{
+                position: "absolute",
+                left: node.x + Math.cos(ang) * 34 - 3,
+                top: node.y + Math.sin(ang) * 22 - 3,
+                width: 6,
+                height: 6,
+                borderRadius: "50%",
+                background: k === 0 ? CYAN : ACCENT,
+                boxShadow: "0 0 12px 3px currentColor",
+                opacity: ramp(f, 24 + i * 2, 40 + i * 2) * 0.9,
+              }}
+            />
+          );
+        })
+      )}
       <div style={{ position: "absolute", right: 84, top: 118, fontFamily: "Consolas, ui-monospace, monospace", fontSize: 15, letterSpacing: 4.5, color: "rgba(180,192,235,0.8)", opacity: ramp(f, 18, 36) }}>
-        13 AGENTS / 20 LINKS
+        BOARD TREE / 9 NODES
+      </div>
+      <div style={{ position: "absolute", left: 960 - 240, top: 782, width: 480, textAlign: "center", fontFamily: "Consolas, ui-monospace, monospace", fontSize: 14, letterSpacing: 3.4, color: "rgba(69,227,210,0.8)", opacity: ramp(f, 82, 96) }}>
+        AGENT ROUTE / BOARD TO ROADMAP
       </div>
     </AbsoluteFill>
   );
