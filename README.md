@@ -203,6 +203,21 @@ If you want one link you can open from any device, publish the folder:
 The page is public, but nobody sees your notes: each visitor gets an empty notebook
 stored in their own browser.
 
+## Every screen in one place
+
+The same pictures as above, gathered here so you can look through them quickly. Each
+one is a real screenshot of the app, opened on a normal size window.
+
+| | |
+| :-- | :-- |
+| <a href="docs/screenshot-notes.png"><img src="docs/screenshot-notes.png" width="360" alt="Writing a note"></a><br><sub>Writing a note</sub> | <a href="docs/screenshot-search.png"><img src="docs/screenshot-search.png" width="360" alt="Search as you type"></a><br><sub>Search as you type</sub> |
+| <a href="docs/screenshot-workspaces.png"><img src="docs/screenshot-workspaces.png" width="360" alt="More than one notebook"></a><br><sub>More than one notebook</sub> | <a href="docs/screenshot-board.png"><img src="docs/screenshot-board.png" width="360" alt="The board of cards"></a><br><sub>The board of cards</sub> |
+| <a href="docs/screenshot-board-menu.png"><img src="docs/screenshot-board-menu.png" width="360" alt="What you can add"></a><br><sub>What you can add</sub> | <a href="docs/screenshot-add-from-notes.png"><img src="docs/screenshot-add-from-notes.png" width="360" alt="Add from your notes"></a><br><sub>Add from your notes</sub> |
+| <a href="docs/screenshot-templates.png"><img src="docs/screenshot-templates.png" width="360" alt="Templates"></a><br><sub>Templates</sub> | <a href="docs/screenshot-trash.png"><img src="docs/screenshot-trash.png" width="360" alt="The trash"></a><br><sub>The trash</sub> |
+| <a href="docs/screenshot-planner.png"><img src="docs/screenshot-planner.png" width="360" alt="The week"></a><br><sub>The week</sub> | <a href="docs/screenshot-planner-day.png"><img src="docs/screenshot-planner-day.png" width="360" alt="One day as a canvas"></a><br><sub>One day as a canvas</sub> |
+| <a href="docs/screenshot-planner-month.png"><img src="docs/screenshot-planner-month.png" width="360" alt="The month"></a><br><sub>The month</sub> | <a href="docs/screenshot-planner-year.png"><img src="docs/screenshot-planner-year.png" width="360" alt="The year"></a><br><sub>The year</sub> |
+| <a href="docs/screenshot-settings.png"><img src="docs/screenshot-settings.png" width="360" alt="Settings"></a><br><sub>Settings</sub> | <a href="docs/screenshot-dark.png"><img src="docs/screenshot-dark.png" width="360" alt="Dark mode"></a><br><sub>Dark mode</sub> |
+
 ![Three ways to think, drawn on one canvas](docs/banner-still-life.png)
 
 ## For developers
