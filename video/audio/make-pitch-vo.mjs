@@ -14,36 +14,36 @@ const FFPROBE = fileURLToPath(new URL("../node_modules/@remotion/compositor-win3
 
 const LINES = [
   [
-    "01-rent",
-    "Right now, your parents learn inside a platform you rent."
+    "01-watch",
+    "Maria joined for the promise of change. Every night she opened a lesson, and watched."
   ],
   [
-    "02-own",
-    "Here is what owning it replaces, in five groups."
+    "02-ask",
+    "A week passed, and nothing in her house had changed. So the platform stopped asking her to watch. It asked her to do one small thing."
   ],
   [
-    "03-g1",
-    "Platform and branding. A hundred percent white label platform matching her premium authority, with zero per member fees and no platform ceilings."
+    "03-script",
+    "Tonight's next step: run the bedtime script. Twelve minutes, one page. She ran it, the house went quiet, and for the first time the platform knew."
   ],
   [
-    "04-g2",
-    "Curriculum and student experience. Custom learning paths with step by step sequencing, and parent dashboards that always show the next step."
+    "04-track",
+    "Because progress here is not a finished video. It is a worksheet on the fridge, a script that worked, a behaviour that changed."
   ],
   [
-    "05-g3",
-    "Tracking and retention. Implementation is tracked by action, worksheets rather than videos, and automated early warning triggers catch stalled students."
+    "05-flag",
+    "Then life got loud again, and Maria went quiet for five days. The platform noticed before she left, flagged it, and told her coach."
   ],
   [
-    "06-g4",
-    "Native tools that replace third party subscriptions. Built in chat and community messaging instead of ManyChat, integrated email and notifications, and native checkout with subscription management."
+    "06-back",
+    "A message went out that afternoon. Maria came back. That is retention you can see, instead of guess."
   ],
   [
-    "07-g5",
-    "Operations and data. Review and approval before anything publishes, AI assisted production to speed lesson creation up, and full data ownership with native CRM integration."
+    "07-own",
+    "Your brand on all of it. No per member fees, and no ceiling on how far it grows."
   ],
   [
     "08-close",
-    "That is the proposal. Four to ten thousand, scoped to your goals, built once and yours."
+    "One platform, built once, owned by you. Four to ten thousand, scoped to your goals."
   ]
 ];
 

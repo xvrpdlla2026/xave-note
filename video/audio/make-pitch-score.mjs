@@ -1,4 +1,4 @@
-// Narration only. A proposal should read clean, so the film carries no score.
+// Voice first, then a soft piano figure under it. A proposal can carry a bed, just not a mood piece.
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
@@ -6,9 +6,9 @@ import { resolve } from "node:path";
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const RATE = 48000;
 const { total, scenes } = JSON.parse(readFileSync(HERE + "pitch-scenes.json", "utf8"));
-const ORDER = ["01-rent","02-own","03-g1","04-g2","05-g3","06-g4","07-g5","08-close"];
+const ORDER = ["01-watch","02-ask","03-script","04-track","05-flag","06-back","07-own","08-close"];
 const N = Math.ceil(RATE * (total + 0.1));
-const mix = new Float32Array(N);
+const voice = new Float32Array(N);
 
 const readWav = (path) => {
   const buf = readFileSync(path);
@@ -26,7 +26,6 @@ const readWav = (path) => {
   if (!fmt || !data) throw new Error("bad wav " + path);
   const bytes = fmt.bits / 8;
   const frames = Math.floor(data.length / (bytes * fmt.channels));
-  if (fmt.rate !== RATE) throw new Error("expected " + RATE + " Hz in " + path);
   const mono = new Float32Array(frames);
   for (let i = 0; i < frames; i++) {
     let sum = 0;
@@ -45,13 +44,51 @@ scenes.forEach((scene, i) => {
   for (let s = 0; s < clip.length && start + s < N; s++) {
     const t = s / RATE;
     const edge = Math.min(1, t / 0.02) * Math.min(1, (clip.length / RATE - t) / 0.05);
-    mix[start + s] += clip[s] * edge;
+    voice[start + s] += clip[s] * edge;
   }
 });
 
+const note = (semitone) => 261.63 * Math.pow(2, semitone / 12);
+const CHORDS = [[0, 4, 7], [-5, 0, 4], [-3, 2, 5], [-7, -3, 0]];
+const BAR = 2.6;
+const music = new Float32Array(N);
+const arp = [0, 2, 1, 2, 0, 1, 2, 1];
+
+for (let bar = 0; bar * BAR < total + 2; bar++) {
+  const chord = CHORDS[bar % CHORDS.length];
+  const start = Math.floor(bar * BAR * RATE);
+  const bloom = Math.min(1, (bar * BAR) / 1.6) * Math.min(1, (total + 0.6 - bar * BAR) / 2.2);
+  for (let i = 0; i < BAR * RATE; i++) {
+    const idx = start + i;
+    if (idx >= N) break;
+    const t = i / RATE;
+    const swell = Math.min(1, t / 0.9) * Math.min(1, (BAR - t) / 0.7);
+    let pad = 0;
+    for (const c of chord) pad += Math.sin(2 * Math.PI * note(c - 12) * t);
+    music[idx] += pad * 0.016 * swell * bloom;
+  }
+  const step = BAR / 8;
+  for (let k = 0; k < 8; k++) {
+    const s0 = Math.floor((bar * BAR + k * step) * RATE);
+    const freq = note(chord[arp[k]] + 12);
+    for (let i = 0; i < 0.9 * RATE; i++) {
+      const idx = s0 + i;
+      if (idx >= N) break;
+      const t = i / RATE;
+      music[idx] += Math.sin(2 * Math.PI * freq * t) * Math.exp(-t * 4.2) * 0.05 * bloom;
+    }
+  }
+}
+
+let voicePeak = 0;
+for (let i = 0; i < N; i++) voicePeak = Math.max(voicePeak, Math.abs(voice[i]));
+const vGain = voicePeak > 0 ? 0.89 / voicePeak : 1;
+const mix = new Float32Array(N);
+for (let i = 0; i < N; i++) mix[i] = voice[i] * vGain * 0.92 + music[i];
+
 let peak = 0;
 for (let i = 0; i < N; i++) peak = Math.max(peak, Math.abs(mix[i]));
-const norm = peak > 0 ? 0.89 / peak : 1;
+const norm = peak > 0.97 ? 0.97 / peak : 1;
 const pcm = Buffer.alloc(N * 4);
 for (let i = 0; i < N; i++) {
   const v = Math.max(-32768, Math.min(32767, Math.round(mix[i] * norm * 32767)));
@@ -74,4 +111,4 @@ header.write("data", 36);
 header.writeUInt32LE(pcm.length, 40);
 mkdirSync(resolve(HERE, "../public"), { recursive: true });
 writeFileSync(resolve(HERE, "../public/pitch.wav"), Buffer.concat([header, pcm]));
-console.log("pitch.wav " + (Math.round((44 + pcm.length) / 1e5) / 10) + " MB, peak " + peak.toFixed(2));
+console.log("pitch.wav " + (Math.round((44 + pcm.length) / 1e5) / 10) + " MB, voice " + vGain.toFixed(2) + ", peak " + peak.toFixed(2));

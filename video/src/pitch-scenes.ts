@@ -1,15 +1,15 @@
 export type PitchScene = { id: string; at: number; length: number };
 
 export const PITCH_FPS = 30;
-export const PITCH_TOTAL = 1984;
+export const PITCH_TOTAL = 1737;
 
 export const PITCH_SCENES: PitchScene[] = [
-  { id: "rent", at: 0, length: 121 },
-  { id: "own", at: 121, length: 107 },
-  { id: "g1", at: 228, length: 290 },
-  { id: "g2", at: 518, length: 263 },
-  { id: "g3", at: 781, length: 299 },
-  { id: "g4", at: 1080, length: 371 },
-  { id: "g5", at: 1451, length: 349 },
-  { id: "close", at: 1800, length: 184 },
+  { id: "watch", at: 0, length: 167 },
+  { id: "ask", at: 167, length: 241 },
+  { id: "script", at: 408, length: 291 },
+  { id: "track", at: 699, length: 231 },
+  { id: "flag", at: 930, length: 262 },
+  { id: "back", at: 1192, length: 199 },
+  { id: "own", at: 1391, length: 165 },
+  { id: "close", at: 1556, length: 181 },
 ];
