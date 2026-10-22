@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const RATE = 48000;
 const { total, scenes } = JSON.parse(readFileSync(HERE + "pitch-scenes.json", "utf8"));
-const ORDER = ["01-rent", "02-own", "03-paths", "04-track", "05-flag", "06-dash", "07-data", "08-close"];
+const ORDER = ["01-rent","02-own","03-g1","04-g2","05-g3","06-g4","07-g5","08-close"];
 const N = Math.ceil(RATE * (total + 0.1));
 const mix = new Float32Array(N);
 

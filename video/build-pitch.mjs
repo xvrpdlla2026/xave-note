@@ -1,12 +1,12 @@
-// Lays out the platform pitch: one beat per line of voice.
+// Lays out the platform proposal: one slide per line of voice.
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const timing = JSON.parse(readFileSync(HERE + "audio/vo-pitch/timing.json", "utf8"));
 const FPS = 30;
-const ORDER = ["01-rent", "02-own", "03-paths", "04-track", "05-flag", "06-dash", "07-data", "08-close"];
-const PAD = 0.35;
+const ORDER = ["01-rent","02-own","03-g1","04-g2","05-g3","06-g4","07-g5","08-close"];
+const PAD = 0.5;
 
 let cursor = 0;
 const scenes = ORDER.map((id) => {

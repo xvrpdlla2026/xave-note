@@ -1,4 +1,4 @@
-// Narration for the PurPOSEFUL PARENTING pitch, one file per beat so the film can be timed to the voice.
+// Narration for the platform proposal, one file per slide so the film is timed to the voice.
 import { execFileSync } from "node:child_process";
 import { writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -13,14 +13,38 @@ const FFMPEG = fileURLToPath(new URL("../node_modules/@remotion/compositor-win32
 const FFPROBE = fileURLToPath(new URL("../node_modules/@remotion/compositor-win32-x64-msvc/ffprobe.exe", import.meta.url));
 
 const LINES = [
-  ["01-rent", "Right now, your members live on someone else's platform."],
-  ["02-own", "You could own it. Your brand, your data, your rules."],
-  ["03-paths", "Curriculums that sequence themselves, module by module."],
-  ["04-track", "Progress that tracks behaviour, not just a finished video."],
-  ["05-flag", "When a parent stalls, you know before they leave."],
-  ["06-dash", "And every parent always knows their next step."],
-  ["07-data", "Their progress lands in your CRM, not a rented dashboard."],
-  ["08-close", "Own the platform once. Four to ten thousand, and it is yours."],
+  [
+    "01-rent",
+    "Right now, your parents learn inside a platform you rent."
+  ],
+  [
+    "02-own",
+    "Here is what owning it replaces, in five groups."
+  ],
+  [
+    "03-g1",
+    "Platform and branding. A hundred percent white label platform matching her premium authority, with zero per member fees and no platform ceilings."
+  ],
+  [
+    "04-g2",
+    "Curriculum and student experience. Custom learning paths with step by step sequencing, and parent dashboards that always show the next step."
+  ],
+  [
+    "05-g3",
+    "Tracking and retention. Implementation is tracked by action, worksheets rather than videos, and automated early warning triggers catch stalled students."
+  ],
+  [
+    "06-g4",
+    "Native tools that replace third party subscriptions. Built in chat and community messaging instead of ManyChat, integrated email and notifications, and native checkout with subscription management."
+  ],
+  [
+    "07-g5",
+    "Operations and data. Review and approval before anything publishes, AI assisted production to speed lesson creation up, and full data ownership with native CRM integration."
+  ],
+  [
+    "08-close",
+    "That is the proposal. Four to ten thousand, scoped to your goals, built once and yours."
+  ]
 ];
 
 const seconds = (file) => {
