@@ -4558,7 +4558,21 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-cal__tadd:hover { background: var(--bg-hover); color: var(--accent); }
 .bd-cal__tadd:focus-visible { outline: none; background: var(--bg-hover); color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
 .bd-cal__tdchip { display: flex; align-items: center; gap: 4px; min-width: 0; padding: 2px 6px; border: 0; border-radius: 6px; background: var(--accent-soft); color: var(--accent); font: inherit; font-size: 11px; text-align: left; cursor: pointer; }
-.bd-cal__tdchip.is-done, .bd-cal__tevent.is-done { opacity: .55; text-decoration: line-through; }
+/* A finished block is filed, not faded: an opaque surface keeps the hour lines and any note behind it from bleeding through the label. */
+.bd-cal__tdchip.is-done, .bd-cal__tevent.is-done {
+  position: relative; padding-right: 18px;
+  border-left-color: var(--text-faint); background: var(--bg-raised);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.bd-cal__tevent.is-done:hover, .bd-cal__tdchip.is-done:hover { background: var(--bg-hover); }
+.bd-cal__tdchip.is-done .bd-cal__tdchiptext, .bd-cal__tevent.is-done .bd-cal__teventtext {
+  color: var(--text-muted); text-decoration: line-through;
+}
+.bd-cal__tdchip.is-done .bd-cal__teventtime, .bd-cal__tevent.is-done .bd-cal__teventtime { color: var(--text-faint); }
+.bd-cal__tdchip.is-done::after, .bd-cal__tevent.is-done::after {
+  content: "\2713"; position: absolute; top: 3px; right: 6px;
+  font-size: 9.5px; font-weight: 800; line-height: 1; color: var(--success);
+}
 .bd-cal__tdchiptext { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .bd-cal__tbody { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; }
 .bd-cal__tgutter { flex: none; width: 62px; }
