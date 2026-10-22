@@ -5,6 +5,8 @@ import { XaveAd } from "./Ad";
 import { XaveMesh } from "./Ad2";
 import { AD_TOTAL } from "./ad-scenes";
 import { MESH_TOTAL } from "./ad2-scenes";
+import { PitchBoardOne, PitchBoardTwo, XavePitch } from "./Pitch";
+import { PITCH_TOTAL } from "./pitch-scenes";
 
 export const Root: React.FC = () => (
   <>
@@ -16,6 +18,9 @@ export const Root: React.FC = () => (
       width={1920}
       height={1080}
     />
+    <Composition id="XavePitch" component={XavePitch} durationInFrames={PITCH_TOTAL} fps={30} width={1920} height={1080} />
+    <Composition id="PitchBoardOne" component={PitchBoardOne} durationInFrames={30} fps={30} width={1920} height={1080} />
+    <Composition id="PitchBoardTwo" component={PitchBoardTwo} durationInFrames={30} fps={30} width={1920} height={1080} />
     <Composition id="XaveMesh" component={XaveMesh} durationInFrames={MESH_TOTAL} fps={30} width={1920} height={1080} />
     <Composition id="XaveAd" component={XaveAd} durationInFrames={AD_TOTAL} fps={30} width={1920} height={1080} />
     <Composition
