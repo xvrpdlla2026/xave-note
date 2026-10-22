@@ -1921,6 +1921,7 @@ function richItemOf(box) {
       rows.textContent = '';
       item.data.items.forEach(function (entry, index) {
         var row = node('label', 'bd-todo__row');
+        row.__entry = entry;
         var box = node('input', 'bd-check');
         box.type = 'checkbox';
         box.checked = !!entry.done;
@@ -1948,6 +1949,71 @@ function richItemOf(box) {
           var boxes = rows.querySelectorAll('.bd-todo__text');
           if (boxes[index + 1]) boxes[index + 1].focus();
         });
+        var grip = node('span', 'bd-todo__grip');
+        grip.setAttribute('role', 'button');
+        grip.setAttribute('tabindex', '0');
+        grip.setAttribute('aria-label', 'Reorder item');
+        grip.setAttribute('title', 'Drag to reorder, or press Alt with the arrow keys');
+        grip.addEventListener('click', function (event) { event.preventDefault(); event.stopPropagation(); });
+        grip.addEventListener('keydown', function (event) {
+          if (!event.altKey || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return;
+          event.preventDefault();
+          var from = Array.prototype.indexOf.call(rows.children, row);
+          var to = event.key === 'ArrowUp' ? from - 1 : from + 1;
+          if (to < 0 || to >= rows.children.length) return;
+          pushUndo('edit');
+          if (to < from) rows.insertBefore(row, rows.children[to]);
+          else rows.insertBefore(row, rows.children[to].nextSibling);
+          item.data.items = Array.prototype.map.call(rows.children, function (el) { return el.__entry; });
+          saveItem(item);
+          paint();
+          paintKind(item);
+          var moved = rows.children[to] && rows.children[to].querySelector('.bd-todo__grip');
+          if (moved) moved.focus();
+        });
+        grip.addEventListener('pointerdown', function (event) {
+          if (event.button !== 0) return;
+          event.preventDefault();
+          event.stopPropagation();
+          var startY = event.clientY;
+          var dragging = false;
+          function onMove(moveEvent) {
+            if (moveEvent.pointerId !== event.pointerId) return;
+            if (!dragging) {
+              if (Math.abs(moveEvent.clientY - startY) < 4) return;
+              dragging = true;
+              row.classList.add('is-dragging');
+            }
+            var next = null;
+            for (var i = 0; i < rows.children.length; i += 1) {
+              var other = rows.children[i];
+              if (other === row) continue;
+              var box = other.getBoundingClientRect();
+              if (moveEvent.clientY < box.top + box.height / 2) { next = other; break; }
+            }
+            if (next) {
+              if (next !== row.nextSibling) rows.insertBefore(row, next);
+            } else if (rows.lastElementChild !== row) {
+              rows.appendChild(row);
+            }
+          }
+          function onEnd(endEvent) {
+            if (endEvent && endEvent.pointerId !== undefined && endEvent.pointerId !== event.pointerId) return;
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onEnd);
+            window.removeEventListener('pointercancel', onEnd);
+            if (!dragging) return;
+            row.classList.remove('is-dragging');
+            pushUndo('edit');
+            item.data.items = Array.prototype.map.call(rows.children, function (el) { return el.__entry; });
+            saveItem(item);
+            paint();
+            paintKind(item);
+          }
+          window.addEventListener('pointermove', onMove);
+          window.addEventListener('pointerup', onEnd);
+          window.addEventListener('pointercancel', onEnd);
+        });
         var drop = node('button', 'bd-todo__x', '\u00d7');
         drop.type = 'button';
         drop.addEventListener('click', function (event) {
@@ -1959,6 +2025,7 @@ function richItemOf(box) {
           paint();
           paintKind(item);
         });
+        row.appendChild(grip);
         row.appendChild(box);
         row.appendChild(text);
         row.appendChild(drop);

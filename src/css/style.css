@@ -3828,6 +3828,13 @@ html.is-board-boot body > *:not(.board) { display: none; }
 .bd-todo { display: flex; flex-direction: column; gap: 6px; }
 .bd-todo__rows { display: flex; flex-direction: column; gap: 4px; }
 .bd-todo__row { display: flex; align-items: center; gap: 7px; }
+/* The handle only appears on the row you point at, so a list of items still reads as a list. */
+.bd-todo__grip { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 10px; height: 18px; color: var(--text-faint); cursor: grab; opacity: .3; touch-action: none; }
+.bd-todo__grip::before { content: ''; width: 8px; height: 12px; background-image: radial-gradient(currentColor 1px, transparent 1.4px); background-size: 4px 4px; }
+.bd-todo__row:hover .bd-todo__grip, .bd-todo__row:focus-within .bd-todo__grip { opacity: 1; }
+.bd-todo__grip:hover, .bd-todo__grip:focus-visible { color: var(--text); outline: none; }
+.bd-todo__grip:active { cursor: grabbing; }
+.bd-todo__row.is-dragging { position: relative; z-index: 2; border-radius: 6px; background: var(--bg-raised); box-shadow: 0 4px 14px var(--shadow-color); }
 .bd-todo__row.is-done .bd-todo__text { color: var(--text-faint); text-decoration: line-through; }
 .bd-check { width: 13px; height: 13px; accent-color: var(--accent); }
 .bd-todo__text { flex: 1; min-width: 0; padding: 2px 0; border: none; background: none; color: var(--text); font: inherit; font-size: 12px; outline: none; }
