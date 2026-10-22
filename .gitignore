@@ -9,3 +9,11 @@ node_modules/
 
 # Everything else at the root is committed, including the built index.html,
 # because that one file is what people download and use.
+
+# Render artifacts: narration clips, mixed audio and screen recordings are
+# rebuilt by the video scripts, so they never belong in history.
+video/audio/vo-*/
+video/public/live/
+video/public/pitch.wav
+video/public/mesh.wav
+docs/bckup/
